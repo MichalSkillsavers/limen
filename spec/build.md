@@ -11,9 +11,12 @@
 - Reliable in-flight control on one seat; a laptop is a window; the GitHub App rings Alice's registered coordinator while two-seat routing remains unproved.
 - Settled Herdr panes keep RUNNING jobs and stall warnings visible; external finish delivery remains per-project opt-in.
 - Coordinator CPU is repaired without deleting history; job-history retention remains a separate operator decision.
+- **Ops wave (Adam 2026-09-27, Johnny coordinating), in this order:** plate as inbox (F738) and doorbell dedupe on job + final state (F739) in parallel; then owner + land policy on the job with a non-blocking end-of-job spec nudge; then OMP finish wakes with `limen wait` refused under `LIMEN_COORDINATOR=1`; then quiet liveness. OMP only, never pi-claude; land each slice onto `main` when done, no extra review; never edit Alice `alice/` or `api/`.
 
 ## NOW
 
+- `F738-plate-inbox` (🟠 ACTIVE): `limen status` is a fast one-screen inbox — Running, Ready to land, Needs a decision; cherry-picked work counts as landed; history behind `--all`.
+- `F739-doorbell-dedupe` (🟠 ACTIVE): finish ping dedupes on job id + final state, not commit; one bounded retry on sender timeout.
 - `F014-github-doorbell` (🟠 ACTIVE): Alice's isolated App key, warm coordinator, live PR mention, hosted review, and one start/finish receipt are proven; second-seat ownership/routing remains to prove before closing.
 - `F731-seat-bell-once` (🟠 ACTIVE): Stop the seat sweep replaying the same finished or stalled job forever; old markers and concurrent sweeps must not ring again.
 
