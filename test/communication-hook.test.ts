@@ -285,6 +285,30 @@ test("a hosted worker's system prompt holds the styleguide and both register aud
 	assert.doesNotMatch(cue, /## Guidance drift/);
 });
 
+test("a jg whose help names Jevgrep adds the search rule for jobs and the coordinator; another jg or none does not", async (context) => {
+	const root = await projectRoot(context);
+	const fakeJg = async (name: string, help: string): Promise<string> => {
+		const bin = join(root, name);
+		await mkdir(bin);
+		await writeFile(join(bin, "jg"), `#!/bin/sh\nprintf '%s\\n' '${help}'\n`, { mode: 0o755 });
+		// A fresh executable's first run can be slow on macOS; keep that outside the hook's probe timeout.
+		execFileSync(join(bin, "jg"), ["--help"]);
+		return bin;
+	};
+	const jevgrep = await fakeJg("jevgrep", "jg — source retrieval for coding agents. Git metadata and Jevgrep storage remain excluded.");
+	const impostor = await fakeJg("impostor", "jg - JSON grep");
+	const empty = join(root, "empty");
+	await mkdir(empty);
+	stashEnv(context, { PATH: jevgrep });
+	assert.match(start(root, { systemPrompt: "base" }).systemPrompt ?? "", /## Search \(jg\)\n`jg` \(Jevgrep\) is installed\./);
+	stashEnv(context, { LIMEN_JOB: "1" });
+	assert.match(start(root, { systemPrompt: "pi-base" }).systemPrompt ?? "", /instead of grep, ripgrep \(`rg`\), or a grep tool/);
+	for (const path of [impostor, empty]) {
+		process.env.PATH = path;
+		assert.doesNotMatch(start(root, { systemPrompt: "pi-base" }).systemPrompt ?? "", /Jevgrep/);
+	}
+});
+
 test("workspace jobs resolve guidance from the workspace root", async (context) => {
 	const root = await projectRoot(context);
 	const worktree = join(root, "api-worktree");

@@ -17,7 +17,7 @@ That is typecheck, Biome format check, and the real-Git test suite. Each test ha
 - Capability — start, wait, stop, observe — belongs in `src/`
 - Operating advice belongs in `templates/`
 - Behavior incidents should normally change templates, not add guards
-- Project context belongs in the package communication hook: stable guidance (shop manual, speech register, vision, styleguide, board digest) rides the system prompt; a short per-turn cue names the audience; tool results recall the rule that applies; inherit package defaults when project files are absent; bound injected text; leftover-copy drift stays an advisory
+- Project context belongs in the package communication hook: stable guidance (shop manual, speech register, the `jg` search rule when Jevgrep is installed, vision, styleguide, board digest) rides the system prompt; a short per-turn cue names the audience; tool results recall the rule that applies; inherit package defaults when project files are absent; bound injected text; leftover-copy drift stays an advisory
 
 Only impossible mechanics should error. Everything else informs. Migration is the exception where safety requires a complete read-only preflight: any legacy live job, handshake, type mismatch, or old/new path conflict must fail before the first write.
 
