@@ -113,19 +113,18 @@ this preserves the completion contract without treating an empty success as
 proof of useful work. Native coordinator notifications and terminal state do
 not change. Logs, commits and transcript text are not substitutes for `result`.
 
-After an automatic send or send attempt for a recorded git tip, another configured
-job that settles at that same tip stays quiet. The quieted job records
-`skipped: same settled tip already notified; not sent` in its aggregate receipt
-and log. A job at a different tip still sends. Empty failed/stopped skips do not
-consume the tip, so a later job at that tip can still notify. Missing or invalid
-recorded tips fail open and send. Finalize writes the worktree HEAD to the job
-file `tip`; the cabinet claim is `.limen/finish-webhook-tips/<sha>`.
+Automatic delivery is claimed by the job's `finish-webhook-attempt` file, which
+records its terminal state. Each job rings once for its final state, even when
+another job finishes at the same Git tip. The claim is never reclaimed: a crash
+after HTTP acceptance may already have sent. Older
+`.limen/finish-webhook-tips/<sha>` markers are ignored and no new tip markers
+are written.
 
-A skip consumes the existing one-automatic-decision claim and creates no target
-transport receipts. Later result edits or repeated finalization do not re-arm
-sending. It is an intentional no-send, not a sender failure or retry request.
-The standalone manual helper remains unchanged; an operator may deliberately
-send after inspecting the skip, but workers must not routinely bypass it.
+A skipped empty failed/stopped result consumes that job's claim and creates no
+target transport receipts. Later result edits or repeated finalization do not
+re-arm sending. The standalone manual helper remains unchanged; an operator may
+deliberately send after inspecting the skip, but workers must not routinely
+bypass it.
 
 At `limen spawn`, selection is deliberately narrower than the standalone helper:
 
@@ -149,10 +148,15 @@ selects config at spawn as usual. Existing jobs without a snapshot stay opted ou
 For unusual separate Git-directory layouts, an explicit override avoids differing
 standalone-helper and primary-worktree discovery locations.
 
-Automatic sending has a stricter three-second process-group deadline than the
-standalone helper's ten-second request bound. During detached stop/exhaustion it
-uses only the remaining shutdown grace, reserving 500ms to record the result;
-with no time left it records `not sent`. No timeout extends job shutdown.
+Automatic sending caps each sender at three seconds and the whole delivery at
+four seconds. A timeout (`acceptance unknown`) gets exactly one retry using only
+the remaining delivery and shutdown time; a second timeout or any other failure
+does not retry. The job's `finish-webhook` receipt and log record both attempts,
+or that the retry could not start before the deadline. The retry can ring twice
+if the first request was accepted just before the sender was killed. During
+detached stop/exhaustion the deadline also reserves 500ms of the wrapper's
+five-second termination grace for recording the result; with no time left it
+records `not sent`. No retry extends job shutdown.
 
 Routine workers should omit a manual finish-ping before exit or `finish`:
 automation handles configured jobs. A coordinator uses the deliberate fallback
@@ -224,8 +228,9 @@ is `@login`). Standalone sends without that snapshot use fallback or skip, never
 Every request starts before the sender waits for results, so a failed or stalled
 first bot does not suppress delivery to the second. The standalone bound remains
 10 seconds per request, concurrent rather than multiplied by recipient count.
-Automatic finalization still caps the entire sender at three seconds (or the
-remaining shutdown budget). A killed request may already have been accepted.
+Automatic finalization caps each sender at three seconds and retries once after
+a timeout within the four-second total delivery and remaining shutdown budget.
+A killed request may already have been accepted.
 
 Manual output identifies targets by their one-based list position only:
 `finish webhook: target 2 accepted (HTTP 204); owner wake unobserved`.
@@ -233,9 +238,10 @@ Exit 0 requires HTTP acceptance from **all** targets. One failure yields exit 1
 after the other requests settle. No URLs, credentials or response bodies appear
 in output. Automatic records remain aggregate sender status and discard its
 output: `failed` can mean one bot accepted while another did not. There is no
-per-target automatic retry. Retrying the whole list may wake a successful bot
-twice; after inspecting both receivers, an operator may deliberately select a
-separate private config containing only the failed route for a manual retry.
+per-target automatic retry. A timeout retry resends the whole list and may wake
+a successful bot twice; after inspecting both receivers, an operator may
+deliberately select a separate private config containing only the failed route
+for a manual retry.
 
 ### Prove wake, not just HTTP
 
@@ -366,9 +372,9 @@ must not hide a failed ping.
 | `finish-webhook-env` | Selected absolute private env path only; absence means not opted in. |
 | `finish-webhook-author` | Captured `@login` and creation commit, or `unavailable` and a short reason. Continuations inherit it. |
 | `finish-webhook-route` | Send-time selection reason and original ordinals (`fan-out`, `mapped @login -> …`, `fallback * -> …`, skip, or invalid map). No URLs or tokens. |
-| `tip` | Worktree HEAD at finalize; used for cross-job same-tip quieting. Missing or invalid tips fail open. |
-| `finish-webhook-attempt` | Flushed timestamp claiming the one automatic delivery decision, including an intentional skip; not proof of a transport attempt. |
-| `finish-webhook` | Timestamped `skipped` with its no-send reason, or `attempting`, `accepted`, or `failed` with retry guidance. |
+| `tip` | Worktree HEAD at finalize; informational, not a delivery claim. |
+| `finish-webhook-attempt` | Flushed final state and timestamp claiming this job's one automatic delivery decision, including a skip; never reclaimed and not proof of a transport attempt. |
+| `finish-webhook` | Timestamped `skipped`, `attempting`, `accepted`, or `failed`; after a timeout, records both attempts or why the retry did not start, plus manual retry guidance. |
 | `finish-webhook-targets` | Mode-600 JSON lines: target ordinal, timestamp, transport (`pending`, `accepted`, `rejected`, `unknown`), HTTP category or `none`. |
 | `state` / `finished-at` | Job outcome and completion time, independent of delivery success. |
 

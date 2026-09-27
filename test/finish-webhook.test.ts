@@ -16,11 +16,12 @@ exec node --input-type=commonjs - "$@" <<'SENDER'
 const fs = require("node:fs");
 const config = JSON.parse(fs.readFileSync(process.env.LIMEN_FINISH_WEBHOOK_ENV, "utf8"));
 const job = process.env.LIMEN_JOB_DIR || process.env.TEST_JOB_DIR;
+const attempts = fs.existsSync(config.observations) ? fs.readFileSync(config.observations, "utf8").trim().split("\\n").length : 0;
 fs.appendFileSync(config.observations, JSON.stringify({ args: process.argv.slice(2), config: process.env.LIMEN_FINISH_WEBHOOK_ENV, state: fs.readFileSync(job + "/state", "utf8").trim(), finished: fs.existsSync(job + "/finished-at"), pid: fs.existsSync(job + "/pid") }) + "\\n");
 console.log("synthetic-secret-must-not-leak");
 console.error("synthetic-secret-must-not-leak");
 if (config.receipts) fs.writeSync(3, config.receipts);
-if (config.hang) {
+if (config.hang || (config.hangOnce && attempts === 0)) {
   const child = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
   fs.writeFileSync(config.descendant, String(child.pid));
   process.on("SIGTERM", () => {});
@@ -142,7 +143,7 @@ for (const state of ["failed", "stopped", "done"]) {
 	}
 }
 
-test("second job at the same recorded tip skips automatic ping", async (context) => {
+test("jobs at the same recorded tip each send, including with a legacy tip marker", async (context) => {
 	const f = await fixture(context);
 	const selected = await f.config(join(f.parent, "same-tip.env"));
 	const first = await bareJob(f.root, "first");
@@ -151,6 +152,8 @@ test("second job at the same recorded tip skips automatic ping", async (context)
 		await writeFile(join(job, "finish-webhook-env"), `${selected}\n`);
 		await writeFile(join(job, "tip"), `${TIP_A}\n`);
 	}
+	await mkdir(join(f.root, ".limen/finish-webhook-tips"), { recursive: true });
+	await writeFile(join(f.root, ".limen/finish-webhook-tips", TIP_A), "old job\n");
 	const finalize = (job: string) =>
 		runModule(
 			f.pkg,
@@ -158,16 +161,10 @@ test("second job at the same recorded tip skips automatic ping", async (context)
 			`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'synthetic terminal detail');`,
 		);
 	await finalize(first);
-	assert.match(await readFile(join(first, "finish-webhook"), "utf8"), /^accepted:/);
 	await finalize(second);
-	const receipt = await readFile(join(second, "finish-webhook"), "utf8");
-	assert.match(receipt, /^skipped: same settled tip already notified; not sent/);
-	assert.doesNotMatch(receipt, /Manual finish-ping retry/);
-	assert.match(await readFile(join(second, "log"), "utf8"), /finish webhook: skipped: same settled tip already notified; not sent/);
-	await assert.rejects(readFile(join(second, "finish-webhook-targets")), { code: "ENOENT" });
-	assert.equal((await observe(f.observations)).length, 1);
-	for (const view of ["compact", "human"]) assert.match(f.command(["jobs", "second"], { LIMEN_VIEW: view }), /skipped: same settled tip already notified; not sent/);
-	assert.equal(await readFile(join(f.root, ".limen/finish-webhook-tips", TIP_A), "utf8"), "first\n");
+	for (const job of [first, second]) assert.match(await readFile(join(job, "finish-webhook"), "utf8"), /^accepted:/);
+	assert.equal((await observe(f.observations)).length, 2);
+	assert.equal(await readFile(join(f.root, ".limen/finish-webhook-tips", TIP_A), "utf8"), "old job\n");
 });
 
 test("a job that settles at a different recorded tip still sends", async (context) => {
@@ -216,7 +213,7 @@ test("empty failed skip does not quiet a later job at the same tip", async (cont
 	assert.equal((await observe(f.observations)).length, 1);
 });
 
-test("concurrent jobs at the same recorded tip send at most once", async (context) => {
+test("concurrent jobs at the same recorded tip each send exactly once", async (context) => {
 	const f = await fixture(context);
 	const selected = await f.config(join(f.parent, "race-tip.env"));
 	const first = await bareJob(f.root, "first");
@@ -232,13 +229,15 @@ test("concurrent jobs at the same recorded tip send at most once", async (contex
 			`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'synthetic terminal detail');`,
 		);
 	await Promise.all([finalize(first), finalize(second)]);
-	assert.equal((await observe(f.observations)).length, 1);
-	const receipts = [await readFile(join(first, "finish-webhook"), "utf8"), await readFile(join(second, "finish-webhook"), "utf8")];
-	assert.equal(receipts.filter((text) => /^accepted:/.test(text)).length, 1);
-	assert.equal(receipts.filter((text) => /^skipped: same settled tip already notified; not sent/.test(text)).length, 1);
+	await Promise.all([finalize(first), finalize(second)]);
+	assert.equal((await observe(f.observations)).length, 2);
+	for (const job of [first, second]) {
+		assert.match(await readFile(join(job, "finish-webhook"), "utf8"), /^accepted:/);
+		assert.match(await readFile(join(job, "finish-webhook-attempt"), "utf8"), /^done /);
+	}
 });
 
-test("two detached jobs that settle at the same HEAD send one automatic ping", async (context) => {
+test("two detached jobs that settle at the same HEAD each send an automatic ping", async (context) => {
 	const f = await fixture(context);
 	await f.config(join(f.root, ".limen/finish-webhook.env"));
 	const first = onlyJobId(f.command(["spawn", "--detached", "--label", "first quiet", "finish"]));
@@ -248,10 +247,9 @@ test("two detached jobs that settle at the same HEAD send one automatic ping", a
 	assert.match(tip, /^[0-9a-f]{40}$/);
 	const second = onlyJobId(f.command(["spawn", "--detached", "--label", "second quiet", "finish"]));
 	const job2 = join(f.root, ".limen/jobs", second);
-	assert.match(await delivery(job2), /^skipped: same settled tip already notified; not sent/);
+	assert.match(await delivery(job2), /^accepted:/);
 	assert.equal((await readFile(join(job2, "tip"), "utf8")).trim(), tip);
-	assert.equal((await observe(f.observations)).length, 1);
-	assert.match(await readFile(join(job2, "log"), "utf8"), /finish webhook: skipped: same settled tip already notified; not sent/);
+	assert.equal((await observe(f.observations)).length, 2);
 });
 
 test("a detached job that commits still sends after another job at the previous tip", async (context) => {
@@ -343,13 +341,13 @@ for (const firstStatus of [204, 503, "stall"]) {
 			firstStatus === 204
 				? /^accepted: sender exited 0 \(owner wake unobserved\)/
 				: firstStatus === "stall"
-					? /^failed: sender exceeded 3000ms; acceptance unknown/
+					? /^failed: sender exceeded \d+ms; acceptance unknown/
 					: /^failed: sender exited 1/,
 		);
 		const requests = await observe(f.observations);
 		assert.deepEqual(
 			requests.map(({ url, auth }) => ({ url, auth })),
-			targets,
+			firstStatus === "stall" ? [...targets, ...targets] : targets,
 		);
 		for (const request of requests) {
 			assert.equal(request.state, "done");
@@ -423,7 +421,7 @@ for (const firstStatus of [204, 503, "stall"]) {
 			both.push(detail);
 		}
 		await runModule(f.pkg, f.env, `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'repeat');`);
-		assert.equal((await observe(f.observations)).length, 2, "repeat finalization sends nothing");
+		assert.equal((await observe(f.observations)).length, firstStatus === "stall" ? 4 : 2, "repeat finalization sends nothing");
 		assert.equal(await readFile(join(job, "finish-webhook-targets"), "utf8"), receipts);
 		if (process.env.LIMEN_TEST_FINISH_EVIDENCE) {
 			const evidence = join(process.env.LIMEN_TEST_FINISH_EVIDENCE, `two-target-${firstStatus}`);
@@ -589,11 +587,57 @@ test("hanging sender and its descendant are killed within shutdown grace without
 		`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'stopped', 'bounded stop');`,
 	);
 	assert.ok(Date.now() - started < 4_500, "sender must leave room within the wrapper's 5s grace");
-	assert.match(await delivery(job), /^failed: sender exceeded 3000ms; acceptance unknown/);
+	assert.match(await delivery(job), /^failed: sender exceeded \d+ms; acceptance unknown/);
 	assert.equal(await readFile(join(job, "state"), "utf8"), "stopped\n");
 	const pid = Number(await readFile(descendant, "utf8"));
 	const status = spawnSync("ps", ["-p", String(pid), "-o", "stat="], { encoding: "utf8" });
 	assert.ok(status.status !== 0 || status.stdout.trim().startsWith("Z"), `sender descendant is still running: ${status.stdout}`);
+});
+
+test("a sender timeout gets one bounded successful retry and records both attempts", async (context) => {
+	const f = await fixture(context);
+	const job = await bareJob(f.root);
+	const selected = await f.config(join(f.parent, "once.env"), { hangOnce: true, descendant: join(f.parent, "once-descendant") });
+	await writeFile(join(job, "finish-webhook-env"), `${selected}\n`);
+	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`);
+	const receipt = await readFile(join(job, "finish-webhook"), "utf8");
+	assert.match(receipt, /^accepted:/);
+	assert.match(receipt, /attempt 1: failed: sender exceeded 3000ms; acceptance unknown/);
+	assert.match(receipt, /attempt 2: accepted: sender exited 0/);
+	assert.match(await readFile(join(job, "log"), "utf8"), /finish webhook: attempt 1: failed: sender exceeded/);
+	assert.match(await readFile(join(job, "log"), "utf8"), /finish webhook: accepted:/);
+	assert.equal((await observe(f.observations)).length, 2);
+});
+
+test("a sender that times out twice makes no third attempt", async (context) => {
+	const f = await fixture(context);
+	const job = await bareJob(f.root);
+	const selected = await f.config(join(f.parent, "twice.env"), { hang: true, descendant: join(f.parent, "twice-descendant") });
+	await writeFile(join(job, "finish-webhook-env"), `${selected}\n`);
+	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`);
+	const receipt = await readFile(join(job, "finish-webhook"), "utf8");
+	assert.match(receipt, /attempt 1: failed: sender exceeded 3000ms; acceptance unknown/);
+	assert.match(receipt, /attempt 2: failed: sender exceeded \d+ms; acceptance unknown/);
+	assert.doesNotMatch(receipt, /attempt 3:/);
+	assert.equal((await observe(f.observations)).length, 2);
+});
+
+test("a timeout at the shutdown deadline records no retry", async (context) => {
+	const f = await fixture(context);
+	const job = await bareJob(f.root);
+	const selected = await f.config(join(f.parent, "deadline.env"), { hang: true, descendant: join(f.parent, "deadline-descendant") });
+	await writeFile(join(job, "finish-webhook-env"), `${selected}\n`);
+	await writeFile(join(job, "state"), "done\n");
+	await runModule(
+		f.pkg,
+		{ ...f.env, TEST_JOB_DIR: job },
+		`const { deliverFinishWebhook } = await import('./src/finish-webhook.ts'); await deliverFinishWebhook(${JSON.stringify(job)}, Date.now() + 2500);`,
+	);
+	const receipt = await readFile(join(job, "finish-webhook"), "utf8");
+	assert.match(receipt, /attempt 1: failed: sender exceeded \d+ms; acceptance unknown/);
+	assert.match(receipt, /retry: not retried; shutdown deadline reached/);
+	assert.match(await readFile(join(job, "log"), "utf8"), /retry: not retried; shutdown deadline reached/);
+	assert.equal((await observe(f.observations)).length, 1);
 });
 
 test("an exhausted shutdown budget records not sent without launching the helper", async (context) => {
@@ -657,9 +701,9 @@ test("continuation retains only its parent's config path even when the caller se
 	await writeFile(join(parentJob, "session/one.jsonl"), "{}\n");
 	const next = onlyJobId(f.command(["continue", "--detached", id, "follow up"], { LIMEN_FINISH_WEBHOOK_ENV: other }));
 	const job = join(f.root, ".limen/jobs", next);
-	assert.match(await delivery(job), /^skipped: same settled tip already notified; not sent/);
+	assert.match(await delivery(job), /^accepted:/);
 	assert.equal(await readFile(join(job, "finish-webhook-env"), "utf8"), `${selected}\n`);
-	assert.equal((await observe(f.observations)).length, 1);
+	assert.equal((await observe(f.observations)).length, 2);
 });
 
 async function fileTicket(root: string, path: string, author: string) {

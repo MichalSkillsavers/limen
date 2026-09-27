@@ -1,15 +1,16 @@
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, delimiter, dirname, isAbsolute, resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { finishEvent, parseFinishReceipt, parseFinishSelection } from "./finish-receipt.ts";
 import { listWorktrees, ticketAuthor, workspaceRoot } from "./git.ts";
 import { appendLimenLog, atomicWrite, textFile } from "./wrapper.ts";
 
 const SENDER = fileURLToPath(new URL("../bin/tony-finish-ping.sh", import.meta.url));
-// Shorter than the detached wrapper's 5s termination grace, including a hung sender.
+// Leave time inside the detached wrapper's 5s termination grace to record the outcome.
 const SEND_MS = 3_000;
+const DELIVERY_MS = 4_000;
 export function finishWebhookEnv(root: string, cwd: string, explicit = process.env.LIMEN_FINISH_WEBHOOK_ENV): string {
 	if (explicit !== undefined) return explicit.trim() ? resolve(cwd, explicit) : "";
 	const project = workspaceRoot(root) ? root : (listWorktrees(root)[0]?.path ?? root);
@@ -46,7 +47,7 @@ export async function deliverFinishWebhook(jobDir: string, shutdownDeadline = Nu
 	if (!["done", "failed", "stopped"].includes(state)) return;
 	try {
 		// Never reclaim: a crash after HTTP acceptance but before recording it is ambiguous.
-		await writeFile(`${jobDir}/finish-webhook-attempt`, `${new Date().toISOString()}\n`, { flag: "wx", mode: 0o600, flush: true });
+		await writeFile(`${jobDir}/finish-webhook-attempt`, `${state} ${new Date().toISOString()}\n`, { flag: "wx", mode: 0o600, flush: true });
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "EEXIST") return;
 		throw error;
@@ -64,38 +65,44 @@ export async function deliverFinishWebhook(jobDir: string, shutdownDeadline = Nu
 		await appendLimenLog(jobDir, `finish webhook: ${skipped}`);
 		return;
 	}
-	const tip = parseFinishTip(await textFile(`${jobDir}/tip`));
-	if (tip) {
-		try {
-			await mkdir(`${dirname(dirname(jobDir))}/finish-webhook-tips`, { recursive: true, mode: 0o700 });
-			await writeFile(`${dirname(dirname(jobDir))}/finish-webhook-tips/${tip}`, `${basename(jobDir)}\n`, { flag: "wx", mode: 0o600, flush: true });
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-			const skipped = "skipped: same settled tip already notified; not sent";
-			await atomicWrite(`${jobDir}/finish-webhook`, `${skipped} ${new Date().toISOString()}\n`);
-			await appendLimenLog(jobDir, `finish webhook: ${skipped}`);
-			return;
-		}
-	}
-	const retry =
+	const manual =
 		"Manual finish-ping retry: inspect finish-webhook-attempt and finish-webhook; use bin/tony-finish-ping.sh with this job's finish-webhook-env, label, state and branch. Acceptance is not proof of owner wake; an interrupted attempt may already have sent.";
-	await atomicWrite(`${jobDir}/finish-webhook`, `attempting ${new Date().toISOString()}\n${retry}\n`);
+	await atomicWrite(`${jobDir}/finish-webhook`, `attempting ${new Date().toISOString()}\n${manual}\n`);
 	await appendLimenLog(jobDir, "finish webhook: attempting; inspect finish-webhook for status and manual finish-ping retry");
 	const label = await textFile(`${jobDir}/label`);
 	const branch = await textFile(`${jobDir}/branch`);
-	const timeoutMs = Math.min(SEND_MS, shutdownDeadline - Date.now());
+	const deadline = Math.min(shutdownDeadline, Date.now() + DELIVERY_MS);
 	const login = (await textFile(`${jobDir}/finish-webhook-author`)).split("\n")[0] ?? "";
 	const author = /^@[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(login) ? login.toLowerCase() : "";
-	const result = !isAbsolute(config)
+	const timeoutMs = Math.min(SEND_MS, deadline - Date.now());
+	let result = !isAbsolute(config)
 		? "failed: config path is not absolute"
 		: timeoutMs <= 0
 			? "failed: no shutdown time remains; not sent"
 			: await send(jobDir, config, label, state, branch, timeoutMs, author);
-	await atomicWrite(`${jobDir}/finish-webhook`, `${result} ${new Date().toISOString()}\n${result.startsWith("skipped:") ? "" : `${retry}\n`}`);
+	const attempts: string[] = [];
+	if (result.startsWith("failed: sender exceeded ")) {
+		attempts.push(`attempt 1: ${result} ${new Date().toISOString()}`);
+		await appendLimenLog(jobDir, `finish webhook: ${attempts[0]}`);
+		if (deadline > Date.now()) {
+			await atomicWrite(`${jobDir}/finish-webhook`, `attempting retry ${new Date().toISOString()}\n${attempts.join("\n")}\n${manual}\n`);
+			await appendLimenLog(jobDir, "finish webhook: attempting retry");
+		}
+		const remaining = Math.min(SEND_MS, deadline - Date.now());
+		if (remaining > 0) {
+			result = await send(jobDir, config, label, state, branch, remaining, author);
+			attempts.push(`attempt 2: ${result} ${new Date().toISOString()}`);
+			await appendLimenLog(jobDir, `finish webhook: ${attempts[1]}`);
+		} else {
+			attempts.push("retry: not retried; shutdown deadline reached");
+			await appendLimenLog(jobDir, `finish webhook: ${attempts[1]}`);
+		}
+	}
+	await atomicWrite(
+		`${jobDir}/finish-webhook`,
+		`${result} ${new Date().toISOString()}\n${attempts.length ? `${attempts.join("\n")}\n` : ""}${result.startsWith("skipped:") ? "" : `${manual}\n`}`,
+	);
 	await appendLimenLog(jobDir, `finish webhook: ${result}${result.startsWith("skipped:") ? "" : "; inspect finish-webhook for manual finish-ping retry"}`);
-}
-function parseFinishTip(value: string): string | undefined {
-	return /^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(value) ? value : undefined;
 }
 function send(jobDir: string, config: string, label: string, state: string, branch: string, timeoutMs: number, author: string): Promise<string> {
 	return new Promise((resolve) => {
