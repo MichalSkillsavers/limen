@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
-import { commitList, limenRoot, workspaceRepository, workspaceRoot } from "../git.ts";
+import { limenRoot, unlandedBranches, workspaceRepository, workspaceRoot } from "../git.ts";
 import { confirmDeadJobs } from "../reap.ts";
 import { renderJobDirectory } from "./jobs.ts";
 
@@ -14,8 +14,13 @@ const text = (path: string) =>
 
 type Agent = { pane_id?: string; tab_id?: string; cwd?: string; agent_status?: string; interactive_ready?: boolean };
 
+const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+
+type Finished = { readonly id: string; readonly label: string; readonly state: string; readonly branch: string; readonly repo: string };
+
 export async function statusCommand(args: readonly string[], cwd: string): Promise<void> {
-	if (args.length) throw new Error("status accepts no arguments");
+	const all = args[0] === "--all";
+	if (args.length > (all ? 1 : 0)) throw new Error("status accepts no arguments or --all");
 	const root = existsSync(`${resolve(cwd)}/.limen/jobs`) ? resolve(cwd) : limenRoot(cwd);
 	const jobsRoot = `${root}/.limen/jobs`;
 	await confirmDeadJobs(jobsRoot);
@@ -23,31 +28,34 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return [];
 		throw error;
 	});
-	const ids = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+	const ids = entries
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
+		.sort();
+	const now = Date.now();
 	const running: string[] = [];
-	const waiting = new Map<string, string>();
 	const runningBranches = new Set<string>();
 	const uncertain: string[] = [];
 	const workerPanes = new Set<string>();
 	const worktrees = new Set<string>();
 	const originTabs = new Set<string>();
-	const unmerged = new Map<string, Set<string>>();
+	const finished = new Map<string, Finished>();
+	let older = 0;
 	let lastOrigin = "";
-	const newest = ids.toSorted().at(-1);
 	for (const id of ids) {
 		const dir = `${jobsRoot}/${id}`;
-		const [state, branch, repo, pane, tab, worktree, base, origin] = await Promise.all(
-			["state", "branch", "repo", "herdr/agent", "herdr/tab", "worktree", "base", "origin-tab"].map((name) => text(`${dir}/${name}`)),
+		const [state = "", label = "", branch = "", repo = "", pane, tab, worktree, origin, started = "", ended = ""] = await Promise.all(
+			["state", "label", "branch", "repo", "herdr/agent", "herdr/tab", "worktree", "origin-tab", "started-at", "finished-at"].map((name) => text(`${dir}/${name}`)),
 		);
 		if (pane) workerPanes.add(pane);
 		if (tab) workerPanes.add(tab);
 		if (worktree) worktrees.add(worktree);
 		if (origin && state === "running") originTabs.add(origin);
-		if (origin && id === newest) lastOrigin = origin;
-		const { record } = await renderJobDirectory(root, jobsRoot, id, false);
-		const label = record.job?.label ?? id;
+		if (origin) lastOrigin = origin;
 		if (state === "running") {
 			if (branch) runningBranches.add(`${repo}:${branch}`);
+			const { record } = await renderJobDirectory(root, jobsRoot, id, false);
+			const minutes = Date.parse(started) ? `${Math.max(0, Math.floor((now - Date.parse(started)) / 60_000))}m` : "";
 			const attention = record.invalid
 				? `invalid: ${record.invalid}`
 				: [
@@ -57,48 +65,62 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 					]
 						.filter(Boolean)
 						.join(" · ");
-			running.push(`  ${label} (${id}) · ${attention}${record.lastTool ? ` · ${record.lastTool}` : ""}${repo ? ` · repo ${repo}` : ""}`);
+			running.push([`  ${record.job?.label ?? (label || id)} (${id})`, tab, minutes, attention, record.lastTool ?? "", repo ? `repo ${repo}` : ""].filter(Boolean).join(" · "));
 			continue;
 		}
-		if ((state !== "done" && state !== "failed" && state !== "stopped") || record.invalid) {
-			uncertain.push(`  ${label} (${id}) · ${record.invalid ?? `unknown state ${state || "missing"}`}`);
+		const finishedAt =
+			Date.parse(ended) ||
+			(await stat(state ? `${dir}/state` : dir).then(
+				(value) => value.mtimeMs,
+				() => 0,
+			));
+		if (!all && now - finishedAt > RECENT_MS) {
+			older++;
 			continue;
 		}
-		if (!branch) continue;
-		try {
-			const repository = repo ? workspaceRepository(root, repo) : root;
-			let branches = unmerged.get(repository);
-			if (!branches) {
-				const refs = spawnSync("git", ["for-each-ref", "--no-merged=HEAD", "--format=%(refname:short)", "refs/heads"], {
-					cwd: repository,
-					encoding: "utf8",
-					timeout: 5_000,
-				});
-				if (refs.error || refs.status !== 0) throw new Error(`cannot enumerate branches in ${repository}`);
-				branches = new Set(refs.stdout.trim().split("\n"));
-				unmerged.set(repository, branches);
-			}
-			if (branches.has(branch)) {
-				const commits = base ? commitList(repository, base, branch) : undefined;
-				if (base && commits === undefined) throw new Error(`cannot compare base ${base} with ${branch}`);
-				if (!base || commits)
-					waiting.set(`${repo}:${branch}`, `  ${label} (${id}) · ${state} · ${branch}${repo ? ` · repo ${repo}` : ""} · waiting on owner${base ? "" : " (base unknown)"}`);
-			}
-		} catch (error) {
-			uncertain.push(`  ${label} (${id}) · Git unknown: ${error instanceof Error ? error.message : String(error)}`);
+		if (state !== "done" && state !== "failed" && state !== "stopped") {
+			uncertain.push(`  ${label || id} (${id}) · unknown state ${state || "missing"}`);
+			continue;
 		}
+		if (branch) finished.set(`${repo}:${branch}`, { id, label: label || id, state, branch, repo });
 	}
 	if (!originTabs.size && lastOrigin) originTabs.add(lastOrigin);
-	const pending = [...waiting].filter(([key]) => !runningBranches.has(key)).map(([, value]) => value);
+	const ready: string[] = [];
+	const decide: string[] = [];
+	const byRepo = Map.groupBy(
+		[...finished].filter(([key]) => !runningBranches.has(key)).map(([, job]) => job),
+		(job) => job.repo,
+	);
+	for (const [repo, jobs] of byRepo) {
+		let unlanded: ReadonlySet<string>;
+		try {
+			unlanded = unlandedBranches(
+				repo ? workspaceRepository(root, repo) : root,
+				jobs.map((job) => job.branch),
+			);
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			uncertain.push(...jobs.map((job) => `  ${job.label} (${job.id}) · Git unknown: ${reason}`));
+			continue;
+		}
+		for (const job of jobs) {
+			if (!unlanded.has(job.branch)) continue;
+			const line = `  ${job.label} (${job.id}) · ${job.state === "done" ? "" : `${job.state} · `}${job.branch}${repo ? ` · repo ${repo}` : ""}`;
+			(job.state === "done" ? ready : decide).push(line);
+		}
+	}
 	const coordinators = coordinatorLines(root, workspaceRoot(root) !== undefined, workerPanes, worktrees, originTabs);
 	console.log(
 		[
 			`Plant ${root}`,
 			`Running (${running.length}):`,
 			...(running.length ? running : ["  none"]),
-			`Waiting on owner (${pending.length}):`,
-			...(pending.length ? pending : ["  none confirmed"]),
+			`Ready to land (${ready.length}):`,
+			...(ready.length ? ready : ["  none"]),
+			`Needs a decision (${decide.length}):`,
+			...(decide.length ? decide : ["  none"]),
 			...(uncertain.length ? ["Unconfirmed jobs:", ...uncertain] : []),
+			...(all ? [] : [`Older: ${older} record${older === 1 ? "" : "s"} (limen status --all)`]),
 			"Coordinator tabs:",
 			...coordinators,
 		].join("\n"),

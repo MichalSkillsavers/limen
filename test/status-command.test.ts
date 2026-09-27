@@ -66,10 +66,10 @@ else process.exit(1);
 	assert.equal(jobs.status, 0, jobs.stderr);
 	assert.equal(status.status, 0, status.stderr);
 	assert.match(jobs.stdout, /tool.*bash: git status/);
-	assert.match(status.stdout, /Running \(1\):[\s\S]*live OMP worker.*tool.*advisory needs attention.*bash: git status/);
-	assert.match(status.stdout, /Waiting on owner \(1\):[\s\S]*finished change.*done.*waiting on owner/);
+	assert.match(status.stdout, /Running \(1\):[\s\S]*live OMP worker.*wSC:t1 · \d+m · tool.*advisory needs attention.*bash: git status/);
+	assert.match(status.stdout, /Ready to land \(1\):\n  finished change \(completed\) · limen\/finished · repo api/);
 	assert.match(status.stdout, /Coordinator tabs:[\s\S]*wNF:t19 · working/);
-	assert.doesNotMatch(status.stdout, /wSC:t1/);
+	assert.doesNotMatch(status.stdout.slice(status.stdout.indexOf("Coordinator tabs:")), /wSC:t1/);
 });
 
 test("plant plate does not leave merged, empty or deleted branches waiting; Herdr absence is unknown", async (context) => {
@@ -98,13 +98,13 @@ test("plant plate does not leave merged, empty or deleted branches waiting; Herd
 	const before = limen(scratch, "status");
 	assert.equal(before.status, 0, before.stderr);
 	assert.match(before.stdout, /Running \(1\):[\s\S]*Pi detached.*starting.*advisory review stall/);
-	assert.match(before.stdout, /Waiting on owner \(1\):[\s\S]*pending.*waiting on owner/);
+	assert.match(before.stdout, /Ready to land \(1\):\n  pending \(pending\) · limen\/pending\n/);
 	assert.doesNotMatch(before.stdout, /empty \(empty\)|gone \(gone\)/);
 	assert.match(before.stdout, /Coordinator tabs:\n  unknown \(Herdr unavailable\)/);
 	git(scratch.root, "merge", "--ff-only", "limen/pending");
 	const after = limen(scratch, "status");
 	assert.equal(after.status, 0, after.stderr);
-	assert.match(after.stdout, /Waiting on owner \(0\):/);
+	assert.match(after.stdout, /Ready to land \(0\):/);
 	assert.doesNotMatch(after.stdout, /pending \(pending\)/);
 });
 
@@ -116,7 +116,51 @@ test("missing Git repository stays unconfirmed, not clear", async (context) => {
 	const result = limen(scratch, "status");
 	assert.equal(result.status, 0, result.stderr);
 	assert.match(result.stdout, /Unconfirmed jobs:[\s\S]*lost repo.*Git unknown/);
-	assert.match(result.stdout, /Waiting on owner \(0\):/);
+	assert.match(result.stdout, /Ready to land \(0\):/);
+});
+
+test("inbox hides cherry-picked and empty work, routes stopped work to a decision, and keeps old records behind --all", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const base = git(scratch.root, "rev-parse", "HEAD");
+	const branchWith = async (branch: string, file: string) => {
+		git(scratch.root, "switch", "-c", branch, base);
+		await writeFile(join(scratch.root, file), `${file}\n`);
+		git(scratch.root, "add", file);
+		git(scratch.root, "commit", "-m", file);
+		git(scratch.root, "switch", "main");
+	};
+	await branchWith("limen/picked", "picked.txt");
+	await branchWith("limen/stopped", "stopped.txt");
+	await branchWith("limen/failed", "failed.txt");
+	await branchWith("limen/old", "old.txt");
+	git(scratch.root, "branch", "limen/idle", base);
+	await writeFile(join(scratch.root, "main.txt"), "main moved on\n");
+	git(scratch.root, "add", "main.txt");
+	git(scratch.root, "commit", "-m", "main moved on");
+	git(scratch.root, "cherry-pick", "limen/picked");
+	const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+	await job(scratch.root, "picked", { state: "done", label: "picked work", branch: "limen/picked", base });
+	await job(scratch.root, "stopped", { state: "stopped", label: "stopped work", branch: "limen/stopped", base });
+	await job(scratch.root, "failed", { state: "failed", label: "failed work", branch: "limen/failed", base });
+	await job(scratch.root, "idle", { state: "failed", label: "idle failure", branch: "limen/idle", base });
+	await job(scratch.root, "old", { state: "done", label: "old work", branch: "limen/old", base, "finished-at": eightDaysAgo });
+	const status = limen(scratch, "status");
+	assert.equal(status.status, 0, status.stderr);
+	assert.match(
+		status.stdout,
+		/Ready to land \(0\):\n  none\nNeeds a decision \(2\):\n  failed work \(failed\) · failed · limen\/failed\n  stopped work \(stopped\) · stopped · limen\/stopped\n/,
+	);
+	assert.doesNotMatch(status.stdout, /picked work|idle failure|old work/);
+	assert.match(status.stdout, /Older: 1 record \(limen status --all\)/);
+	const everything = limen(scratch, "status", "--all");
+	assert.equal(everything.status, 0, everything.stderr);
+	assert.match(everything.stdout, /Ready to land \(1\):\n  old work \(old\) · limen\/old\n/);
+	assert.doesNotMatch(everything.stdout, /picked work|idle failure|Older:/);
+	const retire = limen(scratch, "prune", "--retire", "--dry-run");
+	assert.equal(retire.status, 0, retire.stderr);
+	assert.equal(retire.stdout.trim(), "would retire idle\nwould retire picked");
 });
 
 test("recorded origin stays visible when global Herdr agent discovery times out", async (context) => {

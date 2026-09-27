@@ -83,8 +83,8 @@ usage:
   limen land <id|suffix|label> [--onto BRANCH] [--yes]  # merge a done job onto the current branch
   limen stop <id|suffix|label> [reason]
   limen jobs [--running|--active|--all|--label PREFIX|<id|suffix|label>]
-  limen status                                  # plant plate: running jobs, unmerged branches, coordinator tabs
-  limen prune [--retire [--dry-run]]           # retire finished job records whose branches are merged or gone
+  limen status [--all]                          # plant inbox: running, ready to land, needs a decision (last 7 days), coordinator tabs
+  limen prune [--retire [--dry-run]]           # retire finished job records whose branches are landed (ancestry or cherry-pick) or gone
   limen watch <id|suffix|label> | --running
   limen unwatch <id|suffix|label> | --all
   limen open <id|suffix|label>

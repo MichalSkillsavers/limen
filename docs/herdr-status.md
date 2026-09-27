@@ -4,11 +4,18 @@ A pane can be ready for your next message while its Limen jobs are still
 `RUNNING`. Herdr describes the conversation; `limen jobs` and the files in
 `.limen/jobs/<id>/` describe the job. Neither tells you that a candidate landed.
 
-`limen status` is the plant plate: it lists all RUNNING job records (including
-workers in another Herdr workspace), unmerged finished branches with commits
-waiting on the owner, and agent tabs whose working directory is the plant or
-one of its repositories. Job activity and advisories use the same records as
-`limen jobs`. If global Herdr agent discovery fails, the plate checks recent
+`limen status` is the plant plate, an inbox for the owner. `Running` lists every
+RUNNING job record (including workers in another Herdr workspace) with its tab,
+minutes since start, activity, and last tool. `Ready to land` lists `done` jobs
+whose branch still has commits outside the checked-out branch; `Needs a
+decision` lists `failed` or `stopped` jobs in the same position. A commit counts
+as landed when it is an ancestor of the checked-out branch or a patch-equivalent
+copy of one there (cherry-pick, or through an integration branch), the same test
+`limen prune --retire` uses. Jobs with no unlanded commits appear under no
+heading. Both lists cover the last seven days; `Older: N records` counts the
+rest, and `limen status --all` lists them under the same headings. The plate
+also lists agent tabs whose working directory is the plant or one of its
+repositories. If global Herdr agent discovery fails, the plate checks recent
 recorded origin tabs directly and labels them incomplete: a visible tab is not
 proof of its coordinator role, and other tabs may be missing. If neither query
 works, coordinator status is unknown. A missing repository leaves landing

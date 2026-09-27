@@ -1,6 +1,6 @@
 import { readdir, readFile, realpath, rm } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { branchExists, branchMerged, limenRoot, listWorktrees, pruneWorktrees, removeWorktree, workspaceRepository } from "../git.ts";
+import { limenRoot, listWorktrees, pruneWorktrees, removeWorktree, unlandedBranches, workspaceRepository } from "../git.ts";
 import { liveJob, STARTUP_GRACE_MS } from "../reap.ts";
 
 export async function pruneCommand(args: readonly string[], cwd: string): Promise<void> {
@@ -20,20 +20,37 @@ export async function pruneCommand(args: readonly string[], cwd: string): Promis
 
 async function retireFinishedJobs(root: string, dryRun: boolean): Promise<readonly string[]> {
 	const jobsRoot = `${root}/.limen/jobs`,
-		retired: string[] = [];
+		retired: string[] = [],
+		finished: { id: string; repository: string; branch: string }[] = [],
+		repositories = new Map<string, string>();
 	for (const id of (await jobIds(jobsRoot)).sort()) {
 		const jobDir = `${jobsRoot}/${id}`;
-		const state = await text(`${jobDir}/state`);
+		const [state, branch, repo] = await Promise.all([text(`${jobDir}/state`), text(`${jobDir}/branch`), text(`${jobDir}/repo`)]);
 		if (state !== "done" && state !== "failed" && state !== "stopped") continue;
 		try {
-			const branch = await text(`${jobDir}/branch`);
-			const repo = branch ? await text(`${jobDir}/repo`) : "";
-			const repository = repo ? workspaceRepository(root, repo) : root;
-			if (branch && branchExists(repository, branch) && !branchMerged(repository, branch)) continue;
+			const repository = !branch ? root : (repositories.get(repo) ?? (repo ? workspaceRepository(root, repo) : root));
+			if (branch) repositories.set(repo, repository);
+			finished.push({ id, repository, branch });
+		} catch {}
+	}
+	const unlanded = new Map<string, ReadonlySet<string> | undefined>();
+	for (const repository of new Set(finished.map((job) => job.repository))) {
+		try {
+			unlanded.set(
+				repository,
+				unlandedBranches(
+					repository,
+					finished.filter((job) => job.repository === repository && job.branch).map((job) => job.branch),
+				),
+			);
 		} catch {
-			continue;
+			unlanded.set(repository, undefined);
 		}
-		if (!dryRun) await rm(jobDir, { recursive: true, force: true });
+	}
+	for (const { id, repository, branch } of finished) {
+		const pending = unlanded.get(repository);
+		if (!pending || pending.has(branch)) continue;
+		if (!dryRun) await rm(`${jobsRoot}/${id}`, { recursive: true, force: true });
 		retired.push(id);
 	}
 	return retired;

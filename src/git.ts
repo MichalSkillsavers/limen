@@ -26,8 +26,60 @@ export function branchExists(cwd: string, branch: string): boolean {
 	requireGit(cwd, ["check-ref-format", "--branch", branch]);
 	return git(cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).status === 0;
 }
-export function branchMerged(cwd: string, branch: string): boolean {
-	return git(cwd, ["merge-base", "--is-ancestor", `refs/heads/${branch}`, "HEAD"]).status === 0;
+/**
+ * Branches with commits not in HEAD by ancestry or patch-id (`git cherry` semantics), in four Git
+ * processes per repository however many branches. Missing branches are absent: nothing to land.
+ * Upstream patches are read from HEAD since the oldest unlanded commit; a cherry-pick is committed later.
+ */
+export function unlandedBranches(cwd: string, branches: Iterable<string>): ReadonlySet<string> {
+	const wanted = new Set(branches);
+	const tips = new Map<string, string[]>();
+	for (const line of requireGit(cwd, ["for-each-ref", "--format=%(objectname) %(refname)", "refs/heads"]).stdout.split("\n")) {
+		const [oid, ref] = [line.slice(0, line.indexOf(" ")), line.slice(line.indexOf(" ") + 12)];
+		if (wanted.has(ref)) tips.set(oid, [...(tips.get(oid) ?? []), ref]);
+	}
+	if (!tips.size) return new Set();
+	const input = `${[...tips.keys()].join("\n")}\n`;
+	const graph = new Map<string, { readonly parents: readonly string[]; readonly merge: boolean }>();
+	let oldest = Number.POSITIVE_INFINITY;
+	for (const line of requireGit(cwd, ["log", "--format=%H %ct %P", "--stdin"], `${input}^HEAD\n`).stdout.split("\n")) {
+		const [oid, time, ...parents] = line.split(" ");
+		if (!oid || !time) continue;
+		graph.set(oid, { parents, merge: parents.length > 1 });
+		oldest = Math.min(oldest, Number(time));
+	}
+	if (!graph.size) return new Set();
+	const patches = requireGit(
+		cwd,
+		["log", "-p", "--no-merges", "--no-color", "--no-ext-diff", "--format=commit %H", `--since=${oldest - 86_400}`, "--stdin"],
+		`${input}HEAD\n`,
+	).stdout;
+	const seen = new Set(patches.match(/^commit [0-9a-f]+$/gm)?.map((line) => line.slice(7)));
+	const patchIds = new Map<string, string>();
+	for (const line of requireGit(cwd, ["patch-id", "--stable"], patches).stdout.split("\n")) {
+		const [patch, oid] = line.split(" ");
+		if (patch && oid) patchIds.set(oid, patch);
+	}
+	const upstream = new Set([...patchIds].filter(([oid]) => !graph.has(oid)).map(([, patch]) => patch));
+	const unlanded = new Set<string>();
+	for (const [tip, refs] of tips) {
+		const stack = [tip],
+			visited = new Set<string>();
+		let landed = true;
+		while (landed && stack.length) {
+			const oid = stack.pop() as string;
+			const commit = graph.get(oid);
+			if (!commit || visited.has(oid)) continue;
+			visited.add(oid);
+			stack.push(...commit.parents);
+			if (commit.merge) continue;
+			// Unseen means the dated walk missed it: stay unlanded. Seen without a patch id is an empty commit.
+			const patch = patchIds.get(oid);
+			if (!seen.has(oid) || (patch !== undefined && !upstream.has(patch))) landed = false;
+		}
+		if (!landed) for (const ref of refs) unlanded.add(ref);
+	}
+	return unlanded;
 }
 export function branchCommit(cwd: string, branch: string): string {
 	return requireGit(cwd, ["rev-parse", `refs/heads/${branch}`]).stdout.trim();
@@ -116,14 +168,14 @@ export function ticketAuthor(cwd: string, ticket: string): { path: string; commi
 	if (!commit || !name || !email) throw new Error(`ticket author unavailable: no creation author found for ${path}`);
 	return { path, commit, name, email };
 }
-function requireGit(cwd: string, args: readonly string[]): GitResult {
-	const result = git(cwd, args);
+function requireGit(cwd: string, args: readonly string[], input?: string): GitResult {
+	const result = git(cwd, args, input);
 	if (result.status !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `git ${args[0]} failed`);
 	return result;
 }
 let gitBin = "";
-function git(cwd: string, args: readonly string[]): GitResult {
-	const run = (bin: string) => spawnSync(bin, args, { cwd: resolve(cwd), encoding: "utf8" });
+function git(cwd: string, args: readonly string[], input?: string): GitResult {
+	const run = (bin: string) => spawnSync(bin, args, { cwd: resolve(cwd), encoding: "utf8", maxBuffer: Number.POSITIVE_INFINITY, ...(input === undefined ? {} : { input }) });
 	const miss = (error: Error | undefined) => !!error && "code" in error && error.code === "ENOENT";
 	let result = run(gitBin || "git");
 	if (miss(result.error)) result = run(gitBin || "git");
