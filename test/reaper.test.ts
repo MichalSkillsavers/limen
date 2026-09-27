@@ -31,15 +31,11 @@ test("recycled pgids cannot fake life when born mismatches", async (context) => 
 	const job = await writeRunning(scratch.root, "identity", { pid: child.pid, startedMsAgo: 60_000 });
 	assert.equal(await liveJob(job), true, "a live group with no birth file is alive");
 	await writeFile(join(job, "born"), "0.000000\n");
-	if (process.platform === "darwin") {
-		assert.equal(await liveJob(job), false);
-		const info = await processInfo(child.pid);
-		assert.equal(info.kind, "present");
-		if (info.kind === "present") await writeFile(join(job, "born"), `${info.process.born}\n`);
-		assert.equal(await liveJob(job), true);
-	} else {
-		assert.equal(await liveJob(job), true, "without a readable birth identity the group check alone decides");
-	}
+	assert.equal(await liveJob(job), false, "a birth identity that does not match the live group is dead");
+	const info = await processInfo(child.pid);
+	assert.equal(info.kind, "present");
+	if (info.kind === "present") await writeFile(join(job, "born"), `${info.process.born}\n`);
+	assert.equal(await liveJob(job), true);
 });
 
 test("dead valid PIDs confirm immediately regardless of job age", async (context) => {
@@ -187,7 +183,7 @@ test("a reaped hosted job keeps the session jsonl handoff", async (context) => {
 	assert.match(listed.stdout, /stop-reason:\n    error: usage limit reached/);
 });
 
-test("handshake records wrapper birth on macOS", async (context) => {
+test("handshake records wrapper birth", async (context) => {
 	const scratch = await scratchRepo(livePi);
 	context.after(scratch.cleanup);
 	limen(scratch, "init");
@@ -200,17 +196,13 @@ test("handshake records wrapper birth on macOS", async (context) => {
 	id = onlyJobId(launched.stdout);
 	const job = join(scratch.root, ".limen/jobs", id);
 	await waitForFile(join(job, "pid"));
-	if (process.platform === "darwin") {
-		await waitForFile(join(job, "born"));
-		const born = await text(join(job, "born"));
-		assert.match(born, /^\d+\.\d{6}$/);
-		const pid = Number(await text(join(job, "pid")));
-		const info = await processInfo(pid);
-		assert.equal(info.kind, "present");
-		if (info.kind === "present") assert.equal(info.process.born, born);
-	} else {
-		await assert.rejects(readFile(join(job, "born")));
-	}
+	await waitForFile(join(job, "born"));
+	const born = await text(join(job, "born"));
+	assert.match(born, process.platform === "darwin" ? /^\d+\.\d{6}$/ : /^\d+$/);
+	const pid = Number(await text(join(job, "pid")));
+	const info = await processInfo(pid);
+	assert.equal(info.kind, "present");
+	if (info.kind === "present") assert.equal(info.process.born, born);
 	const stopped = limen(scratch, "stop", id);
 	assert.equal(stopped.status, 0, stopped.stderr);
 	id = "";

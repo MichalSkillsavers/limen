@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,8 @@ export type Scratch = {
 };
 
 export async function scratchRepo(fakePi = defaultFakePi): Promise<Scratch> {
-	const parent = await mkdtemp(join(tmpdir(), "limen-test-"));
+	// macOS tmpdir is a /var symlink; Git reports /private/var, so compare against the real path.
+	const parent = await realpath(await mkdtemp(join(tmpdir(), "limen-test-")));
 	const root = join(parent, "repo");
 	const fakeBin = join(parent, "bin");
 	await createRepository(root);
@@ -22,7 +23,7 @@ export async function scratchRepo(fakePi = defaultFakePi): Promise<Scratch> {
 	return { root, fakeBin, cleanup: () => rm(parent, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) };
 }
 export async function scratchWorkspace(fakePi = defaultFakePi): Promise<Scratch & { readonly repositories: Readonly<Record<"api" | "web", string>> }> {
-	const parent = await mkdtemp(join(tmpdir(), "limen-workspace-"));
+	const parent = await realpath(await mkdtemp(join(tmpdir(), "limen-workspace-")));
 	const root = join(parent, "workspace");
 	const fakeBin = join(parent, "bin");
 	const repositories = { api: join(root, "api"), web: join(root, "web") };
