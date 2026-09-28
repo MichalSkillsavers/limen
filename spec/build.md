@@ -15,7 +15,6 @@
 
 ## NOW
 
-- `F739-doorbell-dedupe` (🟠 ACTIVE): finish ping dedupes on job id + final state, not commit; one bounded retry on sender timeout.
 - `F014-github-doorbell` (🟠 ACTIVE): Alice's isolated App key, warm coordinator, live PR mention, hosted review, and one start/finish receipt are proven; second-seat ownership/routing remains to prove before closing.
 - `F731-seat-bell-once` (🟠 ACTIVE): Stop the seat sweep replaying the same finished or stalled job forever; old markers and concurrent sweeps must not ring again.
 
@@ -38,6 +37,7 @@
 
 ## PROVEN
 
+- `F739-doorbell-dedupe` (🟢 PROVEN): the finish ping claims once per job and final state, so jobs at the same commit each ring; a sender timeout gets one retry inside a 4 s budget. Landed `16939e1` with test-env fix `cf273fd`; focused 57/57 under `LIMEN_JOB=1`; live receiver turn unobserved.
 - `F738-plate-inbox` (🟢 PROVEN): `limen status` is a one-screen inbox — Running, Ready to land, Needs a decision, older behind `--all`; ancestry or patch-id counts as landed, shared with `prune --retire`. Landed `39a22e1`; synthetic 2,000-record cabinet 1.7 s (was 64.9 s); live plate 4.7 s with Herdr.
 - `F737-worker-skills-visible` (🟢 PROVEN): OMP workers discover portable and legacy plant skills without hand links; native skills win collisions. Landed `f40ac5b`; live hosted/detached/continue OMP and focused checks passed.
 - `F736-plant-status-plate` (🟢 PROVEN): Job records, Git and Herdr show running work, unmerged branches and working coordinators across spaces; uncertain evidence stays explicit. Landed `e1a9d2f` / `fd267a5`; status 4/4 and live plate observed.
@@ -47,6 +47,5 @@
 - `F733-github-seat-doctor` (🟢 PROVEN): Root-managed Alice setup and `github doctor` passed with isolated App key, worker without sudo, root Node/Herdr, and active timer. Landed `f74a6b3`, live repair `912f9e0`; focused 13/13.
 - `F727-pi-omp-interchangeable-engine` (🟢 PROVEN): Pi or OMP jobs use one profile table, wrapper, and unchanged parser; continuation preserves the engine. Landed `0f74748`; coordinator checks 72/72, typecheck and Biome clean. Live hosted OMP and live OMP continuation remain unproved.
 - `F726-limen-runs-jobs-on-pi-only` (🟢 PROVEN): Limen starts jobs only with Pi. Landed `14c99d9`; native 453/453. `--engine claude` and `--role advisor` fail before any job exists.
-- `F725-stale-intent-prose-matches-landed-reality` (🟢 PROVEN): vision and TRACK no longer treat spawn, reaper, seat, or research/quality/picture as still ahead. Landed `3723740`. Typecheck clean. Wake/Herdr not split: `src/` 4219/4280.
-- 2026-09: 69 folded landings. Tests stopped owning prompt prose (F723, `e030714`), wake sweep collection became private (F722, `482715d`), coordinator status became static (F721, `ab70649`), and running jobs stopped counting changed files (F720, `327fc2e`). Earlier work retained overlapping worktrees, added owner-routed finish wakes, explicit seat recovery, job retention, native checks, engine defaults, and evidence-backed role handoffs. Details and outcomes: spec/features/done/2026-09/
+- 2026-09: 70 folded landings. Stale intent prose was matched to landed reality (F725, `3723740`), tests stopped owning prompt prose (F723, `e030714`), wake sweep collection became private (F722, `482715d`), and coordinator status became static (F721, `ab70649`). Earlier work stopped counting running jobs' changed files, retained overlapping worktrees, added owner-routed finish wakes, explicit seat recovery, job retention, native checks, engine defaults, and evidence-backed role handoffs. Details and outcomes: spec/features/done/2026-09/
 - 2026-08: 44 landed. Hosted jobs run in a named tab; wakes retry; the process tree is contained. spec/features/done/2026-08/
