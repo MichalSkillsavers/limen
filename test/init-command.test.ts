@@ -109,7 +109,10 @@ test("OMP project stub registers package hooks and injects coordinator context",
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
 	assert.equal(limen(scratch, "init").status, 0);
-	const previous = process.env.LIMEN_PACKAGE;
+	// Job shells set these, and the hook then omits coordinator context; this test asserts a coordinator session.
+	const keys = ["LIMEN_PACKAGE", "LIMEN_CONTEXT_ROOT", "LIMEN_JOB", "LIMEN_HOSTED", "LIMEN_JOB_ID", "LIMEN_TASK_FILE"] as const;
+	const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+	for (const key of keys) delete process.env[key];
 	process.env.LIMEN_PACKAGE = ROOT;
 	try {
 		const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -130,8 +133,11 @@ test("OMP project stub registers package hooks and injects coordinator context",
 		assert.match(prompt, /## Styleguide/);
 		assert.match(prompt, /## Board digest/);
 	} finally {
-		if (previous === undefined) delete process.env.LIMEN_PACKAGE;
-		else process.env.LIMEN_PACKAGE = previous;
+		for (const key of keys) {
+			const value = previous[key];
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
 	}
 });
 
