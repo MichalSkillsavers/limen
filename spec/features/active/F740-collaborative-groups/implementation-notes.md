@@ -27,10 +27,18 @@ Reviewer artifacts are outside the worktree:
   focused-regressions.log
   cli-smoke.log
   fixture-setup.log
+  full-native.log
+  init-contract-check.log
+  post-native-static-checks.log
+  candidate.txt
 ```
 
 The fixture generator was actually run, exited 0 and prepared `/Users/overment/.overment/f740-live-fixture-20260930-final` at packet commit `6b9c22783c83c5cd8c0591535c9cf58860473b83`. `fixture-setup.log` contains the exact interactive-lead and two-team/one-worker launch recipe. The fixture has no remote or finish-webhook configuration; no agents were launched there. Both teams get the same committed tests and distinct map versus sorting hypotheses. IDs are represented as nonempty strings and revisions as finite numbers; no extra nonnegative/integer restriction is imposed on the scenario's numeric revisions.
 
 Run `bin/limen-group-fixture.mjs` with a new absolute path to reproduce the setup. The lead must perform the unchanged `scenario.md` proof: two checked candidates, initial-hypothesis ordering, an observed peer finding and evidence-based response, an automatic lead update, synthesis and successful stop/clean close. Preserve quota/engine failures without substituting models. Real-agent exchange, semantic use, synthesis and hosted real-agent transport are unproved.
 
-The full native lane belongs to the final clean committed candidate; its output and exact candidate SHA are retained in the same job evidence directory, not inferred from the focused run. The board, vision, ticket, reviewed design, reviews and proof requirements are unchanged.
+The single full native lane ran on clean committed candidate `4ddcec3044ba278d4608055af8d35e6426a04deb`: TypeScript and Biome passed; tests finished 506/509 passing, exit 1. Failures were `test/init-command.test.ts:127` (obsolete exact hook-registration count), `test/diff-command.test.ts:43` (versions contained only `omp 0.0.0-test`, missing `hunk 0.20.0-test`), and `test/stop-command.test.ts:224` (2,295 ms against the 2,000 ms stop bound). The obsolete wiring-count assertion and its tracking bag were deleted, not repinned to three; the existing coordinator-context behavior check then passed 1/1. Runtime code is unchanged after that full lane. The other failures remain unclassified and are not claimed as pre-existing or flaky. The full lane was not repeated, per the once-only instruction; its SHA differs from the final test/documentation correction commit.
+
+After removing the wiring-count assertion, `npm run typecheck` and scoped Biome checking of `test/init-command.test.ts` also passed. The static correction log is retained alongside the focused init result.
+
+`native-check-question.md` records the precise remaining native-proof decision. The board, vision, ticket, reviewed design, reviews and proof requirements are unchanged.
