@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";
 export type GitWorktree = { readonly path: string; readonly branch?: string; readonly detached: boolean };
 type GitResult = { readonly stdout: string; readonly stderr: string; readonly status: number };
@@ -11,6 +11,15 @@ export function workspaceRoot(cwd: string): string | undefined {
 	return existsSync(`${root}/.agents/limen`) && !isGitRepository(root) ? root : undefined;
 }
 export function limenRoot(cwd: string): string {
+	if (process.env.LIMEN_GROUP_ID) {
+		const root = process.env.LIMEN_CONTEXT_ROOT,
+			id = process.env.LIMEN_GROUP_ID;
+		if (!root || !/^[A-Za-z0-9-]+$/.test(id)) throw new Error("group routing context is incomplete");
+		const run = JSON.parse(readFileSync(`${root}/.limen/groups/${id}/run.json`, "utf8")) as { root: string; members: { id: string; team: string }[] };
+		if (run.root !== root || !run.members.some((member) => member.id === process.env.LIMEN_JOB_ID && member.team === process.env.LIMEN_TEAM_ID))
+			throw new Error("group identity does not match the canonical cabinet");
+		return root;
+	}
 	return workspaceRoot(cwd) ?? repoRoot(cwd);
 }
 export function isGitRepository(cwd: string): boolean {

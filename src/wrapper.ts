@@ -5,6 +5,8 @@ import { containEscapedDescendants, discoverEscapedDescendants, type JobProcess,
 import { argvFor, engineBinary, jobProfile, prepareSkillConfig } from "./engine.ts";
 import { deliverFinishWebhook } from "./finish-webhook.ts";
 import { commitList, headCommit } from "./git.ts";
+import { jobMembership, saveJson } from "./group-cabinet.ts";
+import { syncLifecycle } from "./group-events.ts";
 import { settleJobTab } from "./herdr.ts";
 import { observeToolStall, ownedToolDescendants, type ToolStallWatch, toolStallMs } from "./stalled-tool.ts";
 import { createStreamParser, type StreamEvent } from "./stream.ts";
@@ -60,7 +62,13 @@ export async function runInternalJob(): Promise<void> {
 	const preambleFile = requiredEnvironment("LIMEN_PREAMBLE");
 	const jobId = requiredEnvironment("LIMEN_JOB_ID");
 	const label = process.env.LIMEN_LABEL || jobId;
-	const timeoutMs = process.env.LIMEN_TIMEOUT_MS ? Number(process.env.LIMEN_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
+	const membership = await jobMembership(jobDir);
+	if (membership && (membership.run.stopped || Date.now() >= (membership.member?.deadline ?? membership.run.deadline))) {
+		await finalizeJob(jobDir, "failed", "group deadline or stop before engine launch");
+		return;
+	}
+	const configuredTimeout = process.env.LIMEN_TIMEOUT_MS ? Number(process.env.LIMEN_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
+	const timeoutMs = membership ? Math.max(1, Math.min(configuredTimeout, (membership.member?.deadline ?? membership.run.deadline) - Date.now())) : configuredTimeout;
 	const preamble = await readFile(preambleFile, "utf8");
 	let confirmedToolStall = false;
 	let stopRequested = false;
@@ -102,7 +110,7 @@ export async function runInternalJob(): Promise<void> {
 		...(skillConfig ? { skillConfig } : {}),
 		label,
 		preamble,
-		extensions: [`${HOOK}/steering.ts`, `${HOOK}/communication.ts`],
+		extensions: [`${HOOK}/steering.ts`, `${HOOK}/communication.ts`, ...((await jobMembership(jobDir)) ? [`${HOOK}/group-peer.ts`] : [])],
 		...(process.env.LIMEN_PROVIDER ? { provider: process.env.LIMEN_PROVIDER } : {}),
 		...(process.env.LIMEN_MODEL ? { model: process.env.LIMEN_MODEL } : {}),
 		...(process.env.LIMEN_THINKING ? { thinking: process.env.LIMEN_THINKING } : {}),
@@ -263,6 +271,8 @@ export async function finalizeJob(jobDir: string, state: "done" | "failed" | "st
 	const inbox = await readdir(`${jobDir}/steer/inbox`).catch(() => []);
 	await appendLimenLog(jobDir, inbox.length ? `${state}: ${detail}; ${inbox.length} steer(s) never delivered` : `${state}: ${detail}`).catch(() => {});
 	await atomicWrite(`${jobDir}/state`, `${state}\n`);
+	const membership = await jobMembership(jobDir);
+	if (membership) await syncLifecycle(membership.run);
 	await rm(`${jobDir}/pid`, { force: true });
 	await rm(`${jobDir}/born`, { force: true });
 	// A tmp whose writer still runs is an in-flight rename by a racing finalizer, not a leftover; deleting it makes that rename ENOENT and crashes the other process.
@@ -318,6 +328,10 @@ export async function textFile(path: string): Promise<string> {
 export async function writeHandshake(jobDir: string): Promise<void> {
 	await atomicWrite(`${jobDir}/pid`, `${process.pid}\n`);
 	void recordBorn(jobDir);
+	if (await jobMembership(jobDir)) {
+		const owner = await processInfo(process.pid);
+		if (owner.kind === "present") await saveJson(`${jobDir}/group-owner.json`, { pid: process.pid, born: owner.process.born });
+	}
 }
 async function recordBorn(jobDir: string): Promise<void> {
 	const outcome = await processInfo(process.pid);

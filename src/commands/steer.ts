@@ -6,6 +6,7 @@ import { resolveJob } from "../lookup.ts";
 const READY_WAIT_MS = 2_000;
 
 export async function steerCommand(args: readonly string[], cwd: string): Promise<void> {
+	if (process.env.LIMEN_GROUP_ID) throw new Error("group peer messages are informational; use group publish, not owner steering");
 	const running = args[0] === "--running";
 	const message = args.slice(1).join(" ").trim();
 	if (!message || (!running && !args[0])) throw new Error(running ? "steer requires a message" : "steer requires a job id and a message");

@@ -4,6 +4,7 @@ import { cleanWorktree, commitList, currentBranch, limenRoot, mergeBranch, works
 import { resolveJob } from "../lookup.ts";
 
 export async function landCommand(args: readonly string[], cwd: string): Promise<void> {
+	if (process.env.LIMEN_GROUP_ID) throw new Error("group members cannot land; the owner-facing lead owns landing");
 	const parsed = parseLandArgs(args);
 	const { id, jobDir } = await resolveJob(cwd, parsed.query);
 	const [state, branch, base, repo, label] = await Promise.all([

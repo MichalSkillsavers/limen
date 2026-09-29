@@ -1,6 +1,7 @@
 import { readdir, readFile, realpath, rm } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { limenRoot, listWorktrees, pruneWorktrees, removeWorktree, unlandedBranches, workspaceRepository } from "../git.ts";
+import { retainedGroupJob } from "../group-cabinet.ts";
 import { liveJob, STARTUP_GRACE_MS } from "../reap.ts";
 
 export async function pruneCommand(args: readonly string[], cwd: string): Promise<void> {
@@ -25,6 +26,7 @@ async function retireFinishedJobs(root: string, dryRun: boolean): Promise<readon
 		repositories = new Map<string, string>();
 	for (const id of (await jobIds(jobsRoot)).sort()) {
 		const jobDir = `${jobsRoot}/${id}`;
+		if (await retainedGroupJob(jobDir)) continue;
 		const [state, branch, repo] = await Promise.all([text(`${jobDir}/state`), text(`${jobDir}/branch`), text(`${jobDir}/repo`)]);
 		if (state !== "done" && state !== "failed" && state !== "stopped") continue;
 		try {
@@ -64,6 +66,12 @@ export async function pruneFinishedWorktrees(root: string, keep: readonly string
 	let removed = 0;
 	for (const id of await jobIds(jobsRoot)) {
 		const jobDir = `${jobsRoot}/${id}`;
+		if (await retainedGroupJob(jobDir)) {
+			const tree = await text(`${jobDir}/worktree`);
+			if (tree) keepPaths.add(await resolved(tree));
+			repositories.add(root);
+			continue;
+		}
 		if (!(await text(`${jobDir}/state`))) {
 			const startedAt = Date.parse(await text(`${jobDir}/started-at`));
 			if (Number.isFinite(startedAt) && Date.now() - startedAt < STARTUP_GRACE_MS) continue;
@@ -82,7 +90,8 @@ export async function pruneFinishedWorktrees(root: string, keep: readonly string
 		if (!recorded) continue;
 		const state = await text(`${jobDir}/state`);
 		const startedAt = Date.parse(await text(`${jobDir}/started-at`));
-		if (state ? await liveJob(jobDir) : Number.isFinite(startedAt) && Date.now() - startedAt < STARTUP_GRACE_MS) keepPaths.add(await resolved(recorded));
+		if ((await retainedGroupJob(jobDir)) || (state ? await liveJob(jobDir) : Number.isFinite(startedAt) && Date.now() - startedAt < STARTUP_GRACE_MS))
+			keepPaths.add(await resolved(recorded));
 	}
 	for (const repository of repositories) {
 		const worktreeRoot = await resolved(`${dirname(repository)}/.${basename(repository)}-limen-worktrees`);

@@ -2,6 +2,7 @@ import { closeCommand } from "./commands/close.ts";
 import { continueCommand } from "./commands/continue.ts";
 import { diffCommand } from "./commands/diff.ts";
 import { githubCommand } from "./commands/github.ts";
+import { groupCommand } from "./commands/group.ts";
 import { initCommand, workspaceCommand } from "./commands/init.ts";
 import { jobsCommand } from "./commands/jobs.ts";
 import { landCommand } from "./commands/land.ts";
@@ -24,6 +25,7 @@ const COMMANDS = {
 	init: initCommand,
 	workspace: workspaceCommand,
 	github: githubCommand,
+	group: groupCommand,
 	spawn: spawnCommand,
 	continue: continueCommand,
 	diff: diffCommand,
@@ -47,6 +49,7 @@ const COMMANDS = {
 	| "spawn"
 	| "continue"
 	| "github"
+	| "group"
 	| "diff"
 	| "steer"
 	| "stop"
@@ -69,6 +72,8 @@ usage:
   limen init
   limen init --drop-leftovers
   limen workspace init
+  limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
+  limen group status|publish|wait|stop|close [GROUP-ID]  # members inherit verified membership; lead supplies ID
   limen spawn "Implement FNNN: <outcome>. Start by writing <slice>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--engine pi|omp] [--model X] [--branch B] [--role NAME] [--timeout 20m; default 90m] [--task-file F|-] [--prepare CMD]
   limen spawn "…" [--label L] [--provider P] [--model X] [--thinking T]  # Pi flags; in Herdr: hosted, else detached
   limen spawn --tab "…"                            # force hosted (requires Herdr; no --timeout)
