@@ -8,6 +8,8 @@
 - **Ops remediation lock 2026-09-10 (Adam):** two unsuccessful automatic wake attempts then deliberate recovery; park-and-preserve on quota — no silent model substitution. Named-job `limen watch <id>` for takeovers — not `watch --running`.
 - **Finish proof (Adam):** HTTP ≠ bot turn. VPS-first, Johnny-only automatic finish proof is sufficient; an export hold is unobserved evidence, never absence of an actual turn; no Tony coordination.
 - **Review and reasoning (Adam):** Adam reviews; no independent reviewer unless asked. Retain `xhigh` for coordination/research/quality and `high` for ordinary jobs. Research uses the research model above for both independent opinions; judge and picture use the ordinary model.
+- **Collaborative groups (Adam 2026-09-29):** spec review by OMP `anthropic/claude-opus-5-5` at `xhigh` before implementation; ordinary model for implementation and one two-team live proof; commit and push only after native checks and observed collaboration pass, preserving work on quota failure.
+- **Group boundary:** opt-in per feature, one owner-facing lead and landing owner, fixed team/total-worker allowances, separate candidate branches and informational peer messages; no recursive coordinators, cross-seat routing, automatic merge, or unrelated plant changes.
 - Reliable in-flight control on one seat; a laptop is a window; the GitHub App rings Alice's registered coordinator while two-seat routing remains unproved.
 - Settled Herdr panes keep RUNNING jobs and stall warnings visible; external finish delivery remains per-project opt-in.
 - Coordinator CPU is repaired without deleting history; job-history retention remains a separate operator decision.
@@ -17,6 +19,7 @@
 
 - `F014-github-doorbell` (🟠 ACTIVE): Alice's isolated App key, warm coordinator, live PR mention, hosted review, and one start/finish receipt are proven; second-seat ownership/routing remains to prove before closing.
 - `F731-seat-bell-once` (🟠 ACTIVE): Stop the seat sweep replaying the same finished or stalled job forever; old markers and concurrent sweeps must not ring again.
+- `F740-collaborative-groups` (🟠 ACTIVE): review the opt-in shared-task team contract before building group launch, shared findings, and automatic progress delivery.
 
 ## NEXT
 
