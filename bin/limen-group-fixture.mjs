@@ -28,7 +28,7 @@ const files = {
 	"README.md":
 		"# Disposable job-summary collaboration proof\n\nNo remote, finish webhook, or autonomous landing. Implement the committed ticket; src/summary.ts intentionally does not exist yet.\n",
 	[`${feature}/ticket.md`]:
-		"# F001 · Job records produce a checked latest-revision summary\n\nImplement `summarizeJobs(records)` in `src/summary.ts` with no dependencies. For each ID keep the highest numeric revision. States are running, done, failed and stopped. Return `{ counts: { running, done, failed, stopped }, attention: string[] }`, where attention is sorted failed/stopped IDs. IDs must be nonempty strings; revisions must be nonnegative safe integers. Reject non-array input, null/non-object records, invalid IDs/revisions/states, and conflicting states at the same ID/revision, even if that revision is stale. Identical duplicate records are allowed. Do not mutate the input. Empty input returns zero counts and empty attention.\n\nRun `npm test`, commit a clean candidate, and exchange an evidence-based finding and response with the other team before finishing or report the recorded deadline. Do not read another team's candidate before publishing your initial hypothesis.\n",
+		"# F001 · Job records produce a checked latest-revision summary\n\nImplement `summarizeJobs(records)` in `src/summary.ts` with no dependencies. For each ID keep the highest numeric revision. States are running, done, failed and stopped. Return `{ counts: { running, done, failed, stopped }, attention: string[] }`, where attention is sorted failed/stopped IDs. IDs are nonempty strings and revisions are finite numbers. Reject non-array input, null/non-object records, invalid IDs/revisions/states, and conflicting states at the same ID/revision, even if that revision is stale. Identical duplicate records are allowed. Do not mutate the input. Empty input returns zero counts and empty attention.\n\nRun `npm test`, commit a clean candidate, and exchange an evidence-based finding and response with the other team before finishing or report the recorded deadline. Do not read another team's candidate before publishing your initial hypothesis.\n",
 	[`${feature}/group/brief.md`]:
 		"# Shared job-summary brief\n\nBoth teams implement the same ticket and committed acceptance tests. Team 1 starts with a single-pass map. Team 2 starts with sorting/grouping and separate validation. These are hypotheses, not restrictions. Each coordinator first publishes its own hypothesis, then launches exactly one worker with the recorded engine/provider/model and high reasoning. Include the ticket pointer, npm test, a concrete edge-case finding, and an evidence-based response to another team's finding in the worker task. Each worker first publishes its own hypothesis, then uses group wait when idle; it cannot finish until it responds to one peer finding or its deadline expires. Coordinators stay in bounded waits until their child finishes, inspect only their team's candidate, publish a summary, and commit their clean evidence. No helpers, extra workers, model fallback, push, main merge, board edit or group-member land. The interactive lead writes synthesis, optionally integrates locally for the final check, then stops and deliberately closes the clean group.\n",
 	[`${feature}/group/teams/team-1.md`]:
@@ -41,8 +41,8 @@ import { summarizeJobs } from "../src/summary.ts";
 
 test("latest revisions determine counts and sorted attention without input mutation", () => {
   const records = [
-    { id: "z", revision: 0, state: "failed" }, { id: "a", revision: 3, state: "stopped" },
-    { id: "z", revision: 2, state: "done" }, { id: "b", revision: 1, state: "failed" },
+    { id: "z", revision: -2.5, state: "failed" }, { id: "a", revision: 3, state: "stopped" },
+    { id: "z", revision: -0.5, state: "done" }, { id: "b", revision: 1, state: "failed" },
     { id: "c", revision: 0, state: "running" }, { id: "b", revision: 1, state: "failed" },
   ];
   const original = structuredClone(records);
@@ -57,7 +57,7 @@ test("conflicts at any revision are rejected independently of order", () => {
   assert.throws(() => summarizeJobs([...records].reverse()));
 });
 test("malformed records and malformed containers are rejected", () => {
-  for (const value of [null, {}, "records", [null], [{ id: "", revision: 0, state: "done" }], [{ id: 4, revision: 0, state: "done" }], [{ id: "x", revision: -1, state: "done" }], [{ id: "x", revision: 1.5, state: "done" }], [{ id: "x", revision: Number.MAX_SAFE_INTEGER + 1, state: "done" }], [{ id: "x", revision: NaN, state: "done" }], [{ id: "x", revision: 0, state: "unknown" }]]) assert.throws(() => summarizeJobs(value));
+  for (const value of [null, {}, "records", [null], [{ id: "", revision: 0, state: "done" }], [{ id: 4, revision: 0, state: "done" }], [{ id: "x", revision: Infinity, state: "done" }], [{ id: "x", revision: NaN, state: "done" }], [{ id: "x", revision: 0, state: "unknown" }]]) assert.throws(() => summarizeJobs(value));
 });
 `,
 };

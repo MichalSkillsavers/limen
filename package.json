@@ -13,6 +13,7 @@
 		"templates",
 		"docs/seat",
 		"docs/remote.md",
+		"docs/groups.md",
 		"docs/vps.md",
 		"README.md",
 		"LICENSE"

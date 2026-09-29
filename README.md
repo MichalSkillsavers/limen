@@ -16,6 +16,8 @@ Requires macOS or Linux, Node.js 24+, Git, and the selected engine (`omp` or `pi
 
 Jobs can live on an always-on **seat** (a VPS on Tailscale) while your laptop is only a window. See [docs/remote.md](docs/remote.md). The walkthrough we actually ran is [docs/vps.md](docs/vps.md).
 
+Opt-in teams can pursue the same feature through distinct approaches, with fixed worker allowances and automatic informational progress sharing. The interactive lead remains the sole landing owner. Activation, bounded waiting, delivery receipts, stop/close recovery and the disposable proof fixture: [docs/groups.md](docs/groups.md).
+
 ## Finish webhooks (opt-in)
 
 When a job reaches a terminal state (`done` / `failed` / `stopped`), limen can POST `{job, status, branch}` to one or more destinations so a bot or routine can wake. **Off by default.** Installing limen does not enable any project.
@@ -64,7 +66,7 @@ LIMEN_COORDINATOR=1 omp --provider openai-codex --model gpt-6-sol --thinking xhi
 
 `limen init` plants what the project owns (vision, board, feature lanes, styleguide) and package-hook stubs in `.pi/extensions/` and `.omp/extensions/`. Herdr OMP coordinators need the `.omp` stub for communication, wake, and steering; rerun `limen init` in existing projects before starting one. Init never overwrites existing project files and deletes leftover `limen-*.ts` hook copies in both extension directories so they cannot load beside the stubs. `limen init --drop-leftovers` deletes only prompt copies that still match the package.
 
-That interactive session is the coordinator (`LIMEN_COORDINATOR=1`), not a spawned job. From here you talk. You do not drive the job CLI. `limen spawn` starts workers and reviewers — not a coordinator; the same env var on a spawn shell does not change the job's role. Prefer a Herdr space named for the plant (`limen`, or `alice limen`), not a space named only `workers`. Label the coordinator tab clearly. Worker tabs come from spawn. The inherited shop manual (`templates/agents.md`; a project `AGENTS.md` overlays it) carries the same layout rules.
+That interactive session is the coordinator (`LIMEN_COORDINATOR=1`), not a spawned job. From here you talk. You do not drive the job CLI. Ordinary `limen spawn` starts workers and reviewers — not a coordinator; only explicit `limen group start` creates managed team coordinators. The same env var on a spawn shell does not change the job's role. Prefer a Herdr space named for the plant (`limen`, or `alice limen`), not a space named only `workers`. Label the coordinator tab clearly. Worker tabs come from spawn. The inherited shop manual (`templates/agents.md`; a project `AGENTS.md` overlays it) carries the same layout rules.
 
 Project skills belong in `.agents/skills/<name>/SKILL.md` for portable discovery. OMP also discovers native `.omp/skills/<name>/SKILL.md` files; Pi discovers its own `.pi/skills/<name>/SKILL.md` and older flat `.pi/skills/<name>.md` files. On OMP jobs, limen builds a per-job view of legacy Pi skills outside the worktree and passes it as a skill directory; native `.agents/skills` and `.omp/skills` names win over legacy duplicates. This applies to workers, reviewers, and continuations in either launch mode, including jobs targeting a repository beside a non-Git coordinator workspace. New or changed legacy skills are picked up at the next launch; the plant needs no hand-maintained links. Pi's discovery is unchanged.
 
