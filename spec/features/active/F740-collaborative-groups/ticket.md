@@ -11,7 +11,7 @@ An owner can explicitly start a bounded group of teams on one feature. Each team
 - Give each team its own managed coordinator and isolated candidate work; workers inherit group membership without taking over another team's jobs.
 - Deliver lifecycle updates automatically and meaningful findings when published, with bounded catch-up and per-recipient receipts.
 - Extend the existing spawn, wake, and steering seams without changing ordinary jobs or turning peer messages into owner instructions.
-- Document activation, inspection, publication, stop, and recovery; retain the executable scenario and its evidence.
+- Document activation, bounded waiting, publication, stop/close, and recovery; retain the executable scenario and its evidence.
 
 ## Out of scope
 
@@ -23,11 +23,13 @@ An owner can explicitly start a bounded group of teams on one feature. Each team
 ## Acceptance
 
 - Explicit activation starts only the requested roster and records its limits; an invalid or duplicate start does not create another group of agents.
-- A team coordinator's workers use the canonical group cabinet, remain isolated in Git, and cannot exceed the group's recorded launch allowance through concurrent spawn or continuation.
+- Member commands use one canonical group cabinet while candidate work stays in separate Git worktrees.
+- Concurrent spawn and worker continuation cannot exceed the group's recorded launch allowance.
 - A published finding reaches another team's running worker and coordinator without manual `watch` or `steer`, while an unrelated job receives nothing.
 - Delivery distinguishes queued, accepted, and processed evidence; restart and concurrent delivery do not silently lose updates or cause an unbounded replay loop.
-- Group stop prevents further launches, stops owned members through existing job controls, and preserves branches, findings, and unread messages.
-- The two-team live scenario in `scenario.md` demonstrates different approaches, an observed cross-team response, two checked candidates, and one evidence-backed synthesis; native checks pass at the candidate commit before push.
+- Stop prevents new launches and preserves recovery work until deliberate close; deadlines and waiting behavior are exercised in native regressions.
+- The live scenario in `scenario.md` passes with observed peer exchange and lead synthesis, not merely accepted messages.
+- Full native checks pass at the candidate commit before push.
 
 ## Notes
 
