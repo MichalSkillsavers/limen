@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { processAlive } from "./contain.ts";
 import type { GroupIdentity, GroupRun } from "./group-cabinet.ts";
@@ -56,26 +56,32 @@ export async function syncLifecycle(run: GroupRun): Promise<void> {
 		for (const member of current.members) {
 			const job = `${run.root}/.limen/jobs/${member.id}`;
 			for (const field of ["state", "advisory"]) {
-				const value = (await readFile(`${job}/${field}`, "utf8").catch(() => "")).trim();
 				const marker = `${groupPath(run)}/${member.id}-${field}.json`;
-				const previous = JSON.parse(await readFile(marker, "utf8").catch(() => '""')) as string;
-				if (previous === value) continue;
+				const saved = JSON.parse(await readFile(marker, "utf8").catch(() => '""')) as string | { value: string; event?: GroupEvent };
+				const previous = typeof saved === "string" ? { value: saved } : saved;
+				if (previous.event) await finishLifecycle(current, marker, previous.value, previous.event);
+				const value = (await readFile(`${job}/${field}`, "utf8").catch(() => "")).trim();
+				if (previous.value === value) continue;
 				const event: GroupEvent = {
-					id: `lifecycle-${member.id}-${field}-${createHash("sha256").update(value).digest("hex").slice(0, 16)}`,
+					id: `lifecycle-${member.id}-${field}-${randomUUID()}`,
 					at: Date.now(),
 					author: member.id,
 					team: member.team,
 					kind: "lifecycle",
 					text: `${member.role} ${member.id}: ${field} ${value || "cleared"}`,
 				};
-				if (!(await readFile(`${directory}/${event.id}.json`, "utf8").catch(() => ""))) {
-					await saveJson(`${directory}/${event.id}.json`, event);
-					await queueEvent(current, event);
-				}
-				await saveJson(marker, value);
+				// Persist the occurrence before publishing so an interrupted sweep resumes the same event.
+				await saveJson(marker, { value, event });
+				await finishLifecycle(current, marker, value, event);
 			}
 		}
 	});
+}
+async function finishLifecycle(run: GroupRun, marker: string, value: string, event: GroupEvent): Promise<void> {
+	const path = `${groupPath(run)}/events/${event.id}.json`;
+	if (!(await readFile(path, "utf8").catch(() => ""))) await saveJson(path, event);
+	await queueEvent(run, event);
+	await saveJson(marker, { value });
 }
 const receiptPath = (run: GroupRun, recipient: string, event: string): string => `${groupPath(run)}/receipts/${recipient}/${event}.json`;
 async function receipt(run: GroupRun, recipient: string, event: string): Promise<GroupReceipt> {
@@ -87,7 +93,8 @@ async function queueEvent(run: GroupRun, event: GroupEvent): Promise<void> {
 		if (recipient.id === event.author || (event.target && recipient.team !== "lead" && recipient.team !== event.target)) continue;
 		const directory = `${groupPath(run)}/receipts/${recipient.id}`;
 		await mkdir(directory, { recursive: true });
-		await saveJson(`${directory}/${event.id}.json`, { event: event.id, recipient: recipient.id, attempts: 0, state: "queued" });
+		const path = `${directory}/${event.id}.json`;
+		if (!(await readFile(path, "utf8").catch(() => ""))) await saveJson(path, { event: event.id, recipient: recipient.id, attempts: 0, state: "queued" });
 	}
 }
 export async function acceptBatch(identity: GroupIdentity, now = Date.now()): Promise<EventBatch | undefined> {

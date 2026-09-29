@@ -54,6 +54,8 @@ The group has a fixed wall-clock deadline. Each worker's deadline is the shorter
 
 The cabinet contains `run.json`, immutable event files and `receipts/RECIPIENT/EVENT.json`. Job records remain authoritative for job state. `group status` shows both the roster-derived state and receipt evidence.
 
+Lifecycle updates identify each observed transition, not just its text: an unchanged advisory produces no new event, but the same advisory after an observed clear is a new occurrence. A pending occurrence is recorded before publication; after interruption, synchronization finishes its event and missing recipient receipts before observing the next value. Existing accepted or processed receipts are preserved.
+
 - **Queued:** durable event/recipient work, including a delivery claim that has not yet proved transport acceptance.
 - **Accepted:** CLI output was produced, a tool/custom message was emitted, or the lead transport accepted the custom message. This does not prove a model consumed it.
 - **Observed:** `observedAt` records that the delivery token appeared in the hook's next model-context event.

@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import groupPeer from "../hook/group-peer.ts";
 import { waitGroup } from "../src/commands/group.ts";
 import type { GroupIdentity, GroupRun } from "../src/group-cabinet.ts";
 import { claimMember, groupLock, groupPath, readRun, saveJson } from "../src/group-cabinet.ts";
-import { acceptBatch, acceptTransport, groupEvents, observeBatch, publishEvent, releaseBatch } from "../src/group-events.ts";
+import { acceptBatch, acceptTransport, groupEvents, observeBatch, publishEvent, releaseBatch, syncLifecycle } from "../src/group-events.ts";
 import { noteHostedIdle } from "../src/supervisor.ts";
 import type { Scratch } from "./scratch.ts";
 import { git, LIMEN, limen, limenWithEnv, onlyJobId, scratchRepo, waitForState, writeFakePi } from "./scratch.ts";
@@ -214,6 +214,87 @@ test("informational delivery is per recipient, bounded, deduplicated and preserv
 	const otherId = onlyJobId(other.stdout);
 	await waitForState(scratch.root, otherId, "done");
 	assert.equal(existsSync(`${groupPath(run)}/receipts/${otherId}`), false);
+});
+
+test("lifecycle advisories repeat after clearing without duplicates from concurrent synchronization", async (context) => {
+	const scratch = await fixture();
+	context.after(scratch.cleanup);
+	const run = await activate(scratch);
+	const author = run.members[0];
+	assert.ok(author);
+	const advisory = `${run.root}/.limen/jobs/${author.id}/advisory`;
+	const text = `${author.role} ${author.id}: advisory blocked on test evidence`;
+	await writeFile(advisory, "blocked on test evidence\n");
+	await Promise.all([syncLifecycle(run), syncLifecycle(run)]);
+	const first = (await groupEvents(run)).filter((event) => event.text === text);
+	assert.equal(first.length, 1);
+	await syncLifecycle(run);
+	assert.deepEqual(
+		(await groupEvents(run)).filter((event) => event.text === text),
+		first,
+	);
+	await writeFile(advisory, "");
+	await Promise.all([syncLifecycle(run), syncLifecycle(run)]);
+	await writeFile(advisory, "blocked on test evidence\n");
+	await Promise.all([syncLifecycle(run), syncLifecycle(run)]);
+	const occurrences = (await groupEvents(run)).filter((event) => event.text === text);
+	assert.equal(occurrences.length, 2);
+	assert.notEqual(occurrences[0]?.id, occurrences[1]?.id);
+	for (const recipient of [`lead-${run.lead}`, ...run.members.filter((member) => member.id !== author.id).map((member) => member.id)]) {
+		for (const event of occurrences) {
+			const record = JSON.parse(await readFile(`${groupPath(run)}/receipts/${recipient}/${event.id}.json`, "utf8"));
+			assert.equal(record.state, "queued");
+		}
+	}
+});
+
+test("lifecycle recovery completes an interrupted occurrence before observing a changed advisory", async (context) => {
+	const scratch = await fixture();
+	context.after(scratch.cleanup);
+	const run = await activate(scratch);
+	const author = run.members[0],
+		peer = run.members[1];
+	assert.ok(author);
+	assert.ok(peer);
+	const advisory = `${run.root}/.limen/jobs/${author.id}/advisory`;
+	const marker = `${groupPath(run)}/${author.id}-advisory.json`;
+	// Existing cabinets stored only the observed string.
+	await saveJson(marker, "");
+	await writeFile(advisory, "blocked on test evidence\n");
+	await syncLifecycle(run);
+	const event = (await groupEvents(run)).find((event) => event.text === `${author.role} ${author.id}: advisory blocked on test evidence`);
+	assert.ok(event);
+	const lead = { run, recipient: `lead-${run.lead}` };
+	const batch = await acceptBatch(lead);
+	assert.ok(batch);
+	assert.ok(batch.events.some((queued) => queued.id === event.id));
+	await observeBatch(lead, batch.token, true);
+	const leadReceipt = `${groupPath(run)}/receipts/${lead.recipient}/${event.id}.json`;
+	const processed = JSON.parse(await readFile(leadReceipt, "utf8"));
+	assert.equal(processed.state, "processed");
+	// Retain the event and one processed receipt, but interrupt before the peer receipt and final marker.
+	await rm(`${groupPath(run)}/receipts/${peer.id}/${event.id}.json`);
+	await saveJson(marker, { value: "blocked on test evidence", event });
+	await writeFile(advisory, "");
+	await Promise.all([syncLifecycle(run), syncLifecycle(run)]);
+	const events = await groupEvents(run);
+	assert.deepEqual(
+		events.filter((candidate) => candidate.text === event.text),
+		[event],
+	);
+	assert.deepEqual(JSON.parse(await readFile(leadReceipt, "utf8")), processed);
+	const recovered = JSON.parse(await readFile(`${groupPath(run)}/receipts/${peer.id}/${event.id}.json`, "utf8"));
+	assert.equal(recovered.state, "queued");
+	assert.equal(recovered.attempts, 0);
+	const cleared = await acceptBatch(lead);
+	assert.ok(cleared);
+	assert.deepEqual(
+		cleared.events.map((event) => event.text),
+		[`${author.role} ${author.id}: advisory cleared`],
+	);
+	await observeBatch(lead, cleared.token, true);
+	assert.equal(await acceptBatch(lead), undefined);
+	assert.deepEqual(await groupEvents(run), events);
 });
 
 test("ambiguous acceptance retries at most twice independently for each recipient", async (context) => {
