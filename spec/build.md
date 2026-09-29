@@ -20,7 +20,7 @@
 
 - `F014-github-doorbell` (🟠 ACTIVE): Alice's isolated App key, warm coordinator, live PR mention, hosted review, and one start/finish receipt are proven; second-seat ownership/routing remains to prove before closing.
 - `F731-seat-bell-once` (🟠 ACTIVE): Stop the seat sweep replaying the same finished or stalled job forever; old markers and concurrent sweeps must not ring again.
-- `F740-collaborative-groups` (🟠 ACTIVE): re-review the corrected member-lifetime and recovery contract before building group launch, shared findings, and automatic progress delivery.
+- `F740-collaborative-groups` (🟠 ACTIVE): implement the Opus-reviewed group contract, then prove one real two-team collaboration before landing or pushing.
 
 ## NEXT
 
