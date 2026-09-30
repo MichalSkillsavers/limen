@@ -28,9 +28,11 @@ export type GroupRun = {
 	closed: boolean;
 	mode: "auto" | "detached" | "tab";
 	members: GroupMember[];
+	teamModels?: Record<string, { provider: string; model: string }>;
 };
 export type GroupIdentity = { run: GroupRun; member?: GroupMember; recipient: string };
 export const groupPath = (run: Pick<GroupRun, "root" | "id">): string => `${run.root}/.limen/groups/${run.id}`;
+export const teamRoute = (run: GroupRun, team: string): { provider: string; model: string } => run.teamModels?.[team] ?? { provider: run.provider, model: run.model };
 export async function readRun(root: string, id: string): Promise<GroupRun> {
 	if (!/^[a-zA-Z0-9-]+$/.test(id)) throw new Error("invalid group id");
 	return JSON.parse(await readFile(`${root}/.limen/groups/${id}/run.json`, "utf8")) as GroupRun;

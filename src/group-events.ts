@@ -60,7 +60,9 @@ export async function syncLifecycle(run: GroupRun): Promise<void> {
 				const saved = JSON.parse(await readFile(marker, "utf8").catch(() => '""')) as string | { value: string; event?: GroupEvent };
 				const previous = typeof saved === "string" ? { value: saved } : saved;
 				if (previous.event) await finishLifecycle(current, marker, previous.value, previous.event);
-				const value = (await readFile(`${job}/${field}`, "utf8").catch(() => "")).trim();
+				const observed = (await readFile(`${job}/${field}`, "utf8").catch(() => "")).trim();
+				// An uncertain stall observation stays in the job record for the operator; peers only hear real lifecycle changes.
+				const value = field === "advisory" && observed.startsWith("tool stall observation uncertain") ? "" : observed;
 				if (previous.value === value) continue;
 				const event: GroupEvent = {
 					id: `lifecycle-${member.id}-${field}-${randomUUID()}`,

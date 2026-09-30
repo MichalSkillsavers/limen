@@ -21,7 +21,7 @@ import {
 	worktreeForBranch,
 } from "../git.ts";
 import type { GroupRun } from "../group-cabinet.ts";
-import { claimMember, groupIdentity, groupLock, groupPath } from "../group-cabinet.ts";
+import { claimMember, groupIdentity, groupLock, groupPath, teamRoute } from "../group-cabinet.ts";
 import { syncLifecycle } from "../group-events.ts";
 import { herdrAvailable, openHostedTab, openWatchTab } from "../herdr.ts";
 import { parseDuration } from "../job.ts";
@@ -82,10 +82,11 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	if (!group && parsed.role === "coordinator") throw new Error("managed coordinators require explicit group start");
 	if (group) {
 		const run = group.run;
+		const route = teamRoute(run, group.team);
 		if (
 			parsed.engine !== run.engine ||
-			parsed.provider !== run.provider ||
-			parsed.model !== run.model ||
+			parsed.provider !== route.provider ||
+			parsed.model !== route.model ||
 			parsed.thinking !== (group.role === "coordinator" ? run.thinking : run.workerThinking)
 		)
 			throw new Error("group launches require the recorded engine/provider/model/reasoning explicitly");
@@ -208,7 +209,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 			const hypothesis = await readFile(`${root}/${group.run.feature}/group/teams/${group.team}.md`, "utf8");
 			await writeFile(
 				`${jobDir}/task.md`,
-				`${guidance}\nCanonical root: ${root}\nGroup: ${group.run.id}\nTeam: ${group.team}\nFeature: ${group.run.feature}\nApproach note:\n${hypothesis}\n\n${taskBody}`,
+				`${guidance}\nCanonical root: ${root}\nGroup: ${group.run.id}\nTeam: ${group.team}\nFeature: ${group.run.feature}\n${memberRoute(group.run, group.team)}\nApproach note:\n${hypothesis}\n\n${taskBody}`,
 			);
 		}
 		await writeFile(`${jobDir}/finish-webhook-author`, `${captureFinishAuthor(cwd, loaded.text, Boolean(workspace))}\n`, { flag: "wx", flush: true });
@@ -499,6 +500,11 @@ export function hostedAgentName(jobId: string): string {
 	const dashed = cut.replace(/^\d{4}-\d{2}-\d{2}-/, "").replace(/[^a-z0-9_-]+/g, "-");
 	const slug = dashed.replace(/^[^a-z]+/, "").slice(0, 17) || "job";
 	return hex ? `limen-${slug}-${hex}` : `limen-${slug}`.slice(0, 32);
+}
+// The shell in a member's tab may put another installed Limen first on PATH; name the package that runs this group.
+function memberRoute(run: GroupRun, team: string): string {
+	const route = teamRoute(run, team);
+	return `Limen command (use this path for every limen command): ${resolve(PACKAGE_ROOT, "bin/limen")}\nTeam worker launch settings (pass exactly): --engine ${run.engine} --provider ${route.provider} --model ${route.model} --thinking ${run.workerThinking}`;
 }
 export function currentNotificationSession(): string | undefined {
 	const value = process.env.PI_SESSION_ID?.trim();

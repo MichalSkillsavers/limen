@@ -20,13 +20,13 @@ limen group start spec/features/active/FNNN-name \
   --thinking xhigh --worker-thinking high --detached
 ```
 
-All machine settings and limits are required and recorded. `--detached` forces background members; `--tab` requires Herdr; omit both for the existing environment-dependent default. The final output line is the group ID. Activation selects the root from the feature and working directory, not an inherited `LIMEN_CONTEXT_ROOT`.
+All machine settings and limits are required and recorded. `--provider` and `--model` are the default for every team; repeat `--team-model team-N=provider/model` to give a team its own model, for example `--team-model team-2=anthropic/claude-opus-5-5`. The engine and the two reasoning levels stay shared. `--detached` forces background members; `--tab` requires Herdr; omit both for the existing environment-dependent default. The final output line is the group ID. Activation selects the root from the feature and working directory, not an inherited `LIMEN_CONTEXT_ROOT`.
 
 Repeating start returns the recorded run without launching another roster or repairing missing members. A partial launch failure retains the cabinet, started jobs and an `activation-error.json`. Inspect and stop that run before explicitly authorizing `group start … --new-run`. A prior live or uncertain member prevents a new run. A coordinator gets exactly one launch; coordinator continuation is unsupported.
 
 ## Work and publish
 
-Every member receives its canonical root, group and team IDs, feature pointer and approach note. Its **first tool action** publishes its own initial hypothesis, before reading peer findings or using other tools. This independence ordering is prompt guidance, not a new workflow phase.
+Every member receives its canonical root, group and team IDs, feature pointer and approach note. Its task also names the exact `limen` executable of the package that started the group, because a member's shell may put another installed Limen first on PATH, and the team's exact worker launch settings. Its **first tool action** publishes its own initial hypothesis, before reading peer findings or using other tools. This independence ordering is prompt guidance, not a new workflow phase.
 
 Only a team coordinator launches that team's workers, through ordinary `limen spawn` with the recorded engine, provider, model and worker reasoning explicitly supplied. Worker continuations and separately authorized reviews each consume another total launch slot, even if their predecessor finished. Reviews require a candidate branch owned by that team. Exhaustion asks the lead; it never replenishes a run. Built-in helper agents do not bypass the allowance.
 
@@ -44,7 +44,7 @@ limen group status
 
 Members inherit verified membership and omit the group ID. The lead supplies it after the subcommand, for example `limen group status GROUP-ID` or `limen group publish GROUP-ID 'Lead checkpoint: …'`.
 
-Publication writes only `.limen/groups/GROUP-ID/`, never the primary checkout's tracked packet. Member starts, terminal states and advisory changes are derived automatically from job records. Peer updates attach to normal tool results; the lead also receives compact, agent-attributed custom messages. No manual `watch` or `steer` setup is needed. Group lifecycle replaces ordinary landing-oriented completion wakes; recorded seat and finish-webhook opt-ins are not repurposed as peer transports.
+Publication writes only `.limen/groups/GROUP-ID/`, never the primary checkout's tracked packet. Member starts, terminal states and advisory changes are derived automatically from job records. An uncertain tool-stall observation stays in the job record for the operator and is not broadcast to peers. Peer updates attach to normal tool results; the lead also receives compact, agent-attributed custom messages. No manual `watch` or `steer` setup is needed. Group lifecycle replaces ordinary landing-oriented completion wakes; recorded seat and finish-webhook opt-ins are not repurposed as peer transports.
 
 Coordinators remain inside their turn while children are live. When idle, re-enter `group wait` after a normal timeout until their assignment is complete, the group stops or their deadline expires. Each call lasts at most 20 seconds, including an actual CLI-process watchdog. If that watchdog cuts off an in-flight cabinet operation, inspect its uncertain receipt before deliberate recovery. Waits and acknowledgments publish no new events. A hosted coordinator with live children is not idle-closed; unread events alone never keep a finished worker alive.
 

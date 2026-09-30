@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { engineProfile, preflightEngine, resolveSpawnEngine } from "../engine.ts";
 import { addBranchWorktree, branchExists, headCommit, workspaceRepository } from "../git.ts";
-import { claimMember, commandRoot, groupIdentity, groupLock, groupPath, jobMembership } from "../group-cabinet.ts";
+import { claimMember, commandRoot, groupIdentity, groupLock, groupPath, jobMembership, teamRoute } from "../group-cabinet.ts";
 import { syncLifecycle } from "../group-events.ts";
 import { herdrAvailable, openWatchTab } from "../herdr.ts";
 import { resolveJob } from "../lookup.ts";
@@ -55,7 +55,8 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 		const caller = await groupIdentity(cwd, membership.run.id);
 		if (!caller || (caller.member && (caller.member.role !== "coordinator" || caller.member.team !== membership.member?.team)))
 			throw new Error("only this team's coordinator or the recorded lead may continue its worker");
-		if (engine !== membership.run.engine || model !== membership.run.model || provider !== membership.run.provider || thinking !== membership.run.workerThinking)
+		const route = teamRoute(membership.run, membership.member?.team ?? "");
+		if (engine !== membership.run.engine || model !== route.model || provider !== route.provider || thinking !== membership.run.workerThinking)
 			throw new Error("group continuation requires recorded engine/provider/model/reasoning explicitly");
 		if (!locked) {
 			await groupLock(`${groupPath(membership.run)}/launch`, () => continueJob(args, cwd, true));

@@ -7,7 +7,7 @@ import { processAlive } from "../contain.ts";
 import { preflightEngine, resolveSpawnEngine } from "../engine.ts";
 import { cleanWorktree, commitHasFile, headCommit, repoRoot } from "../git.ts";
 import type { GroupIdentity, GroupRun } from "../group-cabinet.ts";
-import { groupIdentity, groupLock, groupPath, leadSession, memberLive, readRun, runs, saveJson } from "../group-cabinet.ts";
+import { groupIdentity, groupLock, groupPath, leadSession, memberLive, readRun, runs, saveJson, teamRoute } from "../group-cabinet.ts";
 import { acceptBatch, acceptTransport, groupEvents, publishEvent, syncLifecycle } from "../group-events.ts";
 import { herdrAvailable } from "../herdr.ts";
 import { parseDuration } from "../job.ts";
@@ -19,10 +19,18 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	const featureArgument = args[0];
 	if (!featureArgument || featureArgument.startsWith("--")) throw new Error("group start requires a feature directory");
 	const flags = new Map<string, string>();
+	const teamModels: Record<string, { provider: string; model: string }> = {};
 	let newRun = false,
 		mode: GroupRun["mode"] = "auto";
 	for (let index = 1; index < args.length; index++) {
 		const flag = args[index];
+		if (flag === "--team-model") {
+			const route = /^(team-[1-9]\d*)=([^/\s]+)\/(\S+)$/.exec(args[++index] ?? "");
+			if (!route?.[1] || !route[2] || !route[3]) throw new Error("--team-model requires team-N=provider/model");
+			if (teamModels[route[1]]) throw new Error(`${route[1]} model supplied twice`);
+			teamModels[route[1]] = { provider: route[2], model: route[3] };
+			continue;
+		}
 		if (flag === "--new-run") {
 			newRun = true;
 			continue;
@@ -57,6 +65,7 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	const listener = Number(await readFile(`${root}/.limen/group-leads/${lead}`, "utf8").catch(() => ""));
 	if (listener <= 0 || !processAlive(listener)) throw new Error("group lead hook is not running; load hook/group-peer.ts and retry");
 	const teams = Array.from({ length: count("--teams") }, (_, index) => `team-${index + 1}`);
+	for (const team of Object.keys(teamModels)) if (!teams.includes(team)) throw new Error(`--team-model names ${team}, which is not in the roster`);
 	const workersPerTeam = count("--workers-per-team");
 	const timeout = parseDuration(required("--timeout"));
 	const workerTimeoutMs = parseDuration(required("--worker-timeout"));
@@ -101,6 +110,7 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 			closed: false,
 			mode,
 			members: [],
+			teamModels,
 		};
 		await mkdir(groupPath(run));
 		await saveJson(`${groupPath(run)}/run.json`, run);
@@ -117,9 +127,9 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 						"--engine",
 						profile.id,
 						"--provider",
-						provider,
+						teamRoute(activated.run, team).provider,
 						"--model",
-						model,
+						teamRoute(activated.run, team).model,
 						"--thinking",
 						thinking,
 						...(mode === "auto" ? [] : [`--${mode}`]),

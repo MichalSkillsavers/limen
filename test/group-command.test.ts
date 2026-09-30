@@ -576,3 +576,64 @@ test("an OMP lead without PI_SESSION_ID is recognized only through its registere
 	assert.equal(other.status, 1);
 	assert.match(other.stderr, /recorded lead session/);
 });
+
+test("per-team models route each coordinator and gate that team's worker launches", async (context) => {
+	const scratch = await fixture();
+	context.after(scratch.cleanup);
+	const unknown = limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings, "--team-model", "team-9=anthropic/claude-opus-5-5");
+	assert.equal(unknown.status, 1);
+	assert.match(unknown.stderr, /not in the roster/);
+	const result = limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings, "--team-model", "team-2=anthropic/claude-opus-5-5");
+	assert.equal(result.status, 0, result.stderr);
+	const run = await readRun(scratch.root, onlyJobId(result.stdout));
+	assert.deepEqual(run.teamModels, { "team-2": { provider: "anthropic", model: "claude-opus-5-5" } });
+	for (const member of run.members) await waitForState(scratch.root, member.id, "done");
+	const second = run.members.find((member) => member.team === "team-2");
+	assert.ok(second);
+	const task = await readFile(`${run.root}/.limen/jobs/${second.id}/task.md`, "utf8");
+	assert.ok(task.includes(`Limen command (use this path for every limen command): ${LIMEN}`), task);
+	assert.ok(task.includes("--engine omp --provider anthropic --model claude-opus-5-5 --thinking high"), task);
+	const wrong = limenWithEnv(scratch, environment(run, second.id), "spawn", "build", ...workerSettings);
+	assert.equal(wrong.status, 1);
+	assert.match(wrong.stderr, /recorded engine\/provider\/model/);
+	const right = limenWithEnv(
+		scratch,
+		environment(run, second.id),
+		"spawn",
+		"build",
+		"--engine",
+		"omp",
+		"--provider",
+		"anthropic",
+		"--model",
+		"claude-opus-5-5",
+		"--thinking",
+		"high",
+		"--detached",
+	);
+	assert.equal(right.status, 0, right.stderr);
+	await waitForState(scratch.root, onlyJobId(right.stdout), "done");
+});
+
+test("uncertain stall observations stay out of group lifecycle while real advisories are shared", async (context) => {
+	const scratch = await fixture();
+	context.after(scratch.cleanup);
+	const run = await activate(scratch);
+	const author = run.members[0];
+	assert.ok(author);
+	const advisory = `${run.root}/.limen/jobs/${author.id}/advisory`;
+	await writeFile(advisory, "tool stall observation uncertain: engine or child ownership requires attention\n");
+	await syncLifecycle(run);
+	await writeFile(advisory, "");
+	await syncLifecycle(run);
+	assert.deepEqual(
+		(await groupEvents(run)).filter((event) => event.text.includes(": advisory")),
+		[],
+	);
+	await writeFile(advisory, "blocked on test evidence\n");
+	await syncLifecycle(run);
+	assert.deepEqual(
+		(await groupEvents(run)).filter((event) => event.text.includes(": advisory")).map((event) => event.text),
+		[`${author.role} ${author.id}: advisory blocked on test evidence`],
+	);
+});
