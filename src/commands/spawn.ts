@@ -72,7 +72,7 @@ export async function spawnCommand(args: readonly string[], cwd: string, coordin
 			: undefined;
 	if (identity?.member?.role === "worker") throw new Error("group workers cannot launch jobs; ask their team coordinator");
 	if (group) {
-		await groupLock(`${groupPath(group.run)}/launch`, () => spawnJob(args, cwd, group));
+		await groupLock(`${groupPath(group.run)}/launch`, () => spawnJob(args, cwd, group), "wait");
 		return;
 	}
 	await spawnJob(args, cwd);
@@ -224,7 +224,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	}
 	const versions = capturedVersions(profile).then((text) => writeFile(`${jobDir}/versions`, text, { flag: "wx", flush: true }));
 	await atomicWrite(`${jobDir}/state`, "running\n");
-	if (group) await syncLifecycle(group.run);
+	if (group) await syncLifecycle(group.run, "skip");
 	if (options.tab) {
 		await startHosted({
 			jobDir,

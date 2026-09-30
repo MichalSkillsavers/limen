@@ -43,10 +43,12 @@ export async function saveJson(path: string, value: unknown): Promise<void> {
 	await rename(temporary, path);
 }
 // Dead owners may be recovered; a live owner (including PID reuse) is never evicted.
-export async function groupLock<T>(directory: string, operation: () => Promise<T>): Promise<T> {
+export function groupLock<T>(directory: string, operation: () => Promise<T>, mode: "skip"): Promise<T | undefined>;
+export function groupLock<T>(directory: string, operation: () => Promise<T>, mode?: "wait"): Promise<T>;
+export async function groupLock<T>(directory: string, operation: () => Promise<T>, mode?: "skip" | "wait"): Promise<T | undefined> {
 	await mkdir(directory, { recursive: true });
 	const path = `${directory}/.lock`;
-	const deadline = Date.now() + 10_000;
+	const deadline = mode === "wait" ? Infinity : Date.now() + (mode === "skip" ? 0 : 10_000);
 	while (true) {
 		try {
 			await mkdir(path);
@@ -76,7 +78,10 @@ export async function groupLock<T>(directory: string, operation: () => Promise<T
 					if (claimed) await rm(claim, { force: true });
 				}
 			}
-			if (Date.now() >= deadline) throw new Error(`group lock busy or uncertain: ${path}; inspect its owner before recovery`);
+			if (Date.now() >= deadline) {
+				if (mode === "skip") return;
+				throw new Error(`group lock busy or uncertain: ${path}; inspect its owner before recovery`);
+			}
 			await delay(25);
 		}
 	}
@@ -132,19 +137,23 @@ export async function commandRoot(cwd: string): Promise<string> {
 	return (await groupIdentity(cwd))?.run.root ?? limenRoot(cwd);
 }
 export async function claimMember(run: GroupRun, team: string, role: GroupMember["role"], id: string, parent?: string): Promise<GroupMember> {
-	return groupLock(groupPath(run), async () => {
-		const current = await readRun(run.root, run.id);
-		if (current.stopped || current.closed || Date.now() >= current.deadline) throw new Error("group is stopped, closed, or past its deadline");
-		if (!current.teams.includes(team)) throw new Error("team is not in the recorded roster");
-		const used = current.members.filter((entry) => entry.team === team && entry.role === role).length;
-		if (used >= (role === "coordinator" ? 1 : current.workersPerTeam)) throw new Error(`${team} ${role} launch allowance exhausted; ask the lead`);
-		const deadline = role === "coordinator" ? current.deadline : Math.min(Date.now() + current.workerTimeoutMs, current.deadline - current.reserveMs);
-		if (deadline <= Date.now()) throw new Error("no worker time remains before the coordinator wrap-up reserve");
-		const member: GroupMember = { id, team, role, deadline, ...(parent ? { parent } : {}) };
-		current.members.push(member);
-		await saveJson(`${groupPath(run)}/run.json`, current);
-		return member;
-	});
+	return groupLock(
+		groupPath(run),
+		async () => {
+			const current = await readRun(run.root, run.id);
+			if (current.stopped || current.closed || Date.now() >= current.deadline) throw new Error("group is stopped, closed, or past its deadline");
+			if (!current.teams.includes(team)) throw new Error("team is not in the recorded roster");
+			const used = current.members.filter((entry) => entry.team === team && entry.role === role).length;
+			if (used >= (role === "coordinator" ? 1 : current.workersPerTeam)) throw new Error(`${team} ${role} launch allowance exhausted; ask the lead`);
+			const deadline = role === "coordinator" ? current.deadline : Math.min(Date.now() + current.workerTimeoutMs, current.deadline - current.reserveMs);
+			if (deadline <= Date.now()) throw new Error("no worker time remains before the coordinator wrap-up reserve");
+			const member: GroupMember = { id, team, role, deadline, ...(parent ? { parent } : {}) };
+			current.members.push(member);
+			await saveJson(`${groupPath(run)}/run.json`, current);
+			return member;
+		},
+		"wait",
+	);
 }
 export async function jobMembership(jobDir: string): Promise<GroupIdentity | undefined> {
 	const id = (await readFile(`${jobDir}/group`, "utf8").catch(() => "")).trim();

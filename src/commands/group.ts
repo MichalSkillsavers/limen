@@ -151,7 +151,7 @@ export async function waitGroup(identity: GroupIdentity, requestedMs = 20_000): 
 		const run = await readRun(identity.run.root, identity.run.id);
 		if (run.stopped || run.closed) return "group stopped or closed; preserve work and return to the lead";
 		if (Date.now() >= (identity.member?.deadline ?? run.deadline)) return "group member deadline expired";
-		const batch = await acceptBatch(identity);
+		const batch = await acceptBatch(identity, Date.now(), "skip");
 		if (batch) return batch.text;
 		if (Date.now() >= until) return "group wait timed out normally; re-enter bounded wait while your collaboration or children remain live";
 		await delay(Math.min(100, until - Date.now()));
@@ -202,7 +202,7 @@ async function runGroupCommand(args: readonly string[], cwd: string): Promise<vo
 		return;
 	}
 	if (command === "status") {
-		await syncLifecycle(identity.run);
+		await syncLifecycle(identity.run, "skip");
 		const run = await readRun(identity.run.root, identity.run.id);
 		const members = await Promise.all(
 			run.members.map(async (member) => ({ ...member, state: (await readFile(`${run.root}/.limen/jobs/${member.id}/state`, "utf8").catch(() => "launch uncertain")).trim() })),
@@ -217,7 +217,7 @@ async function runGroupCommand(args: readonly string[], cwd: string): Promise<vo
 			run.stopped = true;
 			await saveJson(`${groupPath(run)}/run.json`, run);
 		});
-		const run = await groupLock(`${groupPath(identity.run)}/launch`, () => readRun(identity.run.root, identity.run.id));
+		const run = await groupLock(`${groupPath(identity.run)}/launch`, () => readRun(identity.run.root, identity.run.id), "wait");
 		const failures: string[] = [];
 		for (const member of run.members) {
 			const dir = `${run.root}/.limen/jobs/${member.id}`;
@@ -245,17 +245,21 @@ async function runGroupCommand(args: readonly string[], cwd: string): Promise<vo
 		return;
 	}
 	if (command === "close") {
-		await groupLock(`${groupPath(identity.run)}/launch`, async () => {
-			const run = await readRun(identity.run.root, identity.run.id);
-			for (const member of run.members) {
-				if (await memberLive(run.root, member)) throw new Error(`close refused: ${member.id} is live or launch is uncertain`);
-				const tree = (await readFile(`${run.root}/.limen/jobs/${member.id}/worktree`, "utf8").catch(() => "")).trim();
-				if (tree && existsSync(tree) && !cleanWorktree(tree)) throw new Error(`close refused: dirty member worktree ${tree}; commit or recover it deliberately`);
-			}
-			run.closed = true;
-			run.stopped = true;
-			await saveJson(`${groupPath(run)}/run.json`, run);
-		});
+		await groupLock(
+			`${groupPath(identity.run)}/launch`,
+			async () => {
+				const run = await readRun(identity.run.root, identity.run.id);
+				for (const member of run.members) {
+					if (await memberLive(run.root, member)) throw new Error(`close refused: ${member.id} is live or launch is uncertain`);
+					const tree = (await readFile(`${run.root}/.limen/jobs/${member.id}/worktree`, "utf8").catch(() => "")).trim();
+					if (tree && existsSync(tree) && !cleanWorktree(tree)) throw new Error(`close refused: dirty member worktree ${tree}; commit or recover it deliberately`);
+				}
+				run.closed = true;
+				run.stopped = true;
+				await saveJson(`${groupPath(run)}/run.json`, run);
+			},
+			"wait",
+		);
 		console.log("group closed; clean member paths released for ordinary pruning");
 		return;
 	}

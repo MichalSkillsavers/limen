@@ -59,7 +59,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 		if (engine !== membership.run.engine || model !== route.model || provider !== route.provider || thinking !== membership.run.workerThinking)
 			throw new Error("group continuation requires recorded engine/provider/model/reasoning explicitly");
 		if (!locked) {
-			await groupLock(`${groupPath(membership.run)}/launch`, () => continueJob(args, cwd, true));
+			await groupLock(`${groupPath(membership.run)}/launch`, () => continueJob(args, cwd, true), "wait");
 			return;
 		}
 	}
@@ -151,7 +151,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	await mkdir(`${jobDir}/session`, { recursive: true });
 	await copyFile(`${parentDir}/session/${inheritedSession}`, `${jobDir}/session/${inheritedSession}`);
 	await atomicWrite(`${jobDir}/state`, "running\n");
-	if (membership) await syncLifecycle(membership.run);
+	if (membership) await syncLifecycle(membership.run, "skip");
 	if (hosted) {
 		try {
 			await startHosted({

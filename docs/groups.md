@@ -56,6 +56,10 @@ The cabinet contains `run.json`, immutable event files and `receipts/RECIPIENT/E
 
 Lifecycle updates identify each observed transition, not just its text: an unchanged advisory produces no new event, but the same advisory after an observed clear is a new occurrence. A pending occurrence is recorded before publication; after interruption, synchronization finishes its event and missing recipient receipts before observing the next value. Existing accepted or processed receipts are preserved.
 
+Routine supervisor, hook and finalization sweeps skip a busy cabinet rather than fail the member. Unchanged state/advisory markers avoid the lifecycle lock; delivery and lifecycle publication share one hold when work is pending. The job's own terminal state remains authoritative, and a later member or lead sweep publishes deferred lifecycle updates and durable receipts after the lock frees.
+
+Group spawn and continue wait for the launch owner to finish instead of expiring after ten seconds. Membership is claimed only after acquiring that launch lock; allowance, stop and deadline checks run against the current roster. Stop and close also wait for an in-flight launch to drain. There is no live-owner timeout or forced eviction: a stuck live owner needs inspection, while dead owners retain inode-checked recovery.
+
 - **Queued:** durable event/recipient work, including a delivery claim that has not yet proved transport acceptance.
 - **Accepted:** CLI output was produced, a tool/custom message was emitted, or the lead transport accepted the custom message. This does not prove a model consumed it.
 - **Observed:** `observedAt` records that the delivery token appeared in the hook's next model-context event.

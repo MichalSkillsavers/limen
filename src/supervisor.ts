@@ -89,7 +89,7 @@ export async function runHostedSupervisor(): Promise<void> {
 			await finalizeJob(jobDir, "failed", "group deadline or stop");
 			return;
 		}
-		if (membership) await syncLifecycle(membership.run);
+		if (membership) await syncLifecycle(membership.run, "skip");
 		const status = hostedAgentStatus(target);
 		const sessionEnded = Boolean(await textFile(`${jobDir}/session-ended`));
 		// Herdr idle/done = unseen background tab, not job completion.

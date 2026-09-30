@@ -58,7 +58,7 @@ export default function groupPeer(pi: PiApi): void {
 			void (async () => {
 				for (const identity of await identities(context)) {
 					if ([...leased.values()].some((entry) => entry.identity.run.id === identity.run.id)) continue;
-					const batch = await acceptBatch(identity);
+					const batch = await acceptBatch(identity, Date.now(), "skip");
 					if (!batch) continue;
 					leased.set(batch.token, { identity, token: batch.token });
 					try {
@@ -89,7 +89,7 @@ export default function groupPeer(pi: PiApi): void {
 	pi.on("tool_result", async (event, context) => {
 		const patches = [...(event.content ?? [])];
 		for (const identity of await identities(context)) {
-			const batch = await acceptBatch(identity);
+			const batch = await acceptBatch(identity, Date.now(), "skip");
 			if (!batch) continue;
 			leased.set(batch.token, { identity, token: batch.token });
 			patches.push({ type: "text", text: batch.text });

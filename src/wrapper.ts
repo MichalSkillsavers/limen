@@ -272,7 +272,7 @@ export async function finalizeJob(jobDir: string, state: "done" | "failed" | "st
 	await appendLimenLog(jobDir, inbox.length ? `${state}: ${detail}; ${inbox.length} steer(s) never delivered` : `${state}: ${detail}`).catch(() => {});
 	await atomicWrite(`${jobDir}/state`, `${state}\n`);
 	const membership = await jobMembership(jobDir);
-	if (membership) await syncLifecycle(membership.run);
+	if (membership) await syncLifecycle(membership.run, "skip");
 	await rm(`${jobDir}/pid`, { force: true });
 	await rm(`${jobDir}/born`, { force: true });
 	// A tmp whose writer still runs is an in-flight rename by a racing finalizer, not a leftover; deleting it makes that rename ENOENT and crashes the other process.

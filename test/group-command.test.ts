@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import groupPeer from "../hook/group-peer.ts";
@@ -10,6 +11,7 @@ import type { GroupIdentity, GroupRun } from "../src/group-cabinet.ts";
 import { claimMember, groupLock, groupPath, readRun, saveJson } from "../src/group-cabinet.ts";
 import { acceptBatch, acceptTransport, groupEvents, observeBatch, publishEvent, releaseBatch, syncLifecycle } from "../src/group-events.ts";
 import { noteHostedIdle } from "../src/supervisor.ts";
+import { finalizeJob } from "../src/wrapper.ts";
 import type { Scratch } from "./scratch.ts";
 import { git, LIMEN, limen, limenWithEnv, onlyJobId, scratchRepo, waitForState, writeFakePi } from "./scratch.ts";
 
@@ -636,4 +638,115 @@ test("uncertain stall observations stay out of group lifecycle while real adviso
 		(await groupEvents(run)).filter((event) => event.text.includes(": advisory")).map((event) => event.text),
 		[`${author.role} ${author.id}: advisory blocked on test evidence`],
 	);
+});
+
+test("busy cabinet never blocks finalization or loses its deferred lifecycle event", async (context) => {
+	const scratch = await fixture();
+	context.after(scratch.cleanup);
+	const run = await activate(scratch);
+	await syncLifecycle(run);
+	const member = run.members[0];
+	assert.ok(member);
+	const dir = `${run.root}/.limen/jobs/${member.id}`;
+	await writeFile(`${dir}/state`, "running\n");
+	await syncLifecycle(run);
+	const peer = run.members[1];
+	assert.ok(peer);
+	const identity = { run, member: peer, recipient: peer.id };
+	await groupLock(groupPath(run), async () => {
+		// Native lock deadlines use the platform clock; fake time cannot exercise the live-owner wait.
+		await syncLifecycle(run); // Unchanged markers must return even while another member owns the lock.
+		assert.equal(await acceptBatch(identity, Date.now(), "skip"), undefined);
+		const finalized = finalizeJob(dir, "done", "real completion").then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+		await delay(11_000);
+		assert.equal(await finalized, undefined);
+		assert.equal((await readFile(`${dir}/state`, "utf8")).trim(), "done");
+		assert.equal((await groupEvents(run)).filter((event) => event.text === `${member.role} ${member.id}: state done`).length, 1);
+	});
+	const batch = await acceptBatch(identity);
+	assert.ok(batch);
+	const events = (await groupEvents(run)).filter((event) => event.text === `${member.role} ${member.id}: state done`);
+	assert.equal(events.length, 2);
+	assert.notEqual(events[0]?.id, events[1]?.id);
+	assert.equal(
+		batch.events.some((event) => event.id === events[1]?.id),
+		true,
+	);
+});
+
+for (const command of ["spawn", "continue"] as const) {
+	test(`a ${command} waits beyond ten seconds for a real sibling launch without half-claimed members`, async (context) => {
+		const scratch = await fixture();
+		context.after(scratch.cleanup);
+		const run = await activate(scratch);
+		run.workersPerTeam = 3;
+		await saveJson(`${groupPath(run)}/run.json`, run);
+		let parent = "";
+		if (command === "continue") {
+			const seeded = await launch(scratch, environment(run), "spawn", "predecessor", ...workerSettings);
+			assert.equal(seeded.status, 0, seeded.stderr);
+			parent = onlyJobId(seeded.stdout);
+			await waitForState(run.root, parent, "done");
+		}
+		const hooks = `${scratch.fakeBin}/hooks`;
+		const marker = `${scratch.root}/.limen/slow-checkout`;
+		await mkdir(hooks);
+		// A real Git subprocess holds the launch lock; fake timers cannot advance its platform-clock wait.
+		await writeFile(
+			`${hooks}/post-checkout`,
+			`#!/usr/bin/env node
+const fs = require('node:fs');
+try { fs.writeFileSync(${JSON.stringify(marker)}, 'started', { flag: 'wx' }); }
+catch (error) { if (error.code === 'EEXIST') process.exit(0); throw error; }
+setTimeout(() => {}, 12_000);
+`,
+			{ mode: 0o755 },
+		);
+		git(scratch.root, "config", "core.hooksPath", hooks);
+		const first = launch(scratch, environment(run), "spawn", "slow sibling", ...workerSettings);
+		const until = Date.now() + 5_000;
+		while (!existsSync(marker) && Date.now() < until) await delay(25);
+		assert.equal(existsSync(marker), true, "the first real launch entered its checkout hook");
+		const started = Date.now();
+		const second = launch(scratch, command === "continue" ? lead : environment(run), command, ...(parent ? [parent] : []), "queued sibling", ...workerSettings);
+		const [left, right] = await Promise.all([first, second]);
+		assert.equal(left.status, 0, left.stderr);
+		assert.equal(right.status, 0, right.stderr);
+		assert.ok(Date.now() - started > 10_000, "the second launch actually waited beyond the old deadline");
+		const ids = [onlyJobId(left.stdout), onlyJobId(right.stdout)];
+		const current = await readRun(run.root, run.id);
+		assert.equal(current.members.length, run.members.length + 2 + (parent ? 1 : 0));
+		for (const id of ids) {
+			await waitForState(run.root, id, "done");
+			assert.equal(
+				current.members.some((member) => member.id === id),
+				true,
+			);
+			assert.equal((await readFile(`${run.root}/.limen/jobs/${id}/group`, "utf8")).trim(), run.id);
+		}
+		if (parent) assert.equal(current.members.find((member) => member.id === ids[1])?.parent, parent);
+	});
+}
+
+test("cabinet recovery reclaims a dead owner but never displaces an aged live owner", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	const cabinet = `${scratch.root}/cabinet`;
+	const lock = `${cabinet}/.lock`;
+	await mkdir(lock, { recursive: true });
+	await writeFile(`${lock}/owner`, `${process.pid}\n`);
+	const old = new Date(Date.now() - 60_000);
+	await utimes(lock, old, old);
+	assert.equal(await groupLock(cabinet, async () => "evicted", "skip"), undefined);
+	assert.equal((await readFile(`${lock}/owner`, "utf8")).trim(), String(process.pid));
+	const owner = spawn(process.execPath, ["-e", "process.exit(0)"]);
+	await once(owner, "exit");
+	assert.ok(owner.pid);
+	await writeFile(`${lock}/owner`, `${owner.pid}\n`);
+	await utimes(lock, old, old);
+	assert.equal(await groupLock(cabinet, async () => "recovered", "wait"), "recovered");
+	assert.equal(existsSync(lock), false);
 });
