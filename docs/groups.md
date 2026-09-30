@@ -6,7 +6,7 @@ Ordinary jobs keep their existing spawn, wake, steering and pruning behavior. A 
 
 ## Prepare and start
 
-Use an interactive OMP or Pi lead in the primary repository with the candidate package hooks loaded. Reload an existing coordinator after updating the package. Existing project loader files that enumerate hooks must include `group-peer`, or load `hook/group-peer.ts` explicitly. The lead hook registers its live session; a detached implementation job cannot substitute for that lead.
+Use an interactive OMP or Pi lead in the primary repository with the candidate package hooks loaded. Reload an existing coordinator after updating the package. Existing project loader files that enumerate hooks must include `group-peer`, or load `hook/group-peer.ts` explicitly. The lead hook registers its live session and process. Pi passes `PI_SESSION_ID` to the lead's commands; OMP does not, so a command is recognized as the lead when that registered process is its ancestor. A detached implementation job cannot substitute for that lead.
 
 Commit the feature's `ticket.md`, `group/brief.md`, and `group/teams/team-1.md`, `team-2.md`, and so on for the requested team count. The brief states the shared outcome, constraints, distinct starting hypotheses and the lead's synthesis responsibility. Markdown is not executable configuration.
 

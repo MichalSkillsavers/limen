@@ -7,7 +7,7 @@ import { processAlive } from "../contain.ts";
 import { preflightEngine, resolveSpawnEngine } from "../engine.ts";
 import { cleanWorktree, commitHasFile, headCommit, repoRoot } from "../git.ts";
 import type { GroupIdentity, GroupRun } from "../group-cabinet.ts";
-import { groupIdentity, groupLock, groupPath, memberLive, readRun, runs, saveJson } from "../group-cabinet.ts";
+import { groupIdentity, groupLock, groupPath, leadSession, memberLive, readRun, runs, saveJson } from "../group-cabinet.ts";
 import { acceptBatch, acceptTransport, groupEvents, publishEvent, syncLifecycle } from "../group-events.ts";
 import { herdrAvailable } from "../herdr.ts";
 import { parseDuration } from "../job.ts";
@@ -52,7 +52,7 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	const root = repoRoot(cwd);
 	const feature = relative(root, resolve(cwd, featureArgument));
 	if (feature.startsWith("..") || !feature.startsWith("spec/features/")) throw new Error("feature must be inside this repository's spec/features");
-	const lead = process.env.PI_SESSION_ID ?? "";
+	const lead = (await leadSession(root)) ?? "";
 	if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(lead)) throw new Error("group start requires an interactive lead session with the group hook loaded");
 	const listener = Number(await readFile(`${root}/.limen/group-leads/${lead}`, "utf8").catch(() => ""));
 	if (listener <= 0 || !processAlive(listener)) throw new Error("group lead hook is not running; load hook/group-peer.ts and retry");

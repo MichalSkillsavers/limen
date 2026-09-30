@@ -105,8 +105,26 @@ export async function groupIdentity(cwd: string, explicitId?: string): Promise<G
 	}
 	if (!explicitId) return;
 	const run = await readRun(limenRoot(cwd), explicitId);
-	if (!run.lead || run.lead !== process.env.PI_SESSION_ID) throw new Error("group command requires its recorded lead session");
+	if (!run.lead || run.lead !== (await leadSession(run.root))) throw new Error("group command requires its recorded lead session");
 	return { run, recipient: `lead-${run.lead}` };
+}
+// OMP does not export its session to tool commands, so a registered lead is also recognized as a live ancestor process.
+export async function leadSession(root: string): Promise<string | undefined> {
+	const declared = process.env.PI_SESSION_ID?.trim();
+	if (declared) return declared;
+	const listeners = new Map<number, string>();
+	for (const session of await readdir(`${root}/.limen/group-leads`).catch(() => [])) {
+		const pid = Number(await readFile(`${root}/.limen/group-leads/${session}`, "utf8").catch(() => ""));
+		if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(session) && Number.isSafeInteger(pid) && pid > 1) listeners.set(pid, session);
+	}
+	let pid = process.ppid;
+	for (let hop = 0; listeners.size && hop < 32 && pid > 1; hop++) {
+		const session = listeners.get(pid);
+		if (session) return session;
+		const parent = await processInfo(pid);
+		if (parent.kind !== "present") return;
+		pid = parent.process.ppid;
+	}
 }
 export async function commandRoot(cwd: string): Promise<string> {
 	return (await groupIdentity(cwd))?.run.root ?? limenRoot(cwd);

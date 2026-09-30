@@ -545,3 +545,34 @@ test("the actual group wait CLI caps a longer requested wait at twenty seconds",
 	assert.match(result.stdout, /timed out normally/);
 	assert.ok(Date.now() - started < 25_000, `CLI exceeded its 20-second cap: ${Date.now() - started}ms`);
 });
+
+test("an OMP lead without PI_SESSION_ID is recognized only through its registered ancestor process", async (context) => {
+	const scratch = await fixture();
+	context.after(scratch.cleanup);
+	// A live listener that is not an ancestor of the command must not grant lead authority.
+	const bystander = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: "ignore" });
+	context.after(() => {
+		bystander.kill("SIGKILL");
+	});
+	await rm(`${scratch.root}/.limen/group-leads/group-lead`);
+	await writeFile(`${scratch.root}/.limen/group-leads/impostor`, `${bystander.pid}\n`);
+	const refused = limen(scratch, "group", "start", scratch.feature, ...settings);
+	assert.equal(refused.status, 1);
+	assert.match(refused.stderr, /interactive lead session/);
+	assert.deepEqual(
+		(await readdir(`${scratch.root}/.limen/groups`).catch(() => [])).filter((name) => !name.startsWith(".")),
+		[],
+	);
+
+	await writeFile(`${scratch.root}/.limen/group-leads/omp-lead`, `${process.pid}\n`);
+	const started = limen(scratch, "group", "start", scratch.feature, ...settings);
+	assert.equal(started.status, 0, started.stderr);
+	const run = await readRun(scratch.root, onlyJobId(started.stdout));
+	assert.equal(run.lead, "omp-lead");
+	for (const member of run.members) await waitForState(scratch.root, member.id, "done");
+	const status = limen(scratch, "group", "status", run.id);
+	assert.equal(status.status, 0, status.stderr);
+	const other = limenWithEnv(scratch, { PI_SESSION_ID: "someone-else" }, "group", "status", run.id);
+	assert.equal(other.status, 1);
+	assert.match(other.stderr, /recorded lead session/);
+});
