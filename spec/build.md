@@ -20,7 +20,7 @@
 
 - `F014-github-doorbell` (🟠 ACTIVE): Alice's isolated App key, warm coordinator, live PR mention, hosted review, and one start/finish receipt are proven; second-seat ownership/routing remains to prove before closing.
 - `F731-seat-bell-once` (🟠 ACTIVE): Stop the seat sweep replaying the same finished or stalled job forever; old markers and concurrent sweeps must not ring again.
-- `F740-collaborative-groups` (🟠 ACTIVE): advisory recurrence is repaired and the stop regression now measures its unchanged deadline after CLI dispatch; final full native proof precedes the unspent two-team scenario and push.
+- `F740-collaborative-groups` (🟠 ACTIVE): implementation preserved; latest native run passed 509/511 with two steering-test synchronization failures, so automatic retries are paused pending a bounded stabilization decision; live scenario and push remain unspent.
 
 ## NEXT
 
