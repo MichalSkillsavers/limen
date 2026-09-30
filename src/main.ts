@@ -74,7 +74,8 @@ usage:
   limen workspace init
   limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
   limen group status|publish|wait|stop|close [GROUP-ID]  # members inherit verified membership; lead supplies ID
-  limen spawn "Implement FNNN: <outcome>. Start by writing <slice>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--engine pi|omp] [--model X] [--branch B] [--role NAME] [--timeout 20m; default 90m] [--task-file F|-] [--prepare CMD]
+  limen spawn "Implement FNNN: <outcome>. Start by writing <slice>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--engine pi|omp] [--model X] [--branch B] [--role NAME] [--timeout 20m; default 90m] [--prepare CMD]
+  limen spawn "Short title" --task-file F|-         # the file is the task; the positional words become the label
   limen spawn "…" [--label L] [--provider P] [--model X] [--thinking T]  # Pi flags; in Herdr: hosted, else detached
   limen spawn --tab "…"                            # force hosted (requires Herdr; no --timeout)
   limen spawn --detached "…"                       # force background worker + log-tail tab
@@ -117,6 +118,11 @@ export async function main(args: readonly string[], cwd = process.cwd()): Promis
 			return;
 		}
 		if (!(name in COMMANDS)) throw new Error(`unknown command ${JSON.stringify(name)}\n\n${HELP}`);
+		const flags = rest.slice(0, rest.includes("--") ? rest.indexOf("--") : undefined);
+		if (flags.includes("--help") || flags.includes("-h")) {
+			console.log(HELP);
+			return;
+		}
 		await COMMANDS[name as keyof typeof COMMANDS](rest, cwd);
 	} catch (error) {
 		if (process.env.LIMEN_INTERNAL_RUN === "1" || process.env.LIMEN_INTERNAL_HOSTED === "1") await failInternalJob(error);

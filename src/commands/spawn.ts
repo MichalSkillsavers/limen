@@ -149,7 +149,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	});
 	if (options.head && branchCommit(repository, branch) !== options.head) throw new Error("pinned review head moved before spawn");
 	const baseCommit = plan.kind === "add-new" ? headCommit(repository) : branchCommit(repository, branch);
-	for (const [, ticket] of task.matchAll(/\bTicket: (spec\/\S+)/g))
+	for (const [, ticket] of task.matchAll(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g))
 		if (ticket && !commitHasFile(repository, baseCommit, ticket)) throw new Error(`ticket ${ticket} is missing from the base commit`);
 	const member = group ? await claimMember(group.run, group.team, group.role, id) : undefined;
 	const jobDir = `${jobsRoot}/${id}`;
@@ -418,9 +418,13 @@ function parseSpawnArgs(args: readonly string[]): SpawnOptions {
 	}
 	if (review && role) throw new Error("--role and --review cannot be combined");
 	if ((base || head) && !review) throw new Error("--base and --head require --review");
-	if (taskFile && task.length) throw new Error("spawn accepts a positional task or --task-file, not both");
+	// With --task-file the file is the task, so positional words can only be its title.
+	if (taskFile && task.length) {
+		if (label) throw new Error("with --task-file, give the title positionally or as --label, not both");
+		label = normalizeLabel(task.join(" "));
+	}
 	if (!taskFile && (task.length === 0 || !task.join(" ").trim())) throw new Error("spawn requires task text");
-	const out: SpawnOptions = { task: task.join(" "), review, tab, detached, ...(role ? { role } : {}), ...(engine ? { engine } : {}) };
+	const out: SpawnOptions = { task: taskFile ? "" : task.join(" "), review, tab, detached, ...(role ? { role } : {}), ...(engine ? { engine } : {}) };
 	if (label) out.label = label;
 	if (taskFile) out.taskFile = taskFile;
 	if (prepare) out.prepare = prepare;
@@ -474,7 +478,7 @@ export async function capturedVersions(profile: EngineProfile): Promise<string> 
 	return `${profile.id} ${version}\n${extra ? `herdr ${extra}\n` : ""}${hunkVersion ? `hunk ${hunkVersion}\n` : ""}`;
 }
 function workspaceTask(task: string, root: string, repo: string): string {
-	const pointer = task.replace(/\bTicket: (spec\/\S+)/g, (_all, path: string) => `Ticket: ${root}/${path}`);
+	const pointer = task.replace(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g, (_all, path: string) => `Ticket: ${root}/${path}`);
 	return `Repository: ${repo}. Work only in this repository.\n\n${pointer}`;
 }
 const once = <T>(current: T | undefined, flag: string, value: T): T => {
