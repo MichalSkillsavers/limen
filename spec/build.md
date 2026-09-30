@@ -20,7 +20,7 @@
 
 - `F014-github-doorbell` (🟠 ACTIVE): Alice's isolated App key, warm coordinator, live PR mention, hosted review, and one start/finish receipt are proven; second-seat ownership/routing remains to prove before closing.
 - `F731-seat-bell-once` (🟠 ACTIVE): Stop the seat sweep replaying the same finished or stalled job forever; old markers and concurrent sweeps must not ring again.
-- `F740-collaborative-groups` (🟠 ACTIVE): implementation preserved; latest native run passed 509/511 with two steering-test synchronization failures, so automatic retries are paused pending a bounded stabilization decision; live scenario and push remain unspent.
+- `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. OMP lead identity is fixed on the branch. Still open: member `limen` path, advisory noise, and one duplicate lead delivery, plus the steering-test races and full native proof; not landed or pushed.
 
 ## NEXT
 
