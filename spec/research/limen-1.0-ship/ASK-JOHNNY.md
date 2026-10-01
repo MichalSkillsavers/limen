@@ -7,7 +7,7 @@ The VPS harness is prepared; **no live send has been attempted**. Native verific
 ```bash
 cd /home/overment/limen
 PROOF=/home/overment/limen-evidence/johnny-finish-go-20260912
-HELPER=tmp/evidence/limen-1.0-ship/johnny-export-proof.sh
+HELPER=spec/research/limen-1.0-ship/johnny-export-proof.sh
 test -z "$(git status --porcelain --untracked-files=no)" || exit 1
 test -r .limen/finish-webhook-johnny.env && test "$(stat -c %a .limen/finish-webhook-johnny.env)" = 600 && git check-ignore -q .limen/finish-webhook-johnny.env || exit 1
 printf '%s\n' '{"version":1,"targets":[{"target":1,"receiver":"johnny"}]}' > "$PROOF/receiver-source/receivers.json"

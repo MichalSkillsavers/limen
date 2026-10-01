@@ -9,7 +9,7 @@ Read, in order:
 2. `spec/build.md` (ops remediation lock + ACTIVE/PLANNED/PROVEN)
 3. `spec/styleguide.md` (keep complexity low; do not fight the model)
 4. `tmp/evidence/limen-v1-vision/limen-1.0-vision-2026-09-11.html` + `handoff.md` / `notes.md`
-5. `tmp/evidence/limen-1.0-ship/CHECKLIST.md`
+5. `spec/research/limen-1.0-ship/CHECKLIST.md`
 
 **Critical-issue test (break if any are true):**
 - The plan adds orchestration / workflow engines / silent model fallback / automatic ownership / blanket review gates that increase steering load.
@@ -17,9 +17,9 @@ Read, in order:
 - Implementation would require fighting vision principles or inventing new control planes.
 - Ticket seams are so entangled that parallel workers would share writers / checkouts unsafely with no sequencing.
 
-If critical issues found: STOP. Write `tmp/evidence/limen-1.0-ship/GATE-RESULT.md` with FAIL + plain bullets. Do not spawn workers. Hand back to Adam via finish.
+If critical issues found: STOP. Write `spec/research/limen-1.0-ship/GATE-RESULT.md` with FAIL + plain bullets. Do not spawn workers. Hand back to Adam via finish.
 
-If no critical issues: write `tmp/evidence/limen-1.0-ship/GATE-RESULT.md` with PASS + one-paragraph rationale + the exact spawn order. Then Phase 1.
+If no critical issues: write `spec/research/limen-1.0-ship/GATE-RESULT.md` with PASS + one-paragraph rationale + the exact spawn order. Then Phase 1.
 
 ## Phase 1 — Implement must-land (only after PASS)
 

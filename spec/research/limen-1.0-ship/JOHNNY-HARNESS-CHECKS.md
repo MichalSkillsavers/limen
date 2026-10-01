@@ -6,9 +6,9 @@ Protected proof directory: `/home/overment/limen-evidence/johnny-finish-go-20260
 
 Checks run by the coordinator:
 
-- `bash -n tmp/evidence/limen-1.0-ship/johnny-export-proof.sh`: passed; all three `ASK-JOHNNY.md` shell blocks also parsed without execution.
+- `bash -n spec/research/limen-1.0-ship/johnny-export-proof.sh`: passed; all three `ASK-JOHNNY.md` shell blocks also parsed without execution.
 - `npm run typecheck`, targeted Biome for the helper's synthetic runner, and `git diff --check`: passed.
-- `node tmp/evidence/limen-1.0-ship/johnny-export-proof.test.mjs`: 11 synthetic checks passed. Missing exports, rejected ingress, extra recipients, repeated capture, wrong event, incomplete turn, symlink export, changed automatic claim and repeated release are refused; the valid fixture changes both views without reading config, changing receipts or changing export bytes.
+- `node spec/research/limen-1.0-ship/johnny-export-proof.test.mjs`: 11 synthetic checks passed. Missing exports, rejected ingress, extra recipients, repeated capture, wrong event, incomplete turn, symlink export, changed automatic claim and repeated release are refused; the valid fixture changes both views without reading config, changing receipts or changing export bytes.
 - The first synthetic run failed because its fake job omitted required `task.md` and `log`; the fixture was corrected and capture now explicitly checks both CLI views. Both logs are retained, not represented as a first-pass success: `helper-synthetic.log` and `helper-synthetic-2.log` under the protected proof directory.
 
 The synthetic runner uses temporary Git/job files outside the real proof source and removes only its own fixtures. It contains no send operation and supplies no real receiver evidence. `ASK-JOHNNY.md` names the remaining receiver-side actions; until those occur, F091 is not PROVEN and release readiness stays NO-GO.

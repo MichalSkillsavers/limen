@@ -599,7 +599,11 @@ test("a sender timeout gets one bounded successful retry and records both attemp
 	const job = await bareJob(f.root);
 	const selected = await f.config(join(f.parent, "once.env"), { hangOnce: true, descendant: join(f.parent, "once-descendant") });
 	await writeFile(join(job, "finish-webhook-env"), `${selected}\n`);
-	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`);
+	await runModule(
+		f.pkg,
+		{ ...f.env, TEST_JOB_DIR: job },
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`,
+	);
 	const receipt = await readFile(join(job, "finish-webhook"), "utf8");
 	assert.match(receipt, /^accepted:/);
 	assert.match(receipt, /attempt 1: failed: sender exceeded 3000ms; acceptance unknown/);
@@ -614,7 +618,11 @@ test("a sender that times out twice makes no third attempt", async (context) => 
 	const job = await bareJob(f.root);
 	const selected = await f.config(join(f.parent, "twice.env"), { hang: true, descendant: join(f.parent, "twice-descendant") });
 	await writeFile(join(job, "finish-webhook-env"), `${selected}\n`);
-	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`);
+	await runModule(
+		f.pkg,
+		{ ...f.env, TEST_JOB_DIR: job },
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`,
+	);
 	const receipt = await readFile(join(job, "finish-webhook"), "utf8");
 	assert.match(receipt, /attempt 1: failed: sender exceeded 3000ms; acceptance unknown/);
 	assert.match(receipt, /attempt 2: failed: sender exceeded \d+ms; acceptance unknown/);

@@ -29,4 +29,4 @@ Colleagues sharing a plant can send ticket finishes only to the author's configu
 
 ## Notes
 
-Configuration and recovery contract: [operator note](../../../../tmp/evidence/limen-1.0-ship/AUTHOR-FINISH-ROUTING.md).
+Configuration and recovery contract: [operator note](../../../../research/limen-1.0-ship/AUTHOR-FINISH-ROUTING.md).
