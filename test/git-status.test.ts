@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { cleanWorktree } from "../src/git.ts";
+import { cleanWorktree } from "../src/project/git.ts";
 import { scratchRepo } from "./scratch.ts";
 
 test("cleanWorktree observes changes without refreshing the worker's index", async (context) => {

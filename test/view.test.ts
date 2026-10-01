@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { parseJob } from "../src/job.ts";
-import { colorWanted, formatAge, humanDetail, humanRow, humanSnapshot, type JobRecord, paintWhen, renderLogTail, resolveView, tallyStates } from "../src/view.ts";
+import { parseJob } from "../src/job/job.ts";
+import { colorWanted, formatAge, humanDetail, humanRow, humanSnapshot, type JobRecord, paintWhen, renderLogTail, resolveView, tallyStates } from "../src/job/view.ts";
 import { limen, limenWithEnv, scratchRepo } from "./scratch.ts";
 
 const plain = paintWhen(false);

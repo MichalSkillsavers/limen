@@ -4,7 +4,7 @@ import { access, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
-import { liveJob } from "../src/reap.ts";
+import { liveJob } from "../src/runtime/reap.ts";
 import { git, limen, onlyJobId, scratchRepo, scratchWorkspace, waitForState, writeFakePi } from "./scratch.ts";
 
 const completingPi = `#!/usr/bin/env node

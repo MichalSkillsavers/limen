@@ -403,7 +403,7 @@ It uses the recorded path and original fields, never a home fallback or a
 replacement `done` state for a failed job:
 
 ```sh
-LIMEN_FINISH_EVENT="$(node --input-type=module -e 'import { finishEvent } from "./src/finish-receipt.ts"; console.log(finishEvent(process.argv[1]))' "$job")" \
+LIMEN_FINISH_EVENT="$(node --input-type=module -e 'import { finishEvent } from "./src/integrations/finish-receipt.ts"; console.log(finishEvent(process.argv[1]))' "$job")" \
 LIMEN_FINISH_WEBHOOK_ENV="$(tr -d '\n' < "$job/finish-webhook-env")" \
 LIMEN_FINISH_WEBHOOK_AUTHOR="$(sed -n '1p' "$job/finish-webhook-author")" \
   bin/tony-finish-ping.sh "$(tr -d '\n' < "$job/label")" \

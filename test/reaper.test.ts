@@ -3,8 +3,8 @@ import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
-import { processInfo } from "../src/contain.ts";
-import { liveJob, reapDeadJobs, STARTUP_GRACE_MS } from "../src/reap.ts";
+import { processInfo } from "../src/runtime/contain.ts";
+import { liveJob, reapDeadJobs, STARTUP_GRACE_MS } from "../src/runtime/reap.ts";
 import { git, limen, limenWithEnv, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
 const DEAD_PID = 999_999_999;

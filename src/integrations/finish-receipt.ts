@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { open } from "node:fs/promises";
 import { basename } from "node:path";
+import { textFile } from "../job/record.ts";
 import { inspectFinishTurns } from "./finish-turn.ts";
-import { textFile } from "./wrapper.ts";
 
 type FinishReceipt = { target: number; at: string; transport: "pending" | "accepted" | "rejected" | "unknown"; http: "none" | "1xx" | "2xx" | "3xx" | "4xx" | "5xx" };
 const FINISH_SELECTION = /^(fan-out|mapped @[a-z\d](?:[a-z\d-]{0,37}[a-z\d])? -> \d+(?:, \d+)*|fallback \* -> \d+(?:, \d+)*|not sent: no author route|invalid author map)$/;

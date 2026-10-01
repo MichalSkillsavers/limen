@@ -1,9 +1,6 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { containEscapedDescendants } from "./contain.ts";
-import { argvFor, jobProfile, prepareSkillConfig } from "./engine.ts";
-import { cleanWorktree } from "./git.ts";
 import {
 	type HerdrPlace,
 	type HostedAgentStatus,
@@ -15,13 +12,16 @@ import {
 	restoreHostedPane,
 	startHostedPi,
 	stopHostedAgent,
-} from "./herdr.ts";
+} from "../integrations/herdr.ts";
+import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, recordCommits, requestedTerminal, textFile, writeHandshake } from "../job/record.ts";
+import { cleanWorktree } from "../project/git.ts";
+import { containEscapedDescendants } from "./contain.ts";
+import { argvFor, jobProfile, prepareSkillConfig } from "./engine.ts";
 import { prepareRecoveredOwner } from "./recovery.ts";
 import { observeToolStall, ownedToolDescendants, signalOwnedProcess, type ToolStallWatch, toolStallMs } from "./stalled-tool.ts";
 import { assistantStopReason, assistantText } from "./stream.ts";
-import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, recordCommits, requestedTerminal, textFile, writeHandshake } from "./wrapper.ts";
 
-const PACKAGE_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const HOSTED_UNKNOWN_SAMPLES = 5;
 const DEFAULT_HOSTED_START_MS = 5_000;
 export const DEFAULT_HOSTED_IDLE_MS = 60_000;

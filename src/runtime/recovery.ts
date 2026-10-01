@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
-import { hostedAgentName } from "./commands/spawn.ts";
+import { hostedAgentName } from "../commands/spawn.ts";
+import { hostedAgentStatus, locateHostedAgent } from "../integrations/herdr.ts";
+import { atomicWrite, textFile } from "../job/record.ts";
 import { processAlive, processInfo } from "./contain.ts";
-import { hostedAgentStatus, locateHostedAgent } from "./herdr.ts";
 import { ownerAlive } from "./reap.ts";
-import { atomicWrite, launchHostedSupervisor, textFile } from "./wrapper.ts";
+import { launchHostedSupervisor } from "./wrapper.ts";
 
 /** A populated directory is published atomically. Retire only the observed unique entry:
  * competing stale-claim removers cannot unlink a replacement owner's entry. */

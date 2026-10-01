@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
-import { liveJob } from "../src/reap.ts";
+import { liveJob } from "../src/runtime/reap.ts";
 import { git, limen, limenWithEnv, onlyJobId, scratchRepo, scratchWorkspace, waitForState } from "./scratch.ts";
 
 const continuingFakePi = `#!/usr/bin/env node

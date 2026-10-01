@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { limenRoot, workspaceRepository } from "../git.ts";
-import { herdrAvailable, openDiffTab } from "../herdr.ts";
-import { resolveJob } from "../lookup.ts";
+import { herdrAvailable, openDiffTab } from "../integrations/herdr.ts";
+import { resolveJob } from "../job/lookup.ts";
+import { limenRoot, workspaceRepository } from "../project/git.ts";
 
 export async function diffCommand(args: readonly string[], cwd: string): Promise<void> {
 	const query = args[0];

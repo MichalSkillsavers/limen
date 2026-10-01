@@ -1,5 +1,5 @@
-import { limenRoot } from "../git.ts";
-import { closeFeatureTabs } from "../herdr.ts";
+import { closeFeatureTabs } from "../integrations/herdr.ts";
+import { limenRoot } from "../project/git.ts";
 
 export async function closeCommand(args: readonly string[], cwd: string): Promise<void> {
 	const feature = args[0];

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { formatDrift, listDrift, templateHistoryText } from "../hook/inherit.ts";
+import { formatDrift, listDrift, templateHistoryText } from "../src/project/inherit.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const HISTORY = ["agents.md", "communication.md", "judge.md", "picture.md", "quality.md", "researcher.md", "reviewer.md", "worker.md"] as const;

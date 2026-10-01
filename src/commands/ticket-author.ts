@@ -1,4 +1,4 @@
-import { ticketAuthor } from "../git.ts";
+import { ticketAuthor } from "../project/git.ts";
 
 export async function ticketAuthorCommand(args: readonly string[], cwd: string): Promise<void> {
 	const ticket = args[0];

@@ -3,11 +3,11 @@ import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { appendLimenLog, atomicWrite, textFile } from "../job/record.ts";
+import { listWorktrees, ticketAuthor, workspaceRoot } from "../project/git.ts";
 import { finishEvent, parseFinishReceipt, parseFinishSelection } from "./finish-receipt.ts";
-import { listWorktrees, ticketAuthor, workspaceRoot } from "./git.ts";
-import { appendLimenLog, atomicWrite, textFile } from "./wrapper.ts";
 
-const SENDER = fileURLToPath(new URL("../bin/tony-finish-ping.sh", import.meta.url));
+const SENDER = fileURLToPath(new URL("../../bin/tony-finish-ping.sh", import.meta.url));
 // Leave time inside the detached wrapper's 5s termination grace to record the outcome.
 const SEND_MS = 3_000;
 const DELIVERY_MS = 4_000;

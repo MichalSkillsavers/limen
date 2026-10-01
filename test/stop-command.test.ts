@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
-import { containEscapedDescendants, processInfo, recordCleanup } from "../src/contain.ts";
+import { containEscapedDescendants, processInfo, recordCleanup } from "../src/runtime/contain.ts";
 import { limen, limenWithEnv, limenWithSession, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
 const stubbornPi = `#!/usr/bin/env node

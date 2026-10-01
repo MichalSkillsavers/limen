@@ -1,6 +1,6 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { resolveJob } from "../lookup.ts";
+import { resolveJob } from "../job/lookup.ts";
 export async function waitCommand(args: readonly string[], cwd: string): Promise<void> {
 	const query = args[0];
 	if (!query || args.length !== 1) throw new Error("wait requires exactly one job id");

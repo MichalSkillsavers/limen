@@ -12,7 +12,16 @@ That is typecheck, Biome format check, and the real-Git test suite. Each test ha
 
 ## What belongs in source
 
-`src/` is capped at 3348 lines (`test/structure.test.ts`). Runtime dependencies must stay empty. Do not add `index.ts`, `types.ts`, `utils.ts`, barrels, enums, or a shared helper bag.
+Runtime dependencies must stay empty, and TypeScript basenames stay unique across the tree (`test/structure.test.ts`). Do not add `index.ts`, `types.ts`, `utils.ts`, barrels, enums, or a shared helper bag.
+
+Where code lives:
+
+- `src/main.ts` — CLI entry; `src/commands/` — one file per verb
+- `src/job/` — the job record: its model, lookup, rendering, and `record.ts`, which owns state files and finalization
+- `src/runtime/` — starting and supervising an engine: launch profiles, stream parsing, the detached runner, the hosted supervisor, process containment, stall detection, reaping, recovery
+- `src/project/` — the project around jobs: Git and worktrees, template inheritance, the seat registry
+- `src/integrations/` — systems outside files and Git: Herdr, the GitHub doorbell, finish webhooks and their receipts
+- `hook/` — only the extensions Pi and OMP load by path (`wake`, `communication`, `steering`, `hosted`). Installed project stubs and job launches name these paths; do not move them
 
 - Capability — start, wait, stop, observe — belongs in `src/`
 - Operating advice belongs in `templates/`

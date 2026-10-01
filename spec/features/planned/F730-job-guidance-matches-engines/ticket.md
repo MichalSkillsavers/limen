@@ -6,7 +6,7 @@ Operators see the engine that actually ran rather than a Pi-only label on OMP jo
 
 ## Scope
 
-- Start with the hard-coded completion label in `src/wrapper.ts` and the Pi-only hosted diagnostic in `src/supervisor.ts`.
+- Start with the hard-coded completion label in `src/runtime/wrapper.ts` and the Pi-only hosted diagnostic in `src/runtime/supervisor.ts`.
 - Align job-launch and continuation wording in the shop manual and README with the shared engine profile table.
 - Clarify recovery evidence from pulse, logs, commits, and an inspected worktree; keep steer-before-stop guidance.
 - Preserve statements that genuinely refer only to the Pi coordinator or Pi-specific flags.

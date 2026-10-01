@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { claimPath, ensureGithubCoordinator, type GithubBinding, githubCommand } from "../src/commands/github.ts";
-import { acceptGithubComment, reconcileGithubClaim } from "../src/github-poller.ts";
-import { type GithubClaim, githubMarker, startGithubJob } from "../src/github-review.ts";
+import { acceptGithubComment, reconcileGithubClaim } from "../src/integrations/github-poller.ts";
+import { type GithubClaim, githubMarker, startGithubJob } from "../src/integrations/github-review.ts";
 import { git, limen, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
 const base = "a".repeat(40);

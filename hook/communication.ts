@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { assistantStopReason } from "../src/stream.ts";
-import { formatDrift, inheritFile, listDrift, readOptional } from "./inherit.ts";
+import { formatDrift, inheritFile, listDrift, readOptional } from "../src/project/inherit.ts";
+import { assistantStopReason } from "../src/runtime/stream.ts";
 
 const CONTEXT_TYPE = "limen-project-context";
 const MAX_CONTEXT_LINES = 1000;

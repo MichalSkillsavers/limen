@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { argvFor, ENGINES, jobProfile, prepareSkillConfig, resolveSpawnEngine } from "../src/engine.ts";
+import { argvFor, ENGINES, jobProfile, prepareSkillConfig, resolveSpawnEngine } from "../src/runtime/engine.ts";
 
 const slots = {
 	jobDir: "/job",

@@ -4,9 +4,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { signalProcessGroup, waitForProcessGroup } from "../contain.ts";
-import { type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../engine.ts";
-import { captureFinishAuthor, finishWebhookEnv } from "../finish-webhook.ts";
+import { captureFinishAuthor, finishWebhookEnv } from "../integrations/finish-webhook.ts";
+import { herdrAvailable, openHostedTab, openWatchTab } from "../integrations/herdr.ts";
+import { parseDuration } from "../job/job.ts";
+import { appendLimenLog, atomicWrite, finalizeJob } from "../job/record.ts";
 import {
 	addBranchWorktree,
 	addDetachedWorktree,
@@ -19,11 +20,11 @@ import {
 	workspaceRepository,
 	workspaceRoot,
 	worktreeForBranch,
-} from "../git.ts";
-import { herdrAvailable, openHostedTab, openWatchTab } from "../herdr.ts";
-import { parseDuration } from "../job.ts";
-import { liveJob } from "../reap.ts";
-import { appendLimenLog, atomicWrite, finalizeJob, launchHostedSupervisor, launchWrapper } from "../wrapper.ts";
+} from "../project/git.ts";
+import { signalProcessGroup, waitForProcessGroup } from "../runtime/contain.ts";
+import { type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
+import { liveJob } from "../runtime/reap.ts";
+import { launchHostedSupervisor, launchWrapper } from "../runtime/wrapper.ts";
 import { hunkBinary } from "./diff.ts";
 import { pruneFinishedWorktrees } from "./prune.ts";
 

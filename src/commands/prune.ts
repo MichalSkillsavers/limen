@@ -1,7 +1,7 @@
 import { readdir, readFile, realpath, rm } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { limenRoot, listWorktrees, pruneWorktrees, removeWorktree, unlandedBranches, workspaceRepository } from "../git.ts";
-import { liveJob, STARTUP_GRACE_MS } from "../reap.ts";
+import { limenRoot, listWorktrees, pruneWorktrees, removeWorktree, unlandedBranches, workspaceRepository } from "../project/git.ts";
+import { liveJob, STARTUP_GRACE_MS } from "../runtime/reap.ts";
 
 export async function pruneCommand(args: readonly string[], cwd: string): Promise<void> {
 	const retire = args.includes("--retire"),

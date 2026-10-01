@@ -9,7 +9,7 @@ export type Drift =
 	| { readonly path: string; readonly kind: "stale"; readonly matchedAt: string; readonly changedAt: string };
 
 export function packageRoot(): string {
-	return process.env.LIMEN_PACKAGE?.trim() || fileURLToPath(new URL("..", import.meta.url));
+	return process.env.LIMEN_PACKAGE?.trim() || fileURLToPath(new URL("../..", import.meta.url));
 }
 
 const TRACKED = [

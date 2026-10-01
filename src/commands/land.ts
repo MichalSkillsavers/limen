@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
-import { cleanWorktree, commitList, currentBranch, limenRoot, mergeBranch, workspaceRepository } from "../git.ts";
-import { resolveJob } from "../lookup.ts";
+import { resolveJob } from "../job/lookup.ts";
+import { cleanWorktree, commitList, currentBranch, limenRoot, mergeBranch, workspaceRepository } from "../project/git.ts";
 
 export async function landCommand(args: readonly string[], cwd: string): Promise<void> {
 	const parsed = parseLandArgs(args);

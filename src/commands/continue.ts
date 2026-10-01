@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { engineProfile, preflightEngine, resolveSpawnEngine } from "../engine.ts";
-import { addBranchWorktree, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../git.ts";
-import { herdrAvailable, openWatchTab } from "../herdr.ts";
-import { resolveJob } from "../lookup.ts";
-import { atomicWrite, finalizeJob, launchWrapper } from "../wrapper.ts";
+import { herdrAvailable, openWatchTab } from "../integrations/herdr.ts";
+import { resolveJob } from "../job/lookup.ts";
+import { atomicWrite, finalizeJob } from "../job/record.ts";
+import { addBranchWorktree, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
+import { engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
+import { launchWrapper } from "../runtime/wrapper.ts";
 import { capturedVersions, currentNotificationSession, HOSTED_NOTE, hostedAgentName, makeJobId, normalizeLabel, resolvePreamble, startHosted, waitForHandshake } from "./spawn.ts";
 
 /** Resume a finished job's own engine session; restore a pruned checkout from its branch. */

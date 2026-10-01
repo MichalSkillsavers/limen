@@ -1,12 +1,12 @@
 import { open, readdir, readFile, stat } from "node:fs/promises";
-import { processGroupAlive } from "../contain.ts";
-import { inspectFinishWebhook } from "../finish-receipt.ts";
-import { limenRoot, liveDiffstat, workspaceRepository } from "../git.ts";
-import { hostedAgentStatus } from "../herdr.ts";
-import { derivePulse, parseJob, producedNothing, renderJob } from "../job.ts";
-import { resolveJob } from "../lookup.ts";
-import { confirmDeadJobs } from "../reap.ts";
-import { colorWanted, humanDetail, humanSnapshot, type JobRecord, paintWhen, resolveView, tallyStates } from "../view.ts";
+import { inspectFinishWebhook } from "../integrations/finish-receipt.ts";
+import { hostedAgentStatus } from "../integrations/herdr.ts";
+import { derivePulse, parseJob, producedNothing, renderJob } from "../job/job.ts";
+import { resolveJob } from "../job/lookup.ts";
+import { colorWanted, humanDetail, humanSnapshot, type JobRecord, paintWhen, resolveView, tallyStates } from "../job/view.ts";
+import { limenRoot, liveDiffstat, workspaceRepository } from "../project/git.ts";
+import { processGroupAlive } from "../runtime/contain.ts";
+import { confirmDeadJobs } from "../runtime/reap.ts";
 
 export async function jobsCommand(args: readonly string[], cwd: string): Promise<void> {
 	const selection = select(args);

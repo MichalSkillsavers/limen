@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { processInfo } from "../src/contain.ts";
-import { hostedEngineOwned } from "../src/herdr.ts";
-import { observeToolStall, signalOwnedProcess, type ToolStallWatch } from "../src/stalled-tool.ts";
+import { hostedEngineOwned } from "../src/integrations/herdr.ts";
+import { processInfo } from "../src/runtime/contain.ts";
+import { observeToolStall, signalOwnedProcess, type ToolStallWatch } from "../src/runtime/stalled-tool.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 // Polling observes actual child process exit; fake time cannot drive the kernel's process table.
@@ -82,7 +82,7 @@ console.log(JSON.stringify({ result: info }));
 		await chmod(herdr, 0o755);
 		const supervisor = spawn(
 			process.execPath,
-			["--input-type=module", "-e", `await import(${JSON.stringify(join(root, "src/supervisor.ts"))}).then(m => m.runHostedSupervisor())`],
+			["--input-type=module", "-e", `await import(${JSON.stringify(join(root, "src/runtime/supervisor.ts"))}).then(m => m.runHostedSupervisor())`],
 			{
 				cwd: root,
 				env: { ...process.env, LIMEN_JOB_DIR: job, LIMEN_HOSTED_TARGET: "test:p1", LIMEN_HERDR: herdr, LIMEN_TOOL_STALL_MS: "1200", LIMEN_HOSTED_START: "" },
@@ -127,7 +127,7 @@ setInterval(() => {}, 1000);
 		await chmod(fakeEngine, 0o755);
 		const task = join(dir, "task");
 		await writeFile(task, "test tool\n");
-		const runner = spawn(process.execPath, ["--input-type=module", "-e", `await import(${JSON.stringify(join(root, "src/wrapper.ts"))}).then(m => m.runInternalJob())`], {
+		const runner = spawn(process.execPath, ["--input-type=module", "-e", `await import(${JSON.stringify(join(root, "src/runtime/wrapper.ts"))}).then(m => m.runInternalJob())`], {
 			cwd: root,
 			detached: true,
 			env: {

@@ -3,7 +3,7 @@ import { createHash, createSign, randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claimPath, type GithubBinding, githubDir, originRepository, readBinding } from "./commands/github.ts";
+import { claimPath, type GithubBinding, githubDir, originRepository, readBinding } from "../commands/github.ts";
 import { type GithubClaim, matchedGithubJob } from "./github-review.ts";
 
 const API = "https://api.github.com";

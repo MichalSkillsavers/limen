@@ -16,8 +16,8 @@ import { sweepCommand } from "./commands/sweep.ts";
 import { ticketAuthorCommand } from "./commands/ticket-author.ts";
 import { waitCommand } from "./commands/wait.ts";
 import { unwatchCommand, watchCommand } from "./commands/watch.ts";
-import { runHostedSupervisor } from "./supervisor.ts";
-import { failInternalJob, runInternalJob } from "./wrapper.ts";
+import { runHostedSupervisor } from "./runtime/supervisor.ts";
+import { failInternalJob, runInternalJob } from "./runtime/wrapper.ts";
 
 type Command = (args: readonly string[], cwd: string) => Promise<void>;
 const COMMANDS = {

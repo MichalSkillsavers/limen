@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { processGroupAlive } from "../contain.ts";
-import { limenRoot } from "../git.ts";
-import { resolveJob } from "../lookup.ts";
+import { resolveJob } from "../job/lookup.ts";
+import { limenRoot } from "../project/git.ts";
+import { processGroupAlive } from "../runtime/contain.ts";
 
 const READY_WAIT_MS = 2_000;
 

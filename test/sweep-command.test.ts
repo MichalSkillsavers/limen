@@ -53,7 +53,7 @@ test("registry registration and pruning repeatedly reclaim dead locks across pro
 	const home = dirname(scratch.root),
 		registry = join(home, ".limen/projects");
 	await mkdir(dirname(registry), { recursive: true });
-	const seat = new URL("../hook/seat.ts", import.meta.url).href,
+	const seat = new URL("../src/project/seat.ts", import.meta.url).href,
 		sweep = new URL("../src/commands/sweep.ts", import.meta.url).href,
 		ready = `process.send("ready"); await new Promise(resolve => process.once("message", resolve)); process.disconnect();`,
 		registerSource = `import { registerProject } from ${JSON.stringify(seat)}; ${ready} for (const project of process.argv.slice(1)) await registerProject(project);`,

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { limenRoot } from "../git.ts";
-import { openJobPlace } from "../herdr.ts";
-import { resolveJob } from "../lookup.ts";
+import { openJobPlace } from "../integrations/herdr.ts";
+import { resolveJob } from "../job/lookup.ts";
+import { limenRoot } from "../project/git.ts";
 
 export async function openCommand(args: readonly string[], cwd: string): Promise<void> {
 	const query = args[0];

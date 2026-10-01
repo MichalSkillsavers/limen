@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { githubDir } from "./commands/github.ts";
-import { spawnCommand } from "./commands/spawn.ts";
+import { githubDir } from "../commands/github.ts";
+import { spawnCommand } from "../commands/spawn.ts";
 
 export type GithubClaim = {
 	repo: string;

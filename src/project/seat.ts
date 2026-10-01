@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PACKAGE_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const home = () => process.env.LIMEN_HOME || homedir();
 export const projectsFile = () => join(home(), ".limen", "projects");
 export const registeredProjects = () => [...new Set((fs.existsSync(projectsFile()) ? fs.readFileSync(projectsFile(), "utf8") : "").split(/\r?\n/).filter(Boolean))];

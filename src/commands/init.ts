@@ -2,9 +2,9 @@ import { constants } from "node:fs";
 import { access, appendFile, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { formatDrift, listDrift, removeHookCopies } from "../../hook/inherit.ts";
-import { registerProject } from "../../hook/seat.ts";
-import { isGitRepository, repoRoot, workspaceRoot } from "../git.ts";
+import { isGitRepository, repoRoot, workspaceRoot } from "../project/git.ts";
+import { formatDrift, listDrift, removeHookCopies } from "../project/inherit.ts";
+import { registerProject } from "../project/seat.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export async function initCommand(args: readonly string[], cwd: string): Promise<void> {

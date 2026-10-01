@@ -3,14 +3,15 @@ import { spawn } from "node:child_process";
 import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
-import { processAlive } from "../src/contain.ts";
-import { hostedAgentStatus } from "../src/herdr.ts";
-import { ownerAlive, reapDeadJobs, STARTUP_GRACE_MS } from "../src/reap.ts";
-import { launchHostedSupervisor, textFile } from "../src/wrapper.ts";
+import { hostedAgentStatus } from "../src/integrations/herdr.ts";
+import { textFile } from "../src/job/record.ts";
+import { processAlive } from "../src/runtime/contain.ts";
+import { ownerAlive, reapDeadJobs, STARTUP_GRACE_MS } from "../src/runtime/reap.ts";
+import { launchHostedSupervisor } from "../src/runtime/wrapper.ts";
 import { scratchRepo, waitForState } from "./scratch.ts";
 
-const recoveryModule = new URL("../src/recovery.ts", import.meta.url).href;
-const reapModule = new URL("../src/reap.ts", import.meta.url).href;
+const recoveryModule = new URL("../src/runtime/recovery.ts", import.meta.url).href;
+const reapModule = new URL("../src/runtime/reap.ts", import.meta.url).href;
 const DEAD_PID = 999_999_999;
 
 async function fixture(context: TestContext, id: string) {

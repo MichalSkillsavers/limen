@@ -4,8 +4,8 @@ import { chmod, copyFile, cp, mkdir, readFile, realpath, rm, stat, writeFile } f
 import { dirname, join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { finishEvent } from "../src/finish-receipt.ts";
-import { finishWebhookEnv } from "../src/finish-webhook.ts";
+import { finishEvent } from "../src/integrations/finish-receipt.ts";
+import { finishWebhookEnv } from "../src/integrations/finish-webhook.ts";
 import { git, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -103,7 +103,7 @@ for (const state of ["failed", "stopped", "done"]) {
 			await mkdir(join(job, "notify/subscribers"), { recursive: true });
 			await writeFile(join(job, "notify/subscribers/owner"), "subscribed\n");
 			await writeFile(join(job, "notify/ready"), "1\n");
-			const code = `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, '${state}', 'synthetic terminal detail');`;
+			const code = `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, '${state}', 'synthetic terminal detail');`;
 			await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, code);
 			const skip = state !== "done" && !result?.trim();
 			const receipt = await readFile(join(job, "finish-webhook"), "utf8");
@@ -130,7 +130,7 @@ for (const state of ["failed", "stopped", "done"]) {
 					runModule(
 						f.pkg,
 						{ ...f.env, TEST_JOB_DIR: job },
-						`const { deliverFinishWebhook } = await import('./src/finish-webhook.ts'); await deliverFinishWebhook(${JSON.stringify(job)});`,
+						`const { deliverFinishWebhook } = await import('./src/integrations/finish-webhook.ts'); await deliverFinishWebhook(${JSON.stringify(job)});`,
 					),
 				),
 			);
@@ -158,7 +158,7 @@ test("jobs at the same recorded tip each send, including with a legacy tip marke
 		runModule(
 			f.pkg,
 			{ ...f.env, TEST_JOB_DIR: job },
-			`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'synthetic terminal detail');`,
+			`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'synthetic terminal detail');`,
 		);
 	await finalize(first);
 	await finalize(second);
@@ -180,7 +180,7 @@ test("a job that settles at a different recorded tip still sends", async (contex
 		await runModule(
 			f.pkg,
 			{ ...f.env, TEST_JOB_DIR: job },
-			`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'synthetic terminal detail');`,
+			`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'synthetic terminal detail');`,
 		);
 	}
 	assert.match(await readFile(join(first, "finish-webhook"), "utf8"), /^accepted:/);
@@ -200,14 +200,14 @@ test("empty failed skip does not quiet a later job at the same tip", async (cont
 	await runModule(
 		f.pkg,
 		{ ...f.env, TEST_JOB_DIR: first },
-		`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(first)}, 'failed', 'synthetic terminal detail');`,
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(first)}, 'failed', 'synthetic terminal detail');`,
 	);
 	assert.match(await readFile(join(first, "finish-webhook"), "utf8"), /^skipped: failed with empty result; not sent/);
 	await assert.rejects(readFile(f.observations), { code: "ENOENT" });
 	await runModule(
 		f.pkg,
 		{ ...f.env, TEST_JOB_DIR: second },
-		`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(second)}, 'done', 'synthetic terminal detail');`,
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(second)}, 'done', 'synthetic terminal detail');`,
 	);
 	assert.match(await readFile(join(second, "finish-webhook"), "utf8"), /^accepted:/);
 	assert.equal((await observe(f.observations)).length, 1);
@@ -226,7 +226,7 @@ test("concurrent jobs at the same recorded tip each send exactly once", async (c
 		runModule(
 			f.pkg,
 			{ ...f.env, TEST_JOB_DIR: job },
-			`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'synthetic terminal detail');`,
+			`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'synthetic terminal detail');`,
 		);
 	await Promise.all([finalize(first), finalize(second)]);
 	await Promise.all([finalize(first), finalize(second)]);
@@ -308,7 +308,7 @@ test("automatic delivery finds Limen's Node runtime when the inherited PATH cann
 	await runModule(
 		f.pkg,
 		{ ...f.env, PATH: f.fakeBin, NODE_OPTIONS: `--import=${transport}` },
-		`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'runtime probe');`,
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'runtime probe');`,
 	);
 	assert.match(await delivery(job), /^accepted: sender exited 0 \(owner wake unobserved\)/);
 	assert.equal(await readFile(f.observations, "utf8"), "accepted\n");
@@ -420,7 +420,7 @@ for (const firstStatus of [204, 503, "stall"]) {
 			assert.match(detail, /bot-turn: observed for 2 target\(s\)/);
 			both.push(detail);
 		}
-		await runModule(f.pkg, f.env, `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'repeat');`);
+		await runModule(f.pkg, f.env, `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'repeat');`);
 		assert.equal((await observe(f.observations)).length, firstStatus === "stall" ? 4 : 2, "repeat finalization sends nothing");
 		assert.equal(await readFile(join(job, "finish-webhook-targets"), "utf8"), receipts);
 		if (process.env.LIMEN_TEST_FINISH_EVIDENCE) {
@@ -456,7 +456,7 @@ test("private receipt channel discards malformed, secret-bearing, duplicate and 
 	await runModule(
 		f.pkg,
 		{ ...f.env, TEST_JOB_DIR: job },
-		`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'channel');`,
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'channel');`,
 	);
 	// The OS may coalesce the oversized stream: dropping the entire chunk is also safe.
 	const retained = await readFile(join(job, "finish-webhook-targets"), "utf8").catch(() => "");
@@ -513,7 +513,7 @@ test("a retired env-path override does not opt an unconfigured job into delivery
 	const id = onlyJobId(f.command(["spawn", "--detached", "finish"], { TONY_FINISH_WEBHOOK_ENV: ignored }));
 	await waitForState(f.root, id, "done");
 	const job = join(f.root, ".limen/jobs", id);
-	await runModule(f.pkg, f.env, `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'repeat');`);
+	await runModule(f.pkg, f.env, `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'repeat');`);
 	await assert.rejects(readFile(join(job, "finish-webhook-env")));
 	await assert.rejects(readFile(join(job, "finish-webhook-attempt")));
 	await assert.rejects(readFile(f.observations));
@@ -528,7 +528,7 @@ test("unconfigured jobs never inherit home config or a later finalizer environme
 	await runModule(
 		f.pkg,
 		{ ...f.env, LIMEN_FINISH_WEBHOOK_ENV: homeConfig },
-		`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'failed', 'repeat');`,
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'failed', 'repeat');`,
 	);
 	await assert.rejects(readFile(join(job, "finish-webhook-env")));
 	await assert.rejects(readFile(join(job, "finish-webhook-attempt")));
@@ -543,7 +543,7 @@ test("concurrent processes and repeated finalization make one automatic attempt;
 	await mkdir(join(job, "notify/subscribers"), { recursive: true });
 	await writeFile(join(job, "notify/subscribers/owner"), "subscribed\n");
 	await writeFile(join(job, "result"), "Investigated worker failure; partial repair committed.\n");
-	const code = `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'failed', 'synthetic worker failure');`;
+	const code = `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'failed', 'synthetic worker failure');`;
 	await Promise.all(Array.from({ length: 4 }, () => runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, code)));
 	assert.match(await delivery(job), /^failed: sender exited 22/);
 	assert.match(await readFile(join(job, "finish-webhook"), "utf8"), /Manual finish-ping retry:/);
@@ -567,7 +567,7 @@ test("hosted supervisor completion uses the same automatic path without a worker
 	await runModule(
 		f.pkg,
 		{ ...f.env, LIMEN_HERDR: herdr, LIMEN_JOB_DIR: job, LIMEN_HOSTED_TARGET: "synthetic:p1" },
-		"const { runHostedSupervisor } = await import('./src/supervisor.ts'); await runHostedSupervisor();",
+		"const { runHostedSupervisor } = await import('./src/runtime/supervisor.ts'); await runHostedSupervisor();",
 	);
 	assert.match(await delivery(job), /^accepted:/);
 	assert.equal((await observe(f.observations))[0].state, "done");
@@ -584,7 +584,7 @@ test("hanging sender and its descendant are killed within shutdown grace without
 	await runModule(
 		f.pkg,
 		{ ...f.env, TEST_JOB_DIR: job },
-		`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'stopped', 'bounded stop');`,
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'stopped', 'bounded stop');`,
 	);
 	assert.ok(Date.now() - started < 4_500, "sender must leave room within the wrapper's 5s grace");
 	assert.match(await delivery(job), /^failed: sender exceeded \d+ms; acceptance unknown/);
@@ -599,7 +599,7 @@ test("a sender timeout gets one bounded successful retry and records both attemp
 	const job = await bareJob(f.root);
 	const selected = await f.config(join(f.parent, "once.env"), { hangOnce: true, descendant: join(f.parent, "once-descendant") });
 	await writeFile(join(job, "finish-webhook-env"), `${selected}\n`);
-	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`);
+	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`);
 	const receipt = await readFile(join(job, "finish-webhook"), "utf8");
 	assert.match(receipt, /^accepted:/);
 	assert.match(receipt, /attempt 1: failed: sender exceeded 3000ms; acceptance unknown/);
@@ -614,7 +614,7 @@ test("a sender that times out twice makes no third attempt", async (context) => 
 	const job = await bareJob(f.root);
 	const selected = await f.config(join(f.parent, "twice.env"), { hang: true, descendant: join(f.parent, "twice-descendant") });
 	await writeFile(join(job, "finish-webhook-env"), `${selected}\n`);
-	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`);
+	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'retry');`);
 	const receipt = await readFile(join(job, "finish-webhook"), "utf8");
 	assert.match(receipt, /attempt 1: failed: sender exceeded 3000ms; acceptance unknown/);
 	assert.match(receipt, /attempt 2: failed: sender exceeded \d+ms; acceptance unknown/);
@@ -631,7 +631,7 @@ test("a timeout at the shutdown deadline records no retry", async (context) => {
 	await runModule(
 		f.pkg,
 		{ ...f.env, TEST_JOB_DIR: job },
-		`const { deliverFinishWebhook } = await import('./src/finish-webhook.ts'); await deliverFinishWebhook(${JSON.stringify(job)}, Date.now() + 2500);`,
+		`const { deliverFinishWebhook } = await import('./src/integrations/finish-webhook.ts'); await deliverFinishWebhook(${JSON.stringify(job)}, Date.now() + 2500);`,
 	);
 	const receipt = await readFile(join(job, "finish-webhook"), "utf8");
 	assert.match(receipt, /attempt 1: failed: sender exceeded \d+ms; acceptance unknown/);
@@ -649,7 +649,7 @@ test("an exhausted shutdown budget records not sent without launching the helper
 	await runModule(
 		f.pkg,
 		{ ...f.env, TEST_JOB_DIR: job },
-		`const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'stopped', 'late stop', Date.now() - 1);`,
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'stopped', 'late stop', Date.now() - 1);`,
 	);
 	assert.match(await delivery(job), /^failed: no shutdown time remains; not sent/);
 	assert.equal(await readFile(join(job, "state"), "utf8"), "stopped\n");
@@ -660,7 +660,7 @@ test("missing config and unavailable sender fail safely, while an interrupted cl
 	const f = await fixture(context);
 	const job = await bareJob(f.root);
 	await writeFile(join(job, "finish-webhook-env"), `${join(f.parent, "missing.env")}\n`);
-	const finalize = `const { finalizeJob } = await import('./src/wrapper.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'finish');`;
+	const finalize = `const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'done', 'finish');`;
 	await runModule(f.pkg, { ...f.env, TEST_JOB_DIR: job }, finalize);
 	assert.match(await delivery(job), /^failed: sender exited 1/);
 	assert.doesNotMatch(await readFile(join(job, "log"), "utf8"), /ENOENT|missing\.env|synthetic-secret/);
@@ -874,7 +874,7 @@ test("hosted completion filters by captured author and preserves ordinals on par
 	await runModule(
 		f.pkg,
 		{ ...f.env, LIMEN_HERDR: herdr, LIMEN_JOB_DIR: job, LIMEN_HOSTED_TARGET: "synthetic:p1", NODE_OPTIONS: `--import=${transport}` },
-		"const { runHostedSupervisor } = await import('./src/supervisor.ts'); await runHostedSupervisor();",
+		"const { runHostedSupervisor } = await import('./src/runtime/supervisor.ts'); await runHostedSupervisor();",
 	);
 	assert.match(await delivery(job), /^failed: sender exited 1/);
 	assert.equal(await readFile(join(job, "state"), "utf8"), "done\n");

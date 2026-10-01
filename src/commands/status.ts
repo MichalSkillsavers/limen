@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
-import { limenRoot, unlandedBranches, workspaceRepository, workspaceRoot } from "../git.ts";
-import { confirmDeadJobs } from "../reap.ts";
+import { limenRoot, unlandedBranches, workspaceRepository, workspaceRoot } from "../project/git.ts";
+import { confirmDeadJobs } from "../runtime/reap.ts";
 import { renderJobDirectory } from "./jobs.ts";
 
 const text = (path: string) =>

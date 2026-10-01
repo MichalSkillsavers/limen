@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { finishEvent, inspectFinishWebhook, parseFinishReceipt, parseFinishSelection } from "../src/finish-receipt.ts";
+import { finishEvent, inspectFinishWebhook, parseFinishReceipt, parseFinishSelection } from "../src/integrations/finish-receipt.ts";
 
 const inheritedSource = process.env.LIMEN_FINISH_EVIDENCE_DIR;
 test.beforeEach(() => {

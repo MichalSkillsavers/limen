@@ -4,9 +4,9 @@ import { chmod, chown, mkdir, readdir, readFile, rm, writeFile } from "node:fs/p
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { repoRoot } from "../git.ts";
-import { pollGithub } from "../github-poller.ts";
-import { type GithubClaim, matchedGithubJob, startGithubJob } from "../github-review.ts";
+import { pollGithub } from "../integrations/github-poller.ts";
+import { type GithubClaim, matchedGithubJob, startGithubJob } from "../integrations/github-review.ts";
+import { repoRoot } from "../project/git.ts";
 import { githubDoctor } from "./github-doctor.ts";
 
 export type GithubBinding = { repo: string; coordinator: string; user: string; connectedAt: string };

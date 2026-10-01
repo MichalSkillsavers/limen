@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { limenRoot } from "../git.ts";
-import { resolveJob } from "../lookup.ts";
+import { resolveJob } from "../job/lookup.ts";
+import { limenRoot } from "../project/git.ts";
 export const watchCommand = (args: readonly string[], cwd: string): Promise<void> => changeSubscriptions(args, cwd, true);
 export const unwatchCommand = (args: readonly string[], cwd: string): Promise<void> => changeSubscriptions(args, cwd, false);
 async function changeSubscriptions(args: readonly string[], cwd: string, watching: boolean): Promise<void> {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assistantStopReason, createStreamParser } from "../src/stream.ts";
+import { assistantStopReason, createStreamParser } from "../src/runtime/stream.ts";
 
 test("json events become a human log and last-tool names", () => {
 	const parser = createStreamParser();

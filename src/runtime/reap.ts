@@ -1,9 +1,9 @@
 import { readdir } from "node:fs/promises";
+import { hostedAgentAlive } from "../integrations/herdr.ts";
+import { finalizeJob, textFile } from "../job/record.ts";
 import { processAlive, processGroupAlive, processInfo } from "./contain.ts";
-import { hostedAgentAlive } from "./herdr.ts";
 import { claimRecovery, recoverHostedOwner, recoveryTarget } from "./recovery.ts";
 import { writeHostedResult } from "./supervisor.ts";
-import { finalizeJob, textFile } from "./wrapper.ts";
 
 export const STARTUP_GRACE_MS = 10 * 60_000;
 export async function liveJob(jobDir: string, now = Date.now()): Promise<boolean> {

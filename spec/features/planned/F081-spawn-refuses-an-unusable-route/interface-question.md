@@ -23,7 +23,7 @@ Adam's alternative is explicit authorization for a generated probe with a numeri
 
 ## Safe transport seam
 
-`src/supervisor.ts` already passes fresh hosted tasks as `@task.md` and the preamble as a file path. Continuations alone read the whole instruction into a shell argument. They now pass `--continue @<job>/continue`, using Pi's existing file-argument transport, without changing detached continuation.
+`src/runtime/supervisor.ts` already passes fresh hosted tasks as `@task.md` and the preamble as a file path. Continuations alone read the whole instruction into a shell argument. They now pass `--continue @<job>/continue`, using Pi's existing file-argument transport, without changing detached continuation.
 
 Installed `dist/cli/args.js` treats `--continue` as a boolean and `@file` independently. `dist/cli/file-processor.js` reads text bytes and wraps them in `<file name="...">`; the continuation therefore arrives as attached text rather than a bare message. Session selection and literal provider/model/thinking flags are unchanged.
 

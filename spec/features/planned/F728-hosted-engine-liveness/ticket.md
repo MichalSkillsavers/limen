@@ -6,7 +6,7 @@ A hosted OMP job remains running when its agent listing temporarily disappears b
 
 ## Scope
 
-- Start at `locateHostedAgent` in `src/herdr.ts`, whose foreground-process fallback currently recognizes only `pi` or `node`.
+- Start at `locateHostedAgent` in `src/integrations/herdr.ts`, whose foreground-process fallback currently recognizes only `pi` or `node`.
 - Use the recorded engine and existing profile where process identity requires an engine choice; retain one shared recovery path.
 - Preserve the distinction between a missing agent, an uncertain probe, and a positively located live process.
 - Cover hosted startup recovery, supervision, and existing callers without adopting an unrelated pane.

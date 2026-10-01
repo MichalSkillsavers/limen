@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { limenRoot } from "./git.ts";
+import { limenRoot } from "../project/git.ts";
 import { resolveJobId } from "./job.ts";
 export async function resolveJob(cwd: string, query: string): Promise<{ readonly id: string; readonly jobDir: string }> {
 	const jobsRoot = `${limenRoot(cwd)}/.limen/jobs`;

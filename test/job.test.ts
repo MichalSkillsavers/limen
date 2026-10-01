@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { derivePulse, parseDuration, parseJob, renderJob, resolveJobId } from "../src/job.ts";
+import { derivePulse, parseDuration, parseJob, renderJob, resolveJobId } from "../src/job/job.ts";
 
 test("duration parsing is explicit and bounded", () => {
 	assert.equal(parseDuration("500ms"), 500);

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
-import { limenRoot } from "../git.ts";
+import { limenRoot } from "../project/git.ts";
 
 /** The Linear mirror toggle is one file: spec/linear.md on, spec/linear.md.off parked. Mirroring itself is agent work; this only moves the config and reports. */
 export async function linearCommand(args: readonly string[], cwd: string): Promise<void> {

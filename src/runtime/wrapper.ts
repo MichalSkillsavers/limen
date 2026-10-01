@@ -1,37 +1,18 @@
 import { spawn } from "node:child_process";
-import { appendFile, open, readdir, readFile, rename, rm } from "node:fs/promises";
+import { appendFile, readFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { containEscapedDescendants, discoverEscapedDescendants, type JobProcess, processAlive, processInfo, signalProcessGroup } from "./contain.ts";
+import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, writeHandshake } from "../job/record.ts";
+import { containEscapedDescendants, discoverEscapedDescendants, type JobProcess, processInfo, signalProcessGroup } from "./contain.ts";
 import { argvFor, engineBinary, jobProfile, prepareSkillConfig } from "./engine.ts";
-import { deliverFinishWebhook } from "./finish-webhook.ts";
-import { commitList, headCommit } from "./git.ts";
-import { settleJobTab } from "./herdr.ts";
 import { observeToolStall, ownedToolDescendants, type ToolStallWatch, toolStallMs } from "./stalled-tool.ts";
 import { createStreamParser, type StreamEvent } from "./stream.ts";
 
 const STOP_GRACE_MS = 5_000;
-const HOOK = fileURLToPath(new URL("../hook", import.meta.url));
+const HOOK = fileURLToPath(new URL("../../hook", import.meta.url));
 // A job is one short turn. These bounds stop a silent runaway from burning a session; they are not a review gate.
 const DEFAULT_TIMEOUT_MS = 90 * 60_000;
 const MAX_TOOL_CALLS = 900;
 const toolCallCap = (): number => Number(process.env.LIMEN_MAX_TOOL_CALLS) || MAX_TOOL_CALLS;
-export async function atomicWrite(path: string, content: string): Promise<void> {
-	const temporary = `${path}.${process.pid}.${Date.now().toString(16)}.tmp`;
-	const handle = await open(temporary, "wx");
-	try {
-		await handle.writeFile(content);
-		await handle.sync();
-	} catch (error) {
-		await handle.close();
-		await rm(temporary, { force: true });
-		throw error;
-	}
-	await handle.close();
-	await rename(temporary, path);
-}
-export async function appendLimenLog(jobDir: string, message: string): Promise<void> {
-	await appendFile(`${jobDir}/log`, `[limen ${new Date().toISOString()}] ${message}\n`);
-}
 export async function launchWrapper(environment: Readonly<Record<string, string>>): Promise<number> {
 	return launchDetached({ ...environment, LIMEN_INTERNAL_RUN: "1" });
 }
@@ -39,7 +20,7 @@ export async function launchHostedSupervisor(environment: Readonly<Record<string
 	return launchDetached({ LIMEN_HOSTED_RECOVER: "", ...environment, LIMEN_INTERNAL_HOSTED: "1" });
 }
 async function launchDetached(environment: Readonly<Record<string, string>>): Promise<number> {
-	const executable = fileURLToPath(new URL("../bin/limen", import.meta.url));
+	const executable = fileURLToPath(new URL("../../bin/limen", import.meta.url));
 	const child = spawn(process.execPath, [executable], {
 		detached: true,
 		stdio: "ignore",
@@ -251,37 +232,6 @@ export async function failInternalJob(error: unknown): Promise<void> {
 	if (!jobDir) return;
 	await finalizeJob(jobDir, "failed", error instanceof Error ? error.message : String(error));
 }
-export function isFailedStopReason(reason: string): boolean {
-	return reason === "error" || reason.startsWith("error: ") || reason === "aborted" || reason.startsWith("aborted: ");
-}
-export const requestedTerminal = (reason: string): "done" | "stopped" => (reason.startsWith("done:") ? "done" : "stopped");
-export async function finalizeJob(jobDir: string, state: "done" | "failed" | "stopped", detail: string, shutdownDeadline?: number): Promise<void> {
-	if (["done", "failed", "stopped"].includes(await textFile(`${jobDir}/state`))) return;
-	await recordCommits(jobDir).catch(() => {});
-	await atomicWrite(`${jobDir}/finished-at`, `${new Date().toISOString()}\n`);
-	// The terminal log line lands before the state flip; state is the commit point observers key on, and the story must already be durable when they see it.
-	const inbox = await readdir(`${jobDir}/steer/inbox`).catch(() => []);
-	await appendLimenLog(jobDir, inbox.length ? `${state}: ${detail}; ${inbox.length} steer(s) never delivered` : `${state}: ${detail}`).catch(() => {});
-	await atomicWrite(`${jobDir}/state`, `${state}\n`);
-	await rm(`${jobDir}/pid`, { force: true });
-	await rm(`${jobDir}/born`, { force: true });
-	// A tmp whose writer still runs is an in-flight rename by a racing finalizer, not a leftover; deleting it makes that rename ENOENT and crashes the other process.
-	for (const name of await readdir(jobDir).catch(() => [])) {
-		const writer = /\.(\d+)\.[0-9a-f]+\.tmp$/.exec(name);
-		if (writer && !processAlive(Number(writer[1]))) await rm(`${jobDir}/${name}`, { force: true });
-	}
-	await deliverFinishWebhook(jobDir, shutdownDeadline).catch(() =>
-		appendLimenLog(jobDir, "finish webhook: delivery could not be recorded; inspect finish-webhook-attempt before manual retry").catch(() => {}),
-	);
-	await settleJobTab(jobDir);
-}
-export async function recordCommits(jobDir: string): Promise<void> {
-	const [base, branch, worktree] = await Promise.all([textFile(`${jobDir}/base`), textFile(`${jobDir}/branch`), textFile(`${jobDir}/worktree`)]);
-	if (!base || !branch || !worktree) return;
-	const commits = commitList(worktree, base, branch);
-	if (commits !== undefined) await atomicWrite(`${jobDir}/commits`, commits ? `${commits}\n` : "");
-	await atomicWrite(`${jobDir}/tip`, `${headCommit(worktree)}\n`);
-}
 async function recordEvents(
 	jobDir: string,
 	events: readonly StreamEvent[],
@@ -308,21 +258,6 @@ async function recordEvents(
 			await appendFile(`${jobDir}/log`, `${event.line}\n`);
 		}
 	}
-}
-export async function textFile(path: string): Promise<string> {
-	return readFile(path, "utf8").then(
-		(value) => value.trim(),
-		() => "",
-	);
-}
-export async function writeHandshake(jobDir: string): Promise<void> {
-	await atomicWrite(`${jobDir}/pid`, `${process.pid}\n`);
-	void recordBorn(jobDir);
-}
-async function recordBorn(jobDir: string): Promise<void> {
-	const outcome = await processInfo(process.pid);
-	if (outcome.kind !== "present" || ["done", "failed", "stopped"].includes(await textFile(`${jobDir}/state`))) return;
-	await atomicWrite(`${jobDir}/born`, `${outcome.process.born}\n`);
 }
 function requiredEnvironment(name: string): string {
 	const value = process.env[name];

@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { join } from "node:path";
 import test from "node:test";
 import limenHosted from "../hook/hosted.ts";
-import { reportHostedStall, restoreHostedPane } from "../src/herdr.ts";
+import { reportHostedStall, restoreHostedPane } from "../src/integrations/herdr.ts";
 
 test("hosted refresh preserves supervisor warnings, promptly recovers RUNNING labels, and cleans up on shutdown", async (context) => {
 	const root = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-hosted-metadata-"));
