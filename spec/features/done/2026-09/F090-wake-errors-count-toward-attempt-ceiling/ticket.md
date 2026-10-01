@@ -46,5 +46,5 @@ under provider outage (retro: 10,480 wakes across five coordinators) stop.
 
 Adam lock 2026-09-10: two unsuccessful auto attempts then deliberate recovery;
 park-and-preserve on quota (quota policy is board/handoff, not this ticket's
-runtime). Source: `limen-ops-retro-2026-09-10.md` + remediation approach
+runtime). Source: `spec/research/limen-ops-retro-2026-09-10.md` + remediation approach
 `daacd537`.
