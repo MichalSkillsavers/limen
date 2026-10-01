@@ -7,3 +7,10 @@ Hypothesis: coordinators built things because their template and briefs told the
 - A hard guard is only for what the prose provably fails to prevent. Cite the transcript evidence in `session-review.md` if you add one or reject one.
 
 Publish this hypothesis before any other tool. Look for wording in the current templates and briefs that invites building or re-verification.
+
+## Your saved branches (second run)
+
+- `limen/2026-09-30-t2-report-and-blocking-wait-e5308239`: commit `2f2f83b`, the report in the terminal event, the blocking wait, and the stall-detector exemption. Unverified checkpoint.
+- `limen/2026-09-30-t2-manage-only-prose-5e6c994f`: commit `aadb29d`, the manage-only templates and docs, plus the boundary decision. Unverified checkpoint.
+
+Your first run used only two workers. This time, split the runtime branch into separate report and wait aspects so they run in parallel.

@@ -8,3 +8,9 @@ Hypothesis: a model with spare time will drift into building and verifying, what
 - The coordinator template shrinks to the loop: fan out, review, continue, integrate, Ready.
 
 Publish this hypothesis before any other tool. Look for ways a guard could block legitimate manager actions, such as writing task files under `/tmp`, `git log`, reading results, or `limen continue`.
+
+## Your saved branches (second run)
+
+- `limen/2026-09-30-t1-event-report-efa00d15`: commit `e27d5bb`, the member's report in the terminal event. Finished and tested by its worker (61/63; the two wake-hook failures passed when run alone). Never reviewed.
+- `limen/2026-09-30-t1-blocking-wait-eff43600`: commit `7bae346`, the blocking wait and stall-detector exemption. Unverified checkpoint.
+- `limen/2026-09-30-t1-coordinator-guard-78f31c41`: commit `3ac96bb`, the coordinator tool guard. Unverified checkpoint.

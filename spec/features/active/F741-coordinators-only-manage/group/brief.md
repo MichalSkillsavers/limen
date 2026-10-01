@@ -9,11 +9,25 @@ Two teams build the same ticket from the same commit, with different approaches.
 
 Every team needs the report-in-terminal-event and blocking-wait mechanisms. The teams differ in how coordinators are kept from building, and in how much the templates carry.
 
+## Second run: start from the saved work
+
+The first run (`e0f39f4f`) died after 12 minutes. The cause was a group-mode bug: a busy cabinet lock failed healthy members. That bug is fixed in this run's Limen build, and `group/synthesis.md` describes the failure.
+
+Each team's aspect branches survived:
+- one is a finished commit that was never reviewed;
+- the others are unverified checkpoints, saved as they stood when the run stopped.
+
+Your team file lists your branches. Tell each worker which branch to start from, and have it merge that branch into its own branch first. Treat the saved code as a draft to verify, not as done work.
+
+The lock fix (`b62b837`) is already in your base. It restructured `syncLifecycle` in `src/group-events.ts` into a lock-free change check plus `sweepLifecycle`, and added a `"skip" | "wait"` mode to `groupLock`. Branches that changed the terminal lifecycle event will conflict there. Resolve the conflicts against the new shape, and keep routine bookkeeping on `"skip"`.
+
+You may read the other team's branches. Do not merge them wholesale. If you take an idea from them, say so in a finding.
+
 ## Coordinators in this run manage only
 
 This run tries out the role that the ticket asks you to build.
 
-- **Do not do the work yourself.** Do not edit repository files. Do not run tests, checks, builds, or formatters. Do not write test tooling or measure anything. If you need a fact, ask a worker or a reviewer. You may write task files under `/tmp/` and read anything.
+- **Do not do the work yourself.** Do not edit repository files. Do not run tests, checks, builds, or formatters. Do not write test tooling or measure anything. If you need a fact, ask a worker or a reviewer. You may write task files under `/tmp/` and read anything. Reading and sizing files counts as reading (`wc`, `grep`, `git log`, `git diff`, job results).
 - **Fan out first.** Split the ticket into 2–3 aspects that touch disjoint files, and launch one worker per aspect in parallel. Suggested split, which you may change:
   - the report in the terminal event (`src/group-events.ts` and its tests);
   - the blocking wait and the stall detector (`src/commands/group.ts`, `src/stalled-tool.ts`, and the wrapper/supervisor paths);
