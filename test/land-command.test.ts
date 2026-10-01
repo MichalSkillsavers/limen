@@ -20,7 +20,9 @@ test("land --yes fast-forwards a done job onto the current branch", async (conte
 	const job = join(scratch.root, ".limen/jobs", id);
 	const branch = (await readFile(join(job, "branch"), "utf8")).trim();
 	const tip = git(scratch.root, "rev-parse", branch);
-	const files = (await readdir(job)).sort();
+	// Finalize removes pid and born just after publishing state; compare only what land could touch.
+	const settled = async () => (await readdir(job)).filter((name) => name !== "pid" && name !== "born").sort();
+	const files = await settled();
 	const state = await readFile(join(job, "state"), "utf8");
 	assert.notEqual(tip, before);
 
@@ -30,7 +32,7 @@ test("land --yes fast-forwards a done job onto the current branch", async (conte
 	assert.equal(git(scratch.root, "rev-parse", "HEAD"), tip);
 	assert.equal(await readFile(join(scratch.root, "candidate.txt"), "utf8"), "candidate\n");
 	assert.equal(await readFile(join(job, "state"), "utf8"), state);
-	assert.deepEqual((await readdir(job)).sort(), files);
+	assert.deepEqual(await settled(), files);
 });
 
 test("land --yes merges when the target has moved", async (context) => {
