@@ -26,7 +26,6 @@
 - `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. OMP lead identity is fixed on the branch. Still open: member `limen` path, advisory noise, and one duplicate lead delivery, plus the steering-test races and full native proof; not landed or pushed.
 - `F741-omp-finish-wakes-herdr-coord` (🟠 ACTIVE, Adam priority): wake/wait implementation is on main at `39ec81b` and a live OMP job recorded a Herdr turn; finish retained-evidence and native checks with hosted OMP `anthropic/claude-opus-5-5` at `high`, Adam reviews, no independent reviewer, webhook remains opt-in.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
-- `F730-job-guidance-matches-engines` (🟠 ACTIVE): align engine evidence, setup-policy precedence, meaning-first naming, and existing command examples without changing the vision or global configuration.
 - `F744-role-spaces-match-project-roots` (🟠 ACTIVE): select readable Herdr role spaces without confusing unrelated roots that share a basename; no new registry or human-space rearrangement.
 
 ## NEXT
@@ -45,6 +44,7 @@
 
 ## PROVEN
 
+- `F730-job-guidance-matches-engines` (🟢 PROVEN): setup docs and job finish labels follow the board's engine choices; OMP jobs log `done: <engine> exited 0` (not hard-coded pi), and launch examples put the outcome first with the ticket last. Landed `f0d1ec4`.
 - `F745-status-names-the-work` (🟢 PROVEN): `limen status` names coordinators subject-first (tab label · handle · status · ids) and lists cleanly ended unlanded work under Candidates to inspect, not ready-to-land. Landed `8f83a81`.
 - `F742-feature-identities-stay-unique` (🟢 PROVEN): feature numbers name one thing — parked field-guide proposal filed as F743; landed F050 diff viewer history untouched. Landed `7328a16`.
 - `F739-doorbell-dedupe` (🟢 PROVEN): the finish ping claims once per job and final state, so jobs at the same commit each ring; a sender timeout gets one retry inside a 4 s budget. Landed `16939e1` with test-env fix `cf273fd`; focused 57/57 under `LIMEN_JOB=1`; live receiver turn unobserved.
