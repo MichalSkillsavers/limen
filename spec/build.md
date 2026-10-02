@@ -28,7 +28,6 @@
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 - `F730-job-guidance-matches-engines` (🟠 ACTIVE): align engine evidence, setup-policy precedence, meaning-first naming, and existing command examples without changing the vision or global configuration.
 - `F744-role-spaces-match-project-roots` (🟠 ACTIVE): select readable Herdr role spaces without confusing unrelated roots that share a basename; no new registry or human-space rearrangement.
-- `F745-status-names-the-work` (🟠 ACTIVE): show coordinator subjects/handles and call cleanly ended unlanded work candidates to inspect, not proof of approval.
 
 ## NEXT
 
@@ -46,6 +45,7 @@
 
 ## PROVEN
 
+- `F745-status-names-the-work` (🟢 PROVEN): `limen status` names coordinators subject-first (tab label · handle · status · ids) and lists cleanly ended unlanded work under Candidates to inspect, not ready-to-land. Landed `8f83a81`.
 - `F742-feature-identities-stay-unique` (🟢 PROVEN): feature numbers name one thing — parked field-guide proposal filed as F743; landed F050 diff viewer history untouched. Landed `7328a16`.
 - `F739-doorbell-dedupe` (🟢 PROVEN): the finish ping claims once per job and final state, so jobs at the same commit each ring; a sender timeout gets one retry inside a 4 s budget. Landed `16939e1` with test-env fix `cf273fd`; focused 57/57 under `LIMEN_JOB=1`; live receiver turn unobserved.
 - `F738-plate-inbox` (🟢 PROVEN): `limen status` is a one-screen inbox — Running, Ready to land, Needs a decision, older behind `--all`; ancestry or patch-id counts as landed, shared with `prune --retire`. Landed `39a22e1`; synthetic 2,000-record cabinet 1.7 s (was 64.9 s); live plate 4.7 s with Herdr.
