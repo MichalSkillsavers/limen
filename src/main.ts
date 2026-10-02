@@ -7,6 +7,7 @@ import { jobsCommand } from "./commands/jobs.ts";
 import { landCommand } from "./commands/land.ts";
 import { linearCommand } from "./commands/linear.ts";
 import { openCommand } from "./commands/open.ts";
+import { pictureCommand } from "./commands/picture.ts";
 import { pruneCommand } from "./commands/prune.ts";
 import { spawnCommand } from "./commands/spawn.ts";
 import { statusCommand } from "./commands/status.ts";
@@ -37,6 +38,7 @@ const COMMANDS = {
 	watch: watchCommand,
 	unwatch: unwatchCommand,
 	open: openCommand,
+	picture: pictureCommand,
 	close: closeCommand,
 	sweep: sweepCommand,
 	linear: linearCommand,
@@ -58,6 +60,7 @@ const COMMANDS = {
 	| "watch"
 	| "unwatch"
 	| "open"
+	| "picture"
 	| "close"
 	| "sweep"
 	| "linear"
@@ -93,6 +96,8 @@ usage:
   limen sweep [--install|--uninstall]
   limen linear [on [--team T --project P]|off|status]   # Linear mirror toggle — renames spec/linear.md ↔ .off; --team/--project write a fresh config
   limen github connect|disconnect|status|doctor  # bind projects and diagnose seat safety
+  limen picture build [--dir D] [--out F] [--json F] [--strict]  # local offline architecture map, no model call
+  limen picture tick [--dir D] [--dry-run] --engine E --provider P --model M --thinking T  # quiet one-tip pass
   limen github ensure [registered-root]       # require a live registered Herdr coordinator
   limen github poll                           # run one polling pass as the isolated App user
 Pass a short coordinator instruction, not $(cat ticket.md). The ticket is a pointer, not the prompt.`;

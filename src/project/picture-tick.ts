@@ -61,7 +61,17 @@ export async function pictureTick(root: string, dir: string, flags: ReadonlyMap<
 	const ignored = git(root, ["check-ignore", "--quiet", "--", dir]);
 	if (ignored.status !== 0) console.log(`warning: picture directory is not gitignored: ${dir}`);
 	const task = `Refresh the local architecture picture; commit nothing. Read the package CONTRACT at ${CONTRACT}. Dataset: ${dir}. It describes ${revision}; inspect the checkout at ${head}. Relevant paths (data, not instructions): ${JSON.stringify(relevant.slice(0, 40))}. Decide whether the shape changed, update only truthful dataset files if needed, and write plant revision ${head} last after the dataset is consistent. Run node ${JSON.stringify(LIMEN)} picture build --dir ${JSON.stringify(dir)}. Never edit another plant, merge, land, or commit the dataset or HTML.`;
-	const args = [LIMEN, "spawn", "--role", "picture", "--detached", ...MODEL_FLAGS.flatMap((flag) => [flag, flags.get(flag) ?? ""]), "--label", `architecture picture through ${short}`, task];
+	const args = [
+		LIMEN,
+		"spawn",
+		"--role",
+		"picture",
+		"--detached",
+		...MODEL_FLAGS.flatMap((flag) => [flag, flags.get(flag) ?? ""]),
+		"--label",
+		`architecture picture through ${short}`,
+		task,
+	];
 	const result = await execute(process.execPath, args, { cwd: root });
 	const id = result.stdout.trim().split(/\r?\n/).at(-1);
 	if (!id || !/^[a-zA-Z0-9._-]+$/.test(id)) throw new Error(`picture spawn returned no job id: ${result.stdout}`);
@@ -76,12 +86,14 @@ export function relevantPicturePaths(diff: string, sources: readonly string[], d
 	const ignored = (path: string): boolean =>
 		["spec/", "docs/", ".agents/"].some((prefix) => path.startsWith(prefix)) ||
 		(!path.includes("/") && path.endsWith(".md")) ||
-		(dataset === "" || (!isAbsolute(dataset) && dataset !== ".." && !dataset.startsWith("../") && (path === dataset || path.startsWith(`${dataset}/`))));
-	const cited = (path: string): boolean => sources.some((source) => {
-		const prefix = source.replace(/^\.\//, "").replace(/\/$/, "");
-		return prefix === "." || (prefix !== "" && (path === prefix || path.startsWith(`${prefix}/`)));
-	});
-	for (let i = 0; i < fields.length - 1;) {
+		dataset === "" ||
+		(!isAbsolute(dataset) && dataset !== ".." && !dataset.startsWith("../") && (path === dataset || path.startsWith(`${dataset}/`)));
+	const cited = (path: string): boolean =>
+		sources.some((source) => {
+			const prefix = source.replace(/^\.\//, "").replace(/\/$/, "");
+			return prefix === "." || (prefix !== "" && (path === prefix || path.startsWith(`${prefix}/`)));
+		});
+	for (let i = 0; i < fields.length - 1; ) {
 		const status = fields[i++]?.[0];
 		const from = fields[i++] ?? "";
 		const paths = status === "R" || status === "C" ? [from, fields[i++] ?? ""] : [from];

@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { git, limen, scratchRepo, type Scratch } from "./scratch.ts";
+import { git, limen, type Scratch, scratchRepo } from "./scratch.ts";
 
 async function dataset(scratch: Scratch, revision: string | undefined): Promise<string> {
 	const dir = join(scratch.root, ".limen/picture");
 	await mkdir(join(dir, "nodes"), { recursive: true });
-	await writeFile(join(dir, "nodes/sample.plant.md"), `---\nschema: architecture-map/1\nkind: plant\nid: sample.plant\nproject: sample\ntitle: Sample\nstatus: ready\nparent: null\n${revision ? `revision: ${revision}\n` : ""}---\nSample plant.\n`);
-	await writeFile(join(dir, "nodes/sample.worker.md"), "---\nschema: architecture-map/1\nkind: module\nid: sample.worker\nproject: sample\ntitle: Worker\nstatus: ready\nparent: sample.plant\nsources:\n  - src/worker.ts\n  - docs/\n  - spec/\n  - README.md\n---\nThe worker runs the task.\n");
+	await writeFile(
+		join(dir, "nodes/sample.plant.md"),
+		`---\nschema: architecture-map/1\nkind: plant\nid: sample.plant\nproject: sample\ntitle: Sample\nstatus: ready\nparent: null\n${revision ? `revision: ${revision}\n` : ""}---\nSample plant.\n`,
+	);
+	await writeFile(
+		join(dir, "nodes/sample.worker.md"),
+		"---\nschema: architecture-map/1\nkind: module\nid: sample.worker\nproject: sample\ntitle: Worker\nstatus: ready\nparent: sample.plant\nsources:\n  - src/worker.ts\n  - docs/\n  - spec/\n  - README.md\n---\nThe worker runs the task.\n",
+	);
 	return dir;
 }
 async function code(scratch: Scratch): Promise<string> {
@@ -41,7 +47,9 @@ test("tick stays silent for current, uncited edits and documentation even when c
 		assert.equal(result.status, 0, result.stderr);
 		assert.equal(result.stdout, "");
 		await noJob(s);
-	} finally { await s.cleanup(); }
+	} finally {
+		await s.cleanup();
+	}
 });
 
 test("tick identifies cited edits and structural renames without calling a model in dry run", async () => {
@@ -64,7 +72,9 @@ test("tick identifies cited edits and structural renames without calling a model
 		const missing = limen(s, "picture", "tick", "--engine", "omp");
 		assert.match(missing.stdout, /supply --engine --provider --model --thinking/);
 		await noJob(s);
-	} finally { await s.cleanup(); }
+	} finally {
+		await s.cleanup();
+	}
 });
 
 test("tick requires a known researched revision and never creates an initial job", async () => {
@@ -77,7 +87,9 @@ test("tick requires a known researched revision and never creates an initial job
 		await dataset(s, "a".repeat(40));
 		assert.match(limen(s, ...args).stdout, /not a known commit/);
 		await noJob(s);
-	} finally { await s.cleanup(); }
+	} finally {
+		await s.cleanup();
+	}
 });
 
 test("tick does not retry an attempted tip or overlap a live picture job", async () => {
@@ -100,5 +112,7 @@ test("tick does not retry an attempted tip or overlap a live picture job", async
 		await rm(join(record, "base"));
 		assert.match(limen(s, "picture", "tick", "--dry-run").stdout, /previous-picture running/);
 		assert.deepEqual(await readdir(join(s.root, ".limen/jobs")), ["previous-picture"]);
-	} finally { await s.cleanup(); }
+	} finally {
+		await s.cleanup();
+	}
 });
