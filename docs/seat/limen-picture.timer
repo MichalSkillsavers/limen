@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the Limen architecture picture every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+Unit=limen-picture.service
+
+[Install]
+WantedBy=timers.target

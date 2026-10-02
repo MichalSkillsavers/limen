@@ -115,6 +115,12 @@ A detached job is bounded by 90 minutes (`--timeout 20m`) and 900 tool-start eve
 
 `limen sweep` scans registered projects for unheard terminal jobs and hosted-stall advisories. Each event gets one seat notification, even across restarts or concurrent sweeps; old timestamp receipts remain valid. Clearing and creating a new advisory permits a new bell. The sweep records `notify/seat` before transport, so an ambiguous notification failure logs an error but never retries that event automatically. Seat receipts do not consume coordinator wakes or finish webhooks.
 
+## Architecture picture
+
+`limen picture build` renders a project's architecture map — places, the edges between them, and later the features and journeys that cross them — from a gitignored Markdown dataset (default `.limen/picture/`) into one offline `map.html` beside it. It never calls a model, and the map is never committed or landed. The dataset rules live in [templates/picture/CONTRACT.md](templates/picture/CONTRACT.md).
+
+The first map is a detached `--role picture` job the coordinator starts by hand. After that, `limen picture tick --engine E --provider P --model M --thinking T` is one quiet pass: it compares the map's recorded commit with `HEAD` and starts a refresh job only when files were added, deleted, or renamed, or a source the map cites changed. Spec, docs, and map-only changes print nothing and spend nothing. One tip is attempted once; `--dry-run` prints the decision. Run it from an operator timer ([seat units](docs/seat/limen-picture.service)) or by hand.
+
 ## Ticket authorship
 
 For collaborators sharing a project, `limen ticket-author spec/features/active/F001-auth/ticket.md` reports the name, email, and commit that first added the ticket, following Git-recognized renames between lanes. Paths are relative to the current directory; absolute paths within the repository also work. The lookup reads the current branch's committed `HEAD`, never the current operator's Git config or GitHub session, and writes nothing.
@@ -206,6 +212,8 @@ limen unwatch <id|suffix|label> | --all
 limen open <id|suffix|label>
 limen close <FNNN>
 limen ticket-author <ticket-path>
+limen picture build [--dir D] [--out F] [--json F] [--strict]
+limen picture tick --engine E --provider P --model M --thinking T [--dir D] [--dry-run]
 ```
 
 IDs, unique suffixes, and unique labels are interchangeable where shown. `status` is the plant inbox: running jobs, finished candidates not yet landed, recent jobs that need a decision, and coordinator tabs. `continue` keeps the parent's engine. `land` merges a `done` job; a clean exit is not approval, so inspect the diff and checks first.

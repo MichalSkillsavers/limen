@@ -36,6 +36,10 @@ ntfy is the fallback when Moshi is not in play:
 
 Drop-in: `User`, `WorkingDirectory` = the project, `PATH` that includes `limen`. `systemctl enable --now limen-prune.timer`.
 
+## Picture
+
+Optional. After the coordinator has started the first architecture map by hand, `limen-picture.{service,timer}` run one `limen picture tick` every 15 minutes. Drop-in: `User`, `WorkingDirectory` = the project, `PATH` that includes `limen`, and the board's picture engine, provider, model, and reasoning in `ExecStart`. A pass with no structural or cited code change since the map's revision prints nothing and calls no model. `systemctl enable --now limen-picture.timer`.
+
 ## From the Mac (window)
 
 ```bash

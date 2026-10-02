@@ -1,0 +1,11 @@
+[Unit]
+Description=One quiet Limen architecture-picture pass
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Drop-in: User, WorkingDirectory=the repo, Environment=PATH with limen on it,
+# and the board's picture engine, provider, model, and reasoning in ExecStart.
+# No relevant code change since the map's revision means no model call.
+WorkingDirectory=/home/you/project
+ExecStart=/usr/local/bin/limen picture tick --engine omp --provider PROVIDER --model MODEL --thinking LEVEL
