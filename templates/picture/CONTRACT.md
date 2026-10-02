@@ -34,14 +34,16 @@ Common required fields: `schema` (`architecture-map/1`), `kind`, `id`, `project`
 | `plant` | `nodes/` | `parent: null` | Exactly one per project. Optional **new** `revision`. |
 | `module` | `nodes/` | `parent` | A code or host boundary. Parent is a place id in the same project. |
 | `edge` | `edges/` | `from`, `to`, `relation` | Directed. Never a `contains` edge: `parent` stores containment. |
-| `feature` | `features/` | **new** `touches` | Overlay. Not a place and not a block. |
-| `journey` | `journeys/` | **new** `steps` | Overlay. Not a place and not a block. |
+| `feature` | `features/` | **new** `touches` | Overlay. Not a place and not a block. No `parent`; one is kept as metadata only. |
+| `journey` | `journeys/` | **new** `steps` | Overlay. Not a place and not a block. No `parent`; one is kept as metadata only. |
 
 **`revision`** (plant, new): the full 40-hex commit the dataset describes. It is the watcher's cursor; there is no other cursor file. The worker writes it last, after the dataset is consistent at that commit. A plant without `revision` has never been refreshed.
 
-**`touches`** (feature, new): a non-empty block list of module ids. It is the only way a feature lights places. An edge with a feature at either end is dropped with a diagnostic. Never derive `touches` from Git history, branch diffs, or commit messages; it is written from the feature's own sources and the code it names.
+**`touches`** (feature, new): a block list of at least one module id. It is the only way a feature lights places. A missing list, a non-list, or an item that is not a valid id is an error (`feature.bad-field`); an id that names no module is a warning and is dropped (`feature.unknown-touch`). Never derive `touches` from Git history, branch diffs, or commit messages; it is written from the feature's own sources and the code it names.
 
-**`steps`** (journey, new): an ordered block list of at least two place ids, read as "the action crosses these places in this order". The body says what happens at each step. Steps do not create edges.
+**`steps`** (journey, new): an ordered block list of at least two place ids (modules or the plant), read as "the action crosses these places in this order". Order and repeats are kept. Malformed lists are `journey.bad-field` errors; an id that names no place is dropped with `journey.unknown-step`. The body says what happens at each step. Steps do not create edges.
+
+An edge with a feature or journey at either end is dropped with a warning (`edge.feature`, `edge.journey`). Overlays never become blocks or edges.
 
 `status` is `ready` (matches the cited sources), `partial` (true but incomplete; the body names the gap), or `stub` (id reserved; the body claims no behavior). Do not mark `ready` when a cited source was not read.
 
@@ -70,9 +72,9 @@ Present tense, active voice, one idea per sentence, under 25 words. No contracti
 
 ## `limen picture build`
 
-Deterministic and offline. Reads the dataset, writes one self-contained HTML file that works from `file://` with no network. Never calls a model. Diagnostics (dangling edge, unknown parent, bad id, unknown touch or step, and so on) are listed in the view and on stderr; `--strict` exits 1 on any error diagnostic, otherwise the map still renders. The header names the plant `revision` and, when the project's current `HEAD` differs, says the map is behind and names that commit.
+Deterministic and offline. Reads the dataset, writes one self-contained HTML file that works from `file://` with no network. Never calls a model. The embedded model is `architecture-map-model/2`: `project`, `nodes`, `edges`, `features` (common fields plus `touches`), `journeys` (common fields plus `steps`), and `diagnostics`; `--json` writes the same model. Diagnostics (dangling edge, unknown parent, bad id, unknown touch or step, and so on) are listed in the view and on stderr; `--strict` exits 1 on any error diagnostic, otherwise the map still renders. The header names the plant `revision` and, when the project's current `HEAD` differs, says the map is behind and names that commit.
 
-The view opens on the whole plant (top-level places and edges lifted between them), drills into a place, deep-links by `#<id>`, searches by id and title, and shows each place's body, sources, and edges. Partial and stub places look incomplete. Overlay features and journeys light their listed places on hover or selection and never otherwise.
+The view opens on the whole plant (top-level places and edges lifted between them), drills into a place, deep-links by `#<id>`, searches by id and title, and shows each place's body, sources, and edges. Partial and stub places look incomplete. Features and journeys appear as a list beside the map, never as blocks or links; hovering or selecting one lights exactly the places in its `touches` or `steps`, and nothing lights otherwise.
 
 ## `limen picture tick`
 
