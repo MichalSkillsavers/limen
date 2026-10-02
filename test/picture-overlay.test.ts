@@ -1,0 +1,188 @@
+import assert from "node:assert/strict";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import test from "node:test";
+import { readPicture } from "../src/picture/picture-build.ts";
+import { buildModel, type PictureFile } from "../src/picture/picture-model.ts";
+import { git, limen, scratchRepo } from "./scratch.ts";
+
+function record(kind: string, id: string, fields: string, body = "An explicit overlay."): PictureFile {
+	const directory = kind === "feature" ? "features" : kind === "journey" ? "journeys" : kind === "edge" ? "edges" : "nodes";
+	return {
+		source: `${directory}/${id}.md`,
+		text: `---\nschema: architecture-map/1\nkind: ${kind}\nid: ${id}\nproject: sample\ntitle: ${id}\nstatus: ready\n${fields}\n---\n${body}\n`,
+	};
+}
+
+const places = [
+	record("plant", "sample.plant", "parent: null"),
+	record("module", "sample.a", "parent: sample.plant"),
+	record("module", "sample.b", "parent: sample.plant"),
+	record("module", "sample.child", "parent: sample.a"),
+];
+
+test("features light only explicit modules, not ancestors, children or connected places", () => {
+	const model = buildModel({
+		files: [
+			...places,
+			record("feature", "sample.feature", "touches:\n  - sample.a\nparent: sample.b"),
+			record("edge", "sample.calls", "from: sample.a\nto: sample.b\nrelation: calls"),
+		],
+	});
+	assert.deepEqual(model.features[0]?.touches, ["sample.a"]);
+	assert.deepEqual(
+		model.nodes.map((node) => [node.id, node.parent]),
+		[
+			["sample.a", null],
+			["sample.child", "sample.a"],
+			["sample.b", null],
+		],
+	);
+	assert.deepEqual(
+		model.edges.map((edge) => [edge.id, edge.from, edge.to]),
+		[["sample.calls", "sample.a", "sample.b"]],
+	);
+	for (const field of ["parent", "children", "depth"]) assert.equal(Object.hasOwn(model.features[0]!, field), false);
+	assert.deepEqual(model.diagnostics, []);
+});
+
+test("unknown touches and steps drop only bad references and never invent places or edges", () => {
+	const model = buildModel({
+		files: [
+			...places,
+			record("feature", "sample.feature", "touches:\n  - sample.a\n  - sample.missing\n  - sample.plant\n  - sample.feature\n  - sample.journey"),
+			record(
+				"journey",
+				"sample.journey",
+				"steps:\n  - sample.b\n  - sample.missing\n  - sample.a\n  - sample.feature\n  - sample.journey\n  - sample.b\n  - sample.plant\n  - sample.a",
+			),
+		],
+	});
+	assert.deepEqual(model.features[0]?.touches, ["sample.a"]);
+	assert.deepEqual(model.journeys[0]?.steps, ["sample.b", "sample.a", "sample.b", "sample.plant", "sample.a"]);
+	assert.deepEqual(
+		model.nodes.map((node) => node.id),
+		["sample.a", "sample.child", "sample.b"],
+	);
+	assert.deepEqual(model.edges, []);
+	for (const field of ["parent", "children", "depth"]) assert.equal(Object.hasOwn(model.journeys[0]!, field), false);
+	assert.deepEqual(
+		model.diagnostics.map((diagnostic) => [diagnostic.level, diagnostic.code, /"([^"]+)"/.exec(diagnostic.message)?.[1]]),
+		[
+			["warn", "feature.unknown-touch", "sample.feature"],
+			["warn", "feature.unknown-touch", "sample.journey"],
+			["warn", "feature.unknown-touch", "sample.missing"],
+			["warn", "feature.unknown-touch", "sample.plant"],
+			["warn", "journey.unknown-step", "sample.feature"],
+			["warn", "journey.unknown-step", "sample.journey"],
+			["warn", "journey.unknown-step", "sample.missing"],
+		],
+	);
+});
+
+test("overlay endpoints are dropped rather than converted to structural edges or inferred touches", () => {
+	const model = buildModel({
+		files: [
+			...places,
+			record("feature", "sample.feature", "parent: sample.b"),
+			record("journey", "sample.journey", "steps:\n  - sample.a\n  - sample.b"),
+			record("edge", "sample.feature-from", "from: sample.feature\nto: sample.b\nrelation: implements"),
+			record("edge", "sample.feature-to", "from: sample.a\nto: sample.feature\nrelation: implements"),
+			record("edge", "sample.journey-edge", "from: sample.journey\nto: sample.b\nrelation: calls"),
+		],
+	});
+	assert.deepEqual(model.features[0]?.touches, []);
+	assert.deepEqual(model.edges, []);
+	assert.deepEqual(
+		model.nodes.map((node) => node.id),
+		["sample.a", "sample.child", "sample.b"],
+	);
+	assert.deepEqual(
+		model.diagnostics.map((diagnostic) => [diagnostic.level, diagnostic.code, diagnostic.id]),
+		[
+			["warn", "edge.feature", "sample.feature-from"],
+			["warn", "edge.feature", "sample.feature-to"],
+			["warn", "edge.journey", "sample.journey-edge"],
+			["error", "feature.missing-field", "sample.feature"],
+		],
+	);
+});
+
+test("required overlay lists reject missing, scalar, empty, short and malformed values", () => {
+	for (const kind of ["feature", "journey"] as const) {
+		const key = kind === "feature" ? "touches" : "steps";
+		const invalid = ["", `${key}: sample.a`, `${key}: null`, `${key}: []`, `${key}:\n  - 42`, `${key}:\n  - id: sample.a`, `${key}:\n  - sample_bad`];
+		if (kind === "journey") invalid.push(`${key}:\n  - sample.a`);
+		for (const fields of invalid) {
+			const model = buildModel({ files: [...places, record(kind, `sample.${kind}`, fields)] });
+			assert.ok(
+				model.diagnostics.some(
+					(diagnostic) => diagnostic.level === "error" && diagnostic.id === `sample.${kind}` && diagnostic.code === `${kind}.${fields ? "bad-field" : "missing-field"}`,
+				),
+				`${kind}: ${fields}`,
+			);
+			assert.deepEqual(model.edges, []);
+		}
+	}
+	const partlyMalformed = buildModel({ files: [...places, record("journey", "sample.journey", "steps:\n  - sample.b\n  - null\n  - sample.a\n  - sample.b")] });
+	assert.deepEqual(partlyMalformed.journeys[0]?.steps, ["sample.b", "sample.a", "sample.b"]);
+	assert.equal(partlyMalformed.diagnostics.find((diagnostic) => diagnostic.code === "journey.bad-field")?.level, "error");
+});
+
+test("unresolved but well-formed lists warn without discarding the overlay", () => {
+	const model = buildModel({
+		files: [...places, record("feature", "sample.feature", "touches:\n  - sample.missing"), record("journey", "sample.journey", "steps:\n  - sample.missing\n  - sample.a")],
+	});
+	assert.deepEqual(
+		model.features.map((feature) => [feature.id, feature.touches]),
+		[["sample.feature", []]],
+	);
+	assert.deepEqual(
+		model.journeys.map((journey) => [journey.id, journey.steps]),
+		[["sample.journey", ["sample.a"]]],
+	);
+	assert.deepEqual(
+		model.diagnostics.map((diagnostic) => [diagnostic.level, diagnostic.code]),
+		[
+			["warn", "feature.unknown-touch"],
+			["warn", "journey.unknown-step"],
+		],
+	);
+});
+
+test("overlay prose escapes executable content and retains sources, owner and unknown metadata", () => {
+	const body = "<script>alert(1)</script>\n\n[unsafe](javascript:alert) **Detail**.\n\nowner: overlay-team";
+	const model = buildModel({
+		files: [
+			...places,
+			record("feature", "sample.feature", "touches:\n  - sample.a\nsources:\n  - src/feature.ts\npriority: high", body),
+			record("journey", "sample.journey", "steps:\n  - sample.a\n  - sample.b\nsources:\n  - src/journey.ts\npriority: low", body),
+		],
+	});
+	for (const overlay of [...model.features, ...model.journeys]) {
+		assert.doesNotMatch(overlay.bodyHtml, /<script|href=["']javascript:|owner:/i);
+		assert.match(overlay.bodyHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+		assert.match(overlay.bodyHtml, /<strong>Detail<\/strong>/);
+		assert.equal(overlay.meta.owner, "overlay-team");
+	}
+	assert.deepEqual(model.features[0]?.sources, ["src/feature.ts"]);
+	assert.equal(model.features[0]?.meta.priority, "high");
+	assert.deepEqual(model.journeys[0]?.sources, ["src/journey.ts"]);
+	assert.equal(model.journeys[0]?.meta.priority, "low");
+	assert.deepEqual(model.diagnostics, []);
+});
+
+test("uppercase researched revision is the current canonical Git cursor, not an unknown commit", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(() => scratch.cleanup());
+	const head = git(scratch.root, "rev-parse", "HEAD");
+	const dir = join(scratch.root, ".limen/picture");
+	await mkdir(join(dir, "nodes"), { recursive: true });
+	const plant = record("plant", "sample.plant", `parent: null\nrevision: ${head.toUpperCase()}`);
+	await writeFile(join(dir, plant.source), plant.text);
+	assert.equal((await readPicture(dir)).project.revision, head);
+	const result = limen(scratch, "picture", "tick");
+	assert.equal(result.status, 0, result.stderr);
+	assert.equal(result.stdout, "");
+	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")).catch(() => []), []);
+});
