@@ -79,10 +79,10 @@ export async function spawnCommand(args: readonly string[], cwd: string, coordin
 }
 async function spawnJob(args: readonly string[], cwd: string, group?: { run: GroupRun; team: string; role: "coordinator" | "worker" }): Promise<void> {
 	const parsed = parseSpawnArgs(args);
-	if (!group && parsed.role === "coordinator")
-		throw new Error(
-			"managed team coordinators come only from limen group start; the owner-facing lead is the interactive Herdr coordinator pane (LIMEN_COORDINATOR=1) with group-peer loaded — never spawn a hosted job as lead or coordinator",
-		);
+	if (!group) {
+		const roleClaim = claimsOwnerFacingLead("", parsed.role, false);
+		if (roleClaim) throw new Error(roleClaim);
+	}
 	if (group) {
 		const run = group.run;
 		const route = teamRoute(run, group.team);
@@ -110,6 +110,10 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	if (tab && !herdr) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
 	const loaded = await readSpawnTask(parsed.task, parsed.taskFile, cwd);
 	const options = { ...parsed, tab, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
+	if (!group) {
+		const leadClaim = claimsOwnerFacingLead(options.label, options.role, tab);
+		if (leadClaim) throw new Error(leadClaim);
+	}
 	const profile = resolveSpawnEngine(options.engine);
 	const engine = profile.id;
 	const model = options.model ?? (process.env[options.review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
@@ -377,6 +381,13 @@ function executeWorktree(root: string, plan: WorktreePlan): string {
 	if (plan.kind === "add-new") addNewWorktree(root, plan.path, plan.branch);
 	return plan.path;
 }
+function claimsOwnerFacingLead(label: string, role: string | undefined, hosted: boolean): string | undefined {
+	if (role === "coordinator" || role === "lead")
+		return "refusing spawn --role coordinator/lead: managed team coordinators come only from limen group start; the owner-facing lead is the interactive Herdr coordinator pane (LIMEN_COORDINATOR=1) with hook/group-peer.ts loaded (export LIMEN_PACKAGE to a package that ships group-peer, then reload that pane) — never limen spawn a substitute lead job";
+	if (hosted && /\b(?:group[\s_-]+)?lead\b/i.test(label))
+		return "refusing hosted spawn labeled as lead: a limen job (LIMEN_JOB=1) cannot register group-peer or run limen group start; use the plant Herdr coordinator pane (LIMEN_COORDINATOR=1) with group-peer loaded instead";
+}
+
 function parseSpawnArgs(args: readonly string[]): SpawnOptions {
 	let branch: string | undefined, repo: string | undefined, label: string | undefined, model: string | undefined;
 	let provider: string | undefined, thinking: string | undefined, base: string | undefined, head: string | undefined;
