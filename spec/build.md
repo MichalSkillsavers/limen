@@ -15,20 +15,25 @@
 - Settled Herdr panes keep RUNNING jobs and stall warnings visible; external finish delivery remains per-project opt-in.
 - Coordinator CPU is repaired without deleting history; job-history retention remains a separate operator decision.
 - **Ops wave (Adam 2026-09-27, Johnny coordinating), in this order:** plate as inbox (F738) and doorbell dedupe on job + final state (F739) in parallel; then owner + land policy on the job with a non-blocking end-of-job spec nudge; then OMP finish wakes with `limen wait` refused under `LIMEN_COORDINATOR=1`; then quiet liveness. OMP only, never pi-claude; land each slice onto `main` when done, no extra review; never edit Alice `alice/` or `api/`.
+- **Ergonomics wave (Adam 2026-10-02):** implement policy-accurate setup examples and naming, unique feature identities, root-aware Herdr role spaces, and subject-first status; finish existing reliability slices without rebuilding landed wakes or touching group branches.
+- **Ergonomics boundary:** preserve the vision and owner review policy; no global Pi/OMP/Herdr configuration changes, external-service operations, or unrelated plant edits; context deduplication is explanation only.
+- **Feature identity reservation:** F743 is reserved for the parked application field-guide proposal currently also called F050; keep the landed F050 diff viewer and its history unchanged.
 
 ## NOW
 
 - `F014-github-doorbell` (🟠 ACTIVE): Alice's isolated App key, warm coordinator, live PR mention, hosted review, and one start/finish receipt are proven; second-seat ownership/routing remains to prove before closing.
-- `F731-seat-bell-once` (🟠 ACTIVE): Stop the seat sweep replaying the same finished or stalled job forever; old markers and concurrent sweeps must not ring again.
+- `F731-seat-bell-once` (🟠 ACTIVE): resume the preserved one-bell-per-event candidate on current main and finish native proof without re-enabling the paused seat sweep or sending external notifications.
 - `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. OMP lead identity is fixed on the branch. Still open: member `limen` path, advisory noise, and one duplicate lead delivery, plus the steering-test races and full native proof; not landed or pushed.
-- `F741-omp-finish-wakes-herdr-coord` (🟠 ACTIVE, Adam priority): a finished watched job starts a turn on the recorded Herdr coordinator pane, and `limen wait` refuses under `LIMEN_COORDINATOR=1`. One hosted OMP `anthropic/claude-opus-5-5` worker at `high`; Adam reviews, no independent reviewer; land onto `main` after native checks. Finish webhook stays an opt-in side channel; never edit `alice/` or `api/`.
+- `F741-omp-finish-wakes-herdr-coord` (🟠 ACTIVE, Adam priority): wake/wait implementation is on main at `39ec81b` and a live OMP job recorded a Herdr turn; finish retained-evidence and native checks with hosted OMP `anthropic/claude-opus-5-5` at `high`, Adam reviews, no independent reviewer, webhook remains opt-in.
+- `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
+- `F730-job-guidance-matches-engines` (🟠 ACTIVE): align engine evidence, setup-policy precedence, meaning-first naming, and existing command examples without changing the vision or global configuration.
+- `F742-feature-identities-stay-unique` (🟠 ACTIVE): distinguish the parked application field guide as reserved F743 while preserving the landed F050 diff-viewer history; coordinator files the board correction at landing.
+- `F744-role-spaces-match-project-roots` (🟠 ACTIVE): select readable Herdr role spaces without confusing unrelated roots that share a basename; no new registry or human-space rearrangement.
+- `F745-status-names-the-work` (🟠 ACTIVE): show coordinator subjects/handles and call cleanly ended unlanded work candidates to inspect, not proof of approval.
 
 ## NEXT
 
-- Quality follow-ups remain planned, not started.
-- `F728-hosted-engine-liveness` (🔴 PLANNED): keep a hosted OMP process live when Herdr loses its classification; reproduce the fallback gap before changing recovery.
-- `F729-continuation-publication` (🔴 PLANNED): publish continuation records safely against concurrent prune without adding workflow state.
-- `F730-job-guidance-matches-engines` (🔴 PLANNED): make job logs and guidance reflect the selected engine and available evidence.
+- `F728-hosted-engine-liveness` (🔴 PLANNED): Sequenced after root-aware role spaces (F744) because both touch the Herdr integration; reproduce the OMP fallback gap before changing recovery.
 
 ## PARKED
 
