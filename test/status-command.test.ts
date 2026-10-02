@@ -53,8 +53,13 @@ const args = process.argv.slice(2);
 const ok = (result) => console.log(JSON.stringify({ result }));
 if (args[0] === "agent" && args[1] === "get") ok({ agent: { agent_status: "working", pane_id: "wSC:p1" } });
 else if (args[0] === "agent" && args[1] === "list") ok({ agents: [
-  { cwd: ${JSON.stringify(repo)}, tab_id: "wNF:t19", pane_id: "wNF:p19", agent_status: "working" },
+  { cwd: ${JSON.stringify(repo)}, tab_id: "wNF:t19", pane_id: "wNF:p19", agent_status: "working", name: "api-coordinator", terminal_title: "π - api" },
+  { cwd: ${JSON.stringify(repo)}, tab_id: "wNF:t2", pane_id: "wNF:p2", agent_status: "idle", terminal_title: "π - api" },
   { cwd: ${JSON.stringify(join(scratch.root, ".limen-worktrees/worker"))}, tab_id: "wSC:t1", pane_id: "wSC:p1", agent_status: "done" }
+] });
+else if (args[0] === "tab" && args[1] === "list" && process.env.TABS !== "fail") ok({ tabs: [
+  { tab_id: "wNF:t19", number: 19, label: "API billing migration · F701", agent_status: "working" },
+  { tab_id: "wNF:t2", number: 2, label: "2", agent_status: "idle" }
 ] });
 else process.exit(1);
 `,
@@ -67,9 +72,15 @@ else process.exit(1);
 	assert.equal(status.status, 0, status.stderr);
 	assert.match(jobs.stdout, /tool.*bash: git status/);
 	assert.match(status.stdout, /Running \(1\):[\s\S]*live OMP worker.*wSC:t1 · \d+m · tool.*advisory needs attention.*bash: git status/);
-	assert.match(status.stdout, /Ready to land \(1\):\n  finished change \(completed\) · limen\/finished · repo api/);
-	assert.match(status.stdout, /Coordinator tabs:[\s\S]*wNF:t19 · working/);
+	assert.match(status.stdout, /Candidates to inspect \(1\):\n  finished change \(completed\) · limen\/finished · repo api/);
+	assert.doesNotMatch(status.stdout, /Ready to land/);
+	assert.match(status.stdout, /Coordinator tabs:[\s\S]*\n  API billing migration · F701 · handle api-coordinator · working · wNF:t19 wNF:p19 · /);
+	assert.match(status.stdout, /\n  unlabeled tab · no handle · idle · wNF:t2 wNF:p2 · /);
+	assert.doesNotMatch(status.stdout, /π - api/);
 	assert.doesNotMatch(status.stdout.slice(status.stdout.indexOf("Coordinator tabs:")), /wSC:t1/);
+	const unlabeled = limenWithEnv(scratch, { ...env, TABS: "fail" }, "status");
+	assert.equal(unlabeled.status, 0, unlabeled.stderr);
+	assert.match(unlabeled.stdout, /\n  tab label unknown · handle api-coordinator · working · wNF:t19 /);
 });
 
 test("plant plate does not leave merged, empty or deleted branches waiting; Herdr absence is unknown", async (context) => {
@@ -98,13 +109,13 @@ test("plant plate does not leave merged, empty or deleted branches waiting; Herd
 	const before = limen(scratch, "status");
 	assert.equal(before.status, 0, before.stderr);
 	assert.match(before.stdout, /Running \(1\):[\s\S]*Pi detached.*starting.*advisory review stall/);
-	assert.match(before.stdout, /Ready to land \(1\):\n  pending \(pending\) · limen\/pending\n/);
+	assert.match(before.stdout, /Candidates to inspect \(1\):\n  pending \(pending\) · limen\/pending\n/);
 	assert.doesNotMatch(before.stdout, /empty \(empty\)|gone \(gone\)/);
 	assert.match(before.stdout, /Coordinator tabs:\n  unknown \(Herdr unavailable\)/);
 	git(scratch.root, "merge", "--ff-only", "limen/pending");
 	const after = limen(scratch, "status");
 	assert.equal(after.status, 0, after.stderr);
-	assert.match(after.stdout, /Ready to land \(0\):/);
+	assert.match(after.stdout, /Candidates to inspect \(0\):/);
 	assert.doesNotMatch(after.stdout, /pending \(pending\)/);
 });
 
@@ -116,7 +127,7 @@ test("missing Git repository stays unconfirmed, not clear", async (context) => {
 	const result = limen(scratch, "status");
 	assert.equal(result.status, 0, result.stderr);
 	assert.match(result.stdout, /Unconfirmed jobs:[\s\S]*lost repo.*Git unknown/);
-	assert.match(result.stdout, /Ready to land \(0\):/);
+	assert.match(result.stdout, /Candidates to inspect \(0\):/);
 });
 
 test("inbox hides cherry-picked and empty work, routes stopped work to a decision, and keeps old records behind --all", async (context) => {
@@ -150,13 +161,13 @@ test("inbox hides cherry-picked and empty work, routes stopped work to a decisio
 	assert.equal(status.status, 0, status.stderr);
 	assert.match(
 		status.stdout,
-		/Ready to land \(0\):\n  none\nNeeds a decision \(2\):\n  failed work \(failed\) · failed · limen\/failed\n  stopped work \(stopped\) · stopped · limen\/stopped\n/,
+		/Candidates to inspect \(0\):\n  none\nNeeds a decision \(2\):\n  failed work \(failed\) · failed · limen\/failed\n  stopped work \(stopped\) · stopped · limen\/stopped\n/,
 	);
 	assert.doesNotMatch(status.stdout, /picked work|idle failure|old work/);
 	assert.match(status.stdout, /Older: 1 record \(limen status --all\)/);
 	const everything = limen(scratch, "status", "--all");
 	assert.equal(everything.status, 0, everything.stderr);
-	assert.match(everything.stdout, /Ready to land \(1\):\n  old work \(old\) · limen\/old\n/);
+	assert.match(everything.stdout, /Candidates to inspect \(1\):\n  old work \(old\) · limen\/old\n/);
 	assert.doesNotMatch(everything.stdout, /picked work|idle failure|Older:/);
 	const retire = limen(scratch, "prune", "--retire", "--dry-run");
 	assert.equal(retire.status, 0, retire.stderr);
@@ -183,7 +194,7 @@ test("recorded origin stays visible when global Herdr agent discovery times out"
 		`#!/usr/bin/env node
 if (process.argv[2] === "agent") process.exit(1);
 console.log(JSON.stringify({ result: { tabs: [
-  { tab_id: "w9:t1", agent_status: "working" },
+  { tab_id: "w9:t1", number: 1, label: "Release coordinator", agent_status: "working" },
   { tab_id: "w9:t2", agent_status: "working" }
 ] } }));
 `,
@@ -192,7 +203,7 @@ console.log(JSON.stringify({ result: { tabs: [
 	const status = limenWithEnv(scratch, { LIMEN_HERDR: herdr }, "status");
 	assert.equal(status.status, 0, status.stderr);
 	assert.match(status.stdout, /Running \(1\):[\s\S]*active worker/);
-	assert.match(status.stdout, /Coordinator tabs:[\s\S]*w9:t1 · working/);
+	assert.match(status.stdout, /Coordinator tabs:[\s\S]*Release coordinator · working · w9:t1/);
 	assert.doesNotMatch(status.stdout, /w9:t2 · working/);
 	assert.match(status.stdout, /origin tabs only/);
 });
