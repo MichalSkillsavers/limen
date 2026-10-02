@@ -22,6 +22,20 @@ works, coordinator status is unknown. A missing repository leaves landing
 status unconfirmed. A `done` Herdr tab does not prove a merge. The plate does
 not judge review acceptance or choose the next lane.
 
+## Role spaces belong to a project root
+
+Hosted workers, detached log views, and diff views share role spaces labeled
+`repo workers · /canonical/path/to/repo` (or the corresponding role). The full
+canonical root distinguishes projects with the same directory name; symlink
+aliases reuse the same space. An adjacent repository can supply the tab's cwd
+without changing the requested role-space root.
+
+An unqualified legacy label such as `repo workers` does not establish project
+identity. Limen leaves that space alone and creates a qualified one; it does not
+rename, move, or close human spaces. Existing job records still focus their
+recorded tabs. If several spaces have the same qualified label, Limen logs an
+`ambiguous Herdr role space` advisory instead of selecting one.
+
 ## Pane readiness is not job completion
 
 | Herdr state | What it means |
