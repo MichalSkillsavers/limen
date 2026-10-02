@@ -2,11 +2,13 @@ import { existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-/** Project stub: load wake, speech, and steering from the installed limen package. */
+/** Project stub: load wake, speech, steering, and group-peer (when the package ships it) from LIMEN_PACKAGE or PATH limen. */
 export default async function limen(pi: unknown): Promise<void> {
 	const root = process.env.LIMEN_PACKAGE?.trim() || findPackage();
-	for (const name of ["wake", "communication", "steering"]) {
-		const loaded = await import(pathToFileURL(join(root, "hook", `${name}.ts`)).href);
+	for (const name of ["wake", "communication", "steering", "group-peer"] as const) {
+		const hook = join(root, "hook", `${name}.ts`);
+		if (name === "group-peer" && !existsSync(hook)) continue;
+		const loaded = await import(pathToFileURL(hook).href);
 		await loaded.default(pi);
 	}
 }

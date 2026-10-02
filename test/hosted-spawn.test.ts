@@ -503,6 +503,19 @@ test("spawn --tab refuses without Herdr and leaves no job record", async (contex
 	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), []);
 });
 
+test("hosted spawn labeled as lead refuses before planting a job", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
+	const env = { HERDR_ENV: "1", LIMEN_HERDR: herdr.bin, FAKE_HERDR_STATE: herdr.dir, HERDR_TAB_ID: "coord:t0" };
+	const refused = limenWithEnv(scratch, env, "spawn", "--tab", "--label", "group lead · F910", "start the collaborative group");
+	assert.equal(refused.status, 1, refused.stderr);
+	assert.match(refused.stderr, /LIMEN_COORDINATOR=1/);
+	assert.match(refused.stderr, /LIMEN_JOB=1|cannot register group-peer/);
+	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), []);
+});
+
 test("spawn in Herdr is hosted without --tab; --detached keeps a watch tab", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);

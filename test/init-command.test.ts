@@ -66,6 +66,7 @@ test("init plants project-owned files and a hook stub, never role or hook copies
 	const stub = await readFile(join(scratch.root, ".pi/extensions/limen.ts"), "utf8");
 	assert.match(stub, /findPackage/);
 	assert.match(stub, /hook/);
+	assert.match(stub, /group-peer/);
 	assert.equal(await readFile(join(scratch.root, ".omp/extensions/limen.ts"), "utf8"), stub);
 	await assert.rejects(access(join(scratch.root, ".agents/limen/worker.md")));
 	await assert.rejects(access(join(scratch.root, ".agents/limen/reviewer.md")));

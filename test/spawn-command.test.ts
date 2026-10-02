@@ -538,6 +538,19 @@ test("spawn --role researcher and --role judge load the packaged preambles", asy
 	}
 });
 
+test("spawn refuses --role coordinator/lead before planting a job", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	for (const role of ["coordinator", "lead"] as const) {
+		const refused = limen(scratch, "spawn", "--detached", "--role", role, "--label", `fake ${role}`, "pretend to own the group");
+		assert.equal(refused.status, 1, refused.stderr);
+		assert.match(refused.stderr, /LIMEN_COORDINATOR=1/);
+		assert.match(refused.stderr, /group-peer/);
+	}
+	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), []);
+});
+
 test("spawn --role without a preamble or with --review plants no job", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
