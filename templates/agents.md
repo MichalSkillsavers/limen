@@ -4,9 +4,9 @@ This repository uses plain specifications, Git, and `limen` to coordinate one hu
 
 ## Coordinator
 
-The coordinator is a hosted session in Herdr for this plant (`LIMEN_COORDINATOR=1`), preferably OMP; use Pi only when the task needs it. It owns tickets and `spec/build.md`, and it decides spawn and merge. It is not a limen job.
+The coordinator is a hosted session in Herdr for this plant (`LIMEN_COORDINATOR=1`), preferably OMP; use Pi only when the task needs it. It owns tickets and `spec/build.md`, and it decides spawn and merge. It is not a limen job. A hosted limen job (`LIMEN_JOB=1`) is never the plant owner or a group lead, even when labeled "lead".
 
-Workers and reviewers exist only through `limen spawn`. There is no `--role coordinator`. Never spawn a coordinator job.
+Workers and reviewers exist only through `limen spawn`. There is no `--role coordinator`. Never spawn a coordinator or "group lead" job — collaborative feature groups start only from this interactive Herdr coordinator pane with the group hook loaded (see `docs/groups.md` when that surface is available), never from a spawned job.
 
 `LIMEN_COORDINATOR=1` on a spawn shell does not change the job's role.
 
@@ -14,7 +14,7 @@ Workers and reviewers exist only through `limen spawn`. There is no `--role coor
 
 | You say | Limen reality |
 |---|---|
-| Tony spawns a coordinator | Start a hosted OMP tab in the plant's Herdr space (`LIMEN_COORDINATOR=1`), or Pi when required. |
+| Tony spawns a coordinator | Start a hosted OMP tab in the plant's Herdr space (`LIMEN_COORDINATOR=1`), or Pi when required. Never `limen spawn` a "lead" or coordinator job for that role. |
 | The coordinator manages workers | That session runs `limen spawn`. |
 
 ## Seat and window

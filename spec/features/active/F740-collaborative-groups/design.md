@@ -59,7 +59,7 @@ A message is published once to the canonical group cabinet. A short finding incl
 
 ## Group communication is not ordinary steering
 
-Offer a small command surface for `group status`, `group publish`, `group wait`, `group stop`, and `group close`, alongside `group start`. A member's publication targets the group by default; a directed question may target a team. No manual watch/steer setup is required for ordinary group participation. The lead is the interactive owner-facing coordinator session that starts the group; it subscribes to compact group updates. A headless team coordinator is a managed member, not a substitute for an absent lead.
+Offer a small command surface for `group status`, `group publish`, `group wait`, `group stop`, and `group close`, alongside `group start`. A member's publication targets the group by default; a directed question may target a team. No manual watch/steer setup is required for ordinary group participation. The lead is the interactive owner-facing Herdr coordinator session (`LIMEN_COORDINATOR=1`, group hook loaded) that starts the group; it subscribes to compact group updates. A hosted limen job cannot be that lead. A headless team coordinator is a managed member, not a substitute for an absent lead.
 
 Lifecycle events (member start, terminal state, and existing blocker/advisory changes) are automatic. Semantic progress requires the agent to publish a finding or checkpoint; the harness must not invent progress from CPU, tool count, or a log summary. The group prompts require publication when an assumption changes, evidence disproves an approach, help is needed, or a candidate is ready.
 
