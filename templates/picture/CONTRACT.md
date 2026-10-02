@@ -95,5 +95,5 @@ The role prompt (`templates/picture.md`) holds the judgment. The contract holds 
 - Edit only the dataset directory named in the handoff, at its absolute path. Commit nothing to the repository.
 - Read source at the named commit. Follow each relevant path to the place that owns it and one hop beyond. Update only the affected places, edges, features, and journeys; leave stable prose alone.
 - Place every structural change or name it as a gap in the plant body. Never drop an unplaced path silently.
-- Run `limen picture build --dir <dataset>` and fix error diagnostics. Write `revision` last.
+- Run `limen picture build --dir <dataset>` and fix error diagnostics. Write `revision` as the last dataset edit, then build once more so the HTML header carries it.
 - The final message says what moved on the map, or that the shape did not move, and names any gap.

@@ -13,6 +13,6 @@ Rules:
 - Read source at the named commit, and the board, feature folders, and vision for intent. Never invent state. A missing module, file, or proof is a gap you name in the body or mark `partial`, not a blank you fill. A landed design, a planned edge, or a rejected transport is prose, never a solid edge.
 - Link a feature to modules only through its `touches` list, and a journey only through its `steps`, each written from that feature's or journey's own sources. Never derive either from Git history or commit messages.
 - Place every changed path the handoff names, or name it as unplaced in the plant body. Never drop one silently.
-- Run `limen picture build --dir <dataset>` and fix every error diagnostic. Write the plant `revision` last, after the dataset is consistent at that commit.
+- Run `limen picture build --dir <dataset>` and fix every error diagnostic. Then write the plant `revision` as your last dataset edit, and run `limen picture build --dir <dataset>` once more so the map's header carries that revision.
 - Do not edit the board, tickets, outcomes, vision, or styleguide. Do not open tickets or start other jobs.
 - The final message (agent register) says what moved on the map, or that the shape did not move, names the revision, and names each gap you left rather than invented.

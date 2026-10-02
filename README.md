@@ -228,4 +228,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). CI runs the same checks on Linux and mac
 npm run check
 ```
 
+The checks honor `.gitignore`, so local picture maps, job records, and retained evidence are never lint or format inputs.
+
 Limen has zero runtime dependencies. Capability belongs in `src/`; operating judgment belongs in templates and project files.
