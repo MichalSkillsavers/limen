@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Diagnostic, PictureFile } from "./picture-model.ts";
 
-const DATA_DIRS = ["nodes", "edges"] as const;
+const DATA_DIRS = ["nodes", "edges", "features", "journeys"] as const;
 const MAX_FILES = 10_000;
 
 // Read only flat Markdown files; missing graph directories and unrelated paths are ignored.
