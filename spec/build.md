@@ -17,7 +17,7 @@
 - **Ops wave (Adam 2026-09-27, Johnny coordinating), in this order:** plate as inbox (F738) and doorbell dedupe on job + final state (F739) in parallel; then owner + land policy on the job with a non-blocking end-of-job spec nudge; then OMP finish wakes with `limen wait` refused under `LIMEN_COORDINATOR=1`; then quiet liveness. OMP only, never pi-claude; land each slice onto `main` when done, no extra review; never edit Alice `alice/` or `api/`.
 - **Ergonomics wave (Adam 2026-10-02):** implement policy-accurate setup examples and naming, unique feature identities, root-aware Herdr role spaces, and subject-first status; finish existing reliability slices without rebuilding landed wakes or touching group branches.
 - **Ergonomics boundary:** preserve the vision and owner review policy; no global Pi/OMP/Herdr configuration changes, external-service operations, or unrelated plant edits; context deduplication is explanation only.
-- **Feature identity reservation:** F743 is reserved for the parked application field-guide proposal currently also called F050; keep the landed F050 diff viewer and its history unchanged.
+- **Feature identity:** the parked application field-guide proposal is F743 (formerly misfiled as F050; see its former-address.md); F050 is the landed diff viewer.
 
 ## NOW
 
@@ -27,7 +27,6 @@
 - `F741-omp-finish-wakes-herdr-coord` (🟠 ACTIVE, Adam priority): wake/wait implementation is on main at `39ec81b` and a live OMP job recorded a Herdr turn; finish retained-evidence and native checks with hosted OMP `anthropic/claude-opus-5-5` at `high`, Adam reviews, no independent reviewer, webhook remains opt-in.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 - `F730-job-guidance-matches-engines` (🟠 ACTIVE): align engine evidence, setup-policy precedence, meaning-first naming, and existing command examples without changing the vision or global configuration.
-- `F742-feature-identities-stay-unique` (🟠 ACTIVE): distinguish the parked application field guide as reserved F743 while preserving the landed F050 diff-viewer history; coordinator files the board correction at landing.
 - `F744-role-spaces-match-project-roots` (🟠 ACTIVE): select readable Herdr role spaces without confusing unrelated roots that share a basename; no new registry or human-space rearrangement.
 - `F745-status-names-the-work` (🟠 ACTIVE): show coordinator subjects/handles and call cleanly ended unlanded work candidates to inspect, not proof of approval.
 
@@ -38,7 +37,7 @@
 ## PARKED
 
 - `F081-spawn-refuses-an-unusable-route` (🔴 PLANNED): still waiting for a Pi-supported non-generating route probe. Rechecked installed Pi 0.84.2 on 2026-09-19: `auth check` still proves credentials only; model runtime has stream/complete, no exact-route validation. Failing candidate `b14b5fe` stays locked; no auth/catalog substitution. Hosted continuation file transport already landed.
-- `F050-living-architecture-picture` (🔴 PLANNED): background field-guide proposal remains parked; the stale existing picture is recorded in the latest quality findings, not refreshed by this wave.
+- `F743-living-architecture-picture` (🔴 PLANNED): background field-guide proposal remains parked; the stale existing picture is recorded in the latest quality findings, not refreshed by this wave.
 
 ## DROPPED
 
@@ -47,6 +46,7 @@
 
 ## PROVEN
 
+- `F742-feature-identities-stay-unique` (🟢 PROVEN): feature numbers name one thing — parked field-guide proposal filed as F743; landed F050 diff viewer history untouched. Landed `7328a16`.
 - `F739-doorbell-dedupe` (🟢 PROVEN): the finish ping claims once per job and final state, so jobs at the same commit each ring; a sender timeout gets one retry inside a 4 s budget. Landed `16939e1` with test-env fix `cf273fd`; focused 57/57 under `LIMEN_JOB=1`; live receiver turn unobserved.
 - `F738-plate-inbox` (🟢 PROVEN): `limen status` is a one-screen inbox — Running, Ready to land, Needs a decision, older behind `--all`; ancestry or patch-id counts as landed, shared with `prune --retire`. Landed `39a22e1`; synthetic 2,000-record cabinet 1.7 s (was 64.9 s); live plate 4.7 s with Herdr.
 - `F737-worker-skills-visible` (🟢 PROVEN): OMP workers discover portable and legacy plant skills without hand links; native skills win collisions. Landed `f40ac5b`; live hosted/detached/continue OMP and focused checks passed.
