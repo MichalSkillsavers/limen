@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
@@ -469,15 +469,24 @@ function requireHerdr(): string {
 
 /** A created workspace is seeded with one empty tab; `seeded` names it so the first job tab can replace it. */
 function ensureWorkspace(herdr: string, cwd: string, role: string): { readonly workspace: string; readonly seeded?: string } {
-	const name = `${basename(cwd)} ${role}s`;
+	const root = realpathSync(cwd);
+	// Herdr has no immutable root field. Qualify the label; an unqualified legacy space proves nothing.
+	const name = `${basename(root)} ${role}s · ${root}`;
 	const listed = asRecord(call(herdr, ["workspace", "list"])).workspaces;
+	let workspace: unknown;
+	let matches = 0;
 	if (Array.isArray(listed)) {
 		for (const item of listed) {
 			const row = asRecord(item);
-			if (row.label === name && typeof row.workspace_id === "string") return { workspace: row.workspace_id };
+			if (row.label !== name) continue;
+			matches++;
+			workspace = row.workspace_id;
 		}
 	}
-	const created = call(herdr, ["workspace", "create", "--cwd", cwd, "--label", name, "--no-focus"]);
+	if (matches > 1) throw new Error(`ambiguous Herdr role space: ${name} (${matches} matches)`);
+	if (matches && (typeof workspace !== "string" || !workspace)) throw new Error(`Herdr role space has no workspace ID: ${name}`);
+	if (typeof workspace === "string") return { workspace };
+	const created = call(herdr, ["workspace", "create", "--cwd", root, "--label", name, "--no-focus"]);
 	const seeded = asRecord(asRecord(created).tab).tab_id;
 	return { workspace: id(created, "workspace", "workspace_id"), ...(typeof seeded === "string" && seeded ? { seeded } : {}) };
 }
