@@ -607,6 +607,7 @@ test("spawn accepts --engine omp and LIMEN_ENGINE, and refuses claude before a j
 		const envId = onlyJobId(fromEnv.stdout);
 		await waitForState(scratch.root, envId, "done");
 		assert.equal(await readFile(join(scratch.root, ".limen/jobs", envId, "engine"), "utf8"), `${engine}\n`);
+		assert.match(await readFile(join(scratch.root, ".limen/jobs", envId, "log"), "utf8"), new RegExp(`done: ${engine} exited 0`));
 	}
 	const override = limenWithEnv(scratch, { LIMEN_ENGINE: "omp" }, "spawn", "--engine", "pi", "--detached", "--label", "flag wins", "do work");
 	assert.equal(override.status, 0, override.stderr);

@@ -58,13 +58,14 @@ Then in each project:
 ```bash
 cd /path/to/your-project
 limen init
-export LIMEN_ENGINE=omp
-LIMEN_COORDINATOR=1 omp --provider openai-codex --model gpt-6-sol --thinking xhigh
+LIMEN_COORDINATOR=1 omp --provider <provider> --model <model> --thinking <level>
 ```
+
+Take the engine, provider, model, and reasoning level from the project's choices in `spec/build.md` (see [Models](#models)). A fresh plant has none until you record them; the coordinator then runs on OMP, and you start `pi` instead only when the project needs Pi.
 
 `limen init` plants what the project owns (vision, board, feature lanes, styleguide) and package-hook stubs in `.pi/extensions/` and `.omp/extensions/`. Herdr OMP coordinators need the `.omp` stub for communication, wake, and steering; rerun `limen init` in existing projects before starting one. Init never overwrites existing project files and deletes leftover `limen-*.ts` hook copies in both extension directories so they cannot load beside the stubs. `limen init --drop-leftovers` deletes only prompt copies that still match the package.
 
-That interactive session is the coordinator (`LIMEN_COORDINATOR=1`), not a spawned job. From here you talk. You do not drive the job CLI. `limen spawn` starts workers and reviewers — not a coordinator; a hosted limen job (`LIMEN_JOB=1`) cannot be a group lead either. The same env var on a spawn shell does not change the job's role. Prefer a Herdr space named for the plant (`limen`, or `alice limen`), not a space named only `workers`. Label the coordinator tab clearly. Worker tabs come from spawn. The inherited shop manual (`templates/agents.md`; a project `AGENTS.md` overlays it) carries the same layout rules.
+That interactive session is the coordinator (`LIMEN_COORDINATOR=1`), not a spawned job. From here you talk. You do not drive the job CLI. `limen spawn` starts workers and reviewers — not a coordinator; a hosted limen job (`LIMEN_JOB=1`) cannot be a group lead either. The same env var on a spawn shell does not change the job's role. Prefer a Herdr space named for the plant (`limen`, or `alice limen`), not a space named only `workers`. The coordinator names its own tab for one stable subject (`chat settings`); Limen appends ` · N running` while its jobs live. Worker tabs come from spawn labels, which put the outcome first and the feature number last. The inherited shop manual (`templates/agents.md`; a project `AGENTS.md` overlays it) carries the same layout rules.
 
 Project skills belong in `.agents/skills/<name>/SKILL.md` for portable discovery. OMP also discovers native `.omp/skills/<name>/SKILL.md` files; Pi discovers its own `.pi/skills/<name>/SKILL.md` and older flat `.pi/skills/<name>.md` files. On OMP jobs, limen builds a per-job view of legacy Pi skills outside the worktree and passes it as a skill directory; native `.agents/skills` and `.omp/skills` names win over legacy duplicates. This applies to workers, reviewers, and continuations in either launch mode, including jobs targeting a repository beside a non-Git coordinator workspace. New or changed legacy skills are picked up at the next launch; the plant needs no hand-maintained links. Pi's discovery is unchanged.
 
@@ -85,22 +86,26 @@ When the blast radius earns a second pair of eyes, the coordinator starts a fres
 These commands are the harness. The coordinator types them. They are here so you can recognize a job ID, a wake, or a recovery step — not as a daily script.
 
 ```bash
-limen spawn --label "F001 auth handler" \
-  "Implement F001's session-handler slice. Start with the failing session test. One commit. Ticket: spec/features/active/F001-auth/ticket.md"
+limen spawn --label "session handler · F001" \
+  'Implement F001: sign-in survives a restart. Start with the failing session test. One commit. Ticket: spec/features/active/F001-auth/ticket.md'
 
+limen status
 limen jobs
 limen jobs <id|suffix|label>
 git diff HEAD...<branch>
 
-limen spawn --review --branch limen/<job-id> --label "F001 auth review" \
-  "Review the F001 candidate against spec/features/active/F001-auth/ticket.md. Name the commit reviewed."
+limen spawn --review --branch limen/<job-id> --label "session handler review 1 · F001" \
+  'Review the F001 candidate against spec/features/active/F001-auth/ticket.md. Name the commit reviewed.'
 
 limen steer <id> "stay on the session test; do not widen"
 limen stop <id> "reason"
-limen spawn --branch limen/<job-id> "Focused resume instruction"
+limen spawn --branch limen/<job-id> --label "session handler repair 1 · F001" 'Focused resume instruction'
+limen continue <id> 'Follow-up instruction'
+limen watch <id|label>
+limen land <id>
 ```
 
-The last line of `spawn` is the durable job ID. A running job picks up a steer between tool calls. Stop sends TERM, then escalates. Resume reuses the branch and its worktree, uncommitted files included. The coordinator inspects that state first.
+The last line of `spawn` is the durable job ID. Labels name what changes first and the feature number last; a repair or review names its round. A running job picks up a steer between tool calls; stop only after a steer is ignored or the job is clearly dead. Stop sends TERM, then escalates. Resume reuses the branch and its worktree, uncommitted files included. The coordinator inspects that state first. To take over a job another coordinator started, watch that job by name; `watch --running` subscribes every running job and is not a takeover. `land` merges a `done` job onto the current branch, but `done` only means the run exited cleanly: the coordinator lands after inspecting the diff and checks under the project's review policy.
 
 Finished jobs keep their files under `.limen/jobs/`. Extra checkouts do not stay: the next spawn drops finished worktrees, and `limen prune` does the same on demand. Resume with `--branch` keeps that checkout. `limen prune --retire` deletes finished job records whose branches are already merged or dropped; `--dry-run` prints the ids and removes nothing. Spawn and sweep never retire records.
 
@@ -118,36 +123,28 @@ Spawn records that creation `@login` (or an unavailable reason) on the job for f
 
 ## Models
 
-Adam's standing defaults for Overment limen/Herdr plants (2026-09-23): prefer **OMP** for new sessions and jobs; use Pi only when the task truly needs it. Project choices live in `spec/build.md`, not another policy file.
+Project choices live in `spec/build.md`, not another policy file and not this README: engine, provider, model, and reasoning level per role, and who reviews. A newer explicit owner instruction outranks the board. Commands below use placeholders; fill them from the board.
 
-| Work | Provider | Model |
-|---|---|---|
-| Ordinary work, including coordination | `openai-codex` (Codex on OMP) | `gpt-6-sol` |
-| Simple / cheap tasks | `xai-oauth` | `grok-4.7` |
-| UI-related work | `anthropic` | `claude-opus-5-5` |
-
-Pass the engine, provider, model, and chosen reasoning explicitly. `pi-claude` is a Pi provider; on OMP use `anthropic`. New jobs default to OMP; use `--engine pi` or `LIMEN_ENGINE=pi` only when Pi is required.
+Package fallbacks apply only where the board is silent. New jobs run OMP; `--engine pi` or `LIMEN_ENGINE=pi` selects Pi. Model precedence is `--model`, then `LIMEN_WORKER_MODEL` (or `LIMEN_REVIEWER_MODEL` for `--review`), then the built-in `openai-codex/gpt-6-astra:high`. Pass the board's choices explicitly rather than relying on those fallbacks. `pi-claude` is a Pi provider; on OMP use `anthropic`.
 
 Start a coordinator in an existing Herdr pane at a shell prompt, with the project as its working directory:
 
 ```bash
-herdr agent start limen-peer --kind omp --pane <pane-id> -- \
-  --provider openai-codex --model gpt-6-sol --thinking xhigh
+herdr agent start limen-peer --kind <engine> --pane <pane-id> -- \
+  --provider <provider> --model <model> --thinking <level>
 ```
 
-Herdr forwards the arguments after `--`; it does not select Limen's model. Do not rely on old Pi project settings or a global model default. This policy does not rewrite either engine's settings or credentials.
+Herdr forwards the arguments after `--`; it does not select Limen's model. Do not rely on old Pi project settings or a global model default. Limen does not rewrite either engine's settings or credentials.
 
 For an ordinary worker:
 
 ```bash
-limen spawn --engine omp \
-  --provider openai-codex --model gpt-6-sol --thinking high \
-  --label "short worker task" 'Implement the requested slice.'
+limen spawn --engine <engine> \
+  --provider <provider> --model <model> --thinking <level> \
+  --label "what this changes · FNNN" 'Implement FNNN: <outcome>. Ticket: spec/features/active/FNNN-slug/ticket.md'
 ```
 
 In Herdr this is hosted; use `--detached` for a requested background worker. `--provider`, `--model`, and `--thinking` reach the selected engine as separate flag/value pairs in both modes. `limen continue` accepts the same flags, copies the parent engine, and refuses a conflicting `--engine`; continuing a Pi transcript still requires Pi.
-
-Model precedence remains `--model`, then `LIMEN_WORKER_MODEL` (or `LIMEN_REVIEWER_MODEL` for `--review`), then the built-in fallback. Pass the standing choices explicitly rather than relying on that legacy fallback. Adam performs reviews; do not start an independent reviewer unless asked.
 
 `--engine pi|omp` selects the job binary, overriding `LIMEN_ENGINE`. With neither set, new jobs use OMP. Old job records without an engine remain Pi for compatibility; continuation keeps the parent's engine. Pi and OMP keep separate auth stores (`~/.pi`, `~/.omp`); authenticate OMP yourself. One wrapper and one stream parser serve both.
 
@@ -193,19 +190,23 @@ limen workspace init
 limen spawn "instruction" [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD]
 limen spawn --repo R "instruction" [--label L] [--model M]
 limen spawn --review --branch B --label L "instruction"
+limen continue <id|suffix|label> "follow-up instruction" [--review] [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--tab|--detached]
+limen status [--all]
 limen jobs [--running|--active|--all|--label PREFIX|<id|suffix|label>]
 limen diff <id|suffix|label>
 limen prune [--retire [--dry-run]]
 limen steer <id|suffix|label> | --running "correction"
 limen stop <id|suffix|label> [reason]
+limen land <id|suffix|label> [--onto BRANCH] [--yes]
 limen wait <id|suffix|label>
 limen watch <id|suffix|label> | --running
 limen unwatch <id|suffix|label> | --all
 limen open <id|suffix|label>
 limen close <FNNN>
+limen ticket-author <ticket-path>
 ```
 
-IDs, unique suffixes, and unique labels are interchangeable where shown.
+IDs, unique suffixes, and unique labels are interchangeable where shown. `status` is the plant inbox: running jobs, finished candidates not yet landed, recent jobs that need a decision, and coordinator tabs. `continue` keeps the parent's engine. `land` merges a `done` job; a clean exit is not approval, so inspect the diff and checks first.
 
 At a terminal, `jobs` renders an aligned table for eyes; piped, it prints the compact format tools parse. `LIMEN_VIEW=human|compact` forces a view; `NO_COLOR` drops the paint.
 

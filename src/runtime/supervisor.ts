@@ -100,7 +100,7 @@ export async function runHostedSupervisor(): Promise<void> {
 					target = located;
 				} else if (status === "unknown" && !unknownAliveNoted) {
 					unknownAliveNoted = true;
-					await appendLimenLog(jobDir, `herdr cannot classify the hosted agent (${HOSTED_UNKNOWN_SAMPLES} samples); the recorded pane still runs pi`);
+					await appendLimenLog(jobDir, `herdr cannot classify the hosted agent (${HOSTED_UNKNOWN_SAMPLES} samples); the recorded pane still runs ${engine}`);
 				}
 				missingStreak = 0;
 				unknownStreak = 0;
