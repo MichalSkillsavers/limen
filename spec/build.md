@@ -25,6 +25,7 @@
 - `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. OMP lead identity is fixed on the branch. Still open: member `limen` path, advisory noise, and one duplicate lead delivery, plus the steering-test races and full native proof; not landed or pushed.
 - `F741-omp-finish-wakes-herdr-coord` (🟠 ACTIVE, Adam priority): wake/wait implementation is on main at `39ec81b` and a live OMP job recorded a Herdr turn; finish retained-evidence and native checks with hosted OMP `anthropic/claude-opus-5-5` at `high`, Adam reviews, no independent reviewer, webhook remains opt-in.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
+- `F743-living-architecture-picture` (🟠 ACTIVE, Adam 2026-10-03): base map first — reusable contract (`templates/picture/CONTRACT.md`), `limen picture build`, one-pass `tick` that spends no model call without a cited or structural code change; feature/journey overlay second. Opus coordinator owns contract, prompts, docs, board; Sol coordinator owns `src/`, tests, wiring, and the main merge. Map and dataset stay gitignored; never gate land or spawn; Alice dataset is Alice plant work.
 
 ## NEXT
 
@@ -33,7 +34,6 @@
 ## PARKED
 
 - `F081-spawn-refuses-an-unusable-route` (🔴 PLANNED): still waiting for a Pi-supported non-generating route probe. Rechecked installed Pi 0.84.2 on 2026-09-19: `auth check` still proves credentials only; model runtime has stream/complete, no exact-route validation. Failing candidate `b14b5fe` stays locked; no auth/catalog substitution. Hosted continuation file transport already landed.
-- `F743-living-architecture-picture` (🔴 PLANNED): background field-guide proposal remains parked; the stale existing picture is recorded in the latest quality findings, not refreshed by this wave.
 
 ## DROPPED
 
