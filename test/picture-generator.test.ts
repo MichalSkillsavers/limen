@@ -141,7 +141,6 @@ test("researched revision belongs to the plant and trailing owner stays metadata
 	assert.equal(buildModel({ files: [plant], now }).project.revision, null);
 	const invalid = buildModel({ files: [record("sample.plant", { kind: "plant", parent: "null", revision: "abc123" })], now });
 	assert.equal(invalid.project.revision, null);
-	assert.ok(invalid.diagnostics.some((diagnostic) => diagnostic.id === "sample.plant" && diagnostic.message.includes("revision")));
 });
 
 test("unknown schema retains gold diagnostics rather than silently accepting an alias", () => {

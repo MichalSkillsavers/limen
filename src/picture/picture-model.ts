@@ -274,7 +274,19 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 	const isEdge = kind === "edge";
 	const isOverlay = kind === "feature" || kind === "journey";
 	const directory = isEdge ? "edges" : kind === "feature" ? "features" : kind === "journey" ? "journeys" : "nodes";
-	if (!source.startsWith(`${directory}/`)) return null;
+	if (!source.startsWith(`${directory}/`)) {
+		const graph = source.slice(0, source.indexOf("/"));
+		const prefix = graph === "features" ? "feature" : graph === "journeys" ? "journey" : graph === "edges" ? "edge" : "node";
+		diag(
+			"error",
+			kind ? "node.kind-directory" : `${prefix}.missing-field`,
+			kind ? `kind "${kind}" does not belong in ${graph}; file skipped` : 'missing required field "kind"; file skipped',
+			source,
+			guessId,
+			at("kind"),
+		);
+		return null;
+	}
 	const prefix = isEdge || isOverlay ? kind : "node";
 	const missing = (key: string, tail = "") => diag("error", `${prefix}.missing-field`, `missing required field "${key}"${tail}`, source, guessId, at(key));
 
