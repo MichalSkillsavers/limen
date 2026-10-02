@@ -22,7 +22,6 @@
 ## NOW
 
 - `F014-github-doorbell` (🟠 ACTIVE): Alice's isolated App key, warm coordinator, live PR mention, hosted review, and one start/finish receipt are proven; second-seat ownership/routing remains to prove before closing.
-- `F731-seat-bell-once` (🟠 ACTIVE): resume the preserved one-bell-per-event candidate on current main and finish native proof without re-enabling the paused seat sweep or sending external notifications.
 - `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. OMP lead identity is fixed on the branch. Still open: member `limen` path, advisory noise, and one duplicate lead delivery, plus the steering-test races and full native proof; not landed or pushed.
 - `F741-omp-finish-wakes-herdr-coord` (🟠 ACTIVE, Adam priority): wake/wait implementation is on main at `39ec81b` and a live OMP job recorded a Herdr turn; finish retained-evidence and native checks with hosted OMP `anthropic/claude-opus-5-5` at `high`, Adam reviews, no independent reviewer, webhook remains opt-in.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
@@ -43,6 +42,7 @@
 
 ## PROVEN
 
+- `F731-seat-bell-once` (🟢 PROVEN): each unheard terminal job or hosted-stall advisory gets one seat bell; exclusive receipt before transport prevents restart/concurrent double-rings, and ambiguous notify failures are not retried. Launchd sweep stays paused (no live notify proof). Landed `5117a92` / `47e0d77` via merge `39a9756`.
 - `F744-role-spaces-match-project-roots` (🟢 PROVEN): Herdr role spaces qualify by canonical project root so same-basename projects stay separate; legacy spaces untouched and recorded tabs still reopen. Landed `78a21a1`.
 - `F730-job-guidance-matches-engines` (🟢 PROVEN): setup docs and job finish labels follow the board's engine choices; OMP jobs log `done: <engine> exited 0` (not hard-coded pi), and launch examples put the outcome first with the ticket last. Landed `f0d1ec4`.
 - `F745-status-names-the-work` (🟢 PROVEN): `limen status` names coordinators subject-first (tab label · handle · status · ids) and lists cleanly ended unlanded work under Candidates to inspect, not ready-to-land. Landed `8f83a81`.
