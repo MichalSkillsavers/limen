@@ -457,7 +457,8 @@ export default function limenWake(pi: PiApi): void {
 			const job = join(jobs, jobId);
 			if (stateOf(jobs, jobId) !== "running") continue;
 			if (!routable(job)) enrollLegacyRunning(job);
-			if (tab && text(join(job, "origin-tab")) === tab) subscribeSession(job, id);
+			// A job recording origin-pane is woken through Herdr at finalize; subscribing here would wake the same coordinator twice.
+			if (tab && text(join(job, "origin-tab")) === tab && !text(join(job, "origin-pane"))) subscribeSession(job, id);
 			if (subscribed(job, id)) claimMarker(job, "started", id);
 		}
 		watcher = watch(jobs, { recursive: true }, (_event, filename) => {

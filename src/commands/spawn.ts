@@ -76,6 +76,7 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 	preflightEngine(profile, model, options.provider);
 	const notificationSession = currentNotificationSession();
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
+	const coordinatorPane = herdrWakePane(notificationSession);
 	const workspace = workspaceRoot(cwd);
 	const root = workspace ?? repoRoot(cwd);
 	if (workspace && !options.repo) throw new Error("workspace spawn requires --repo <immediate-child>");
@@ -158,6 +159,7 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 					]
 				: []),
 			...(coordinatorTab ? [writeFile(`${jobDir}/origin-tab`, `${coordinatorTab}\n`, { flag: "wx", flush: true })] : []),
+			...(coordinatorPane ? [writeFile(`${jobDir}/origin-pane`, `${coordinatorPane}\n`, { flag: "wx", flush: true })] : []),
 		]);
 		await writeFile(`${jobDir}/finish-webhook-author`, `${captureFinishAuthor(cwd, loaded.text, Boolean(workspace))}\n`, { flag: "wx", flush: true });
 		const finishConfig = finishWebhookEnv(root, cwd);
@@ -439,6 +441,13 @@ export function currentNotificationSession(): string | undefined {
 	const value = process.env.PI_SESSION_ID?.trim();
 	if (value && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) throw new Error("PI_SESSION_ID is not safe for notification routing");
 	return value || undefined;
+}
+/** A Herdr coordinator without a Pi session (OMP) cannot be woken in-process; its pane is the wake route instead. */
+export function herdrWakePane(notificationSession: string | undefined): string | undefined {
+	const pane = process.env.HERDR_PANE_ID?.trim();
+	if (notificationSession || process.env.HERDR_ENV !== "1" || !pane) return undefined;
+	if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pane)) throw new Error("HERDR_PANE_ID is not safe for wake routing");
+	return pane;
 }
 async function liveJobUsesBranch(jobsRoot: string, branch: string, repo?: string): Promise<boolean> {
 	for (const entry of await readdir(jobsRoot, { withFileTypes: true })) {

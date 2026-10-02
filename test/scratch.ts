@@ -106,6 +106,7 @@ function runLimen(
 		"LIMEN_HUNK",
 		"LIMEN_HOME",
 		"LIMEN_VIEW",
+		"LIMEN_COORDINATOR",
 		"PI_SESSION_ID",
 		"PI_SESSION_FILE",
 		"PI_PROVIDER",

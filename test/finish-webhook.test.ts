@@ -594,6 +594,24 @@ test("hanging sender and its descendant are killed within shutdown grace without
 	assert.ok(status.status !== 0 || status.stdout.trim().startsWith("Z"), `sender descendant is still running: ${status.stdout}`);
 });
 
+test("a slow Herdr coordinator prompt does not spend the configured webhook's shutdown budget", async (context) => {
+	const f = await fixture(context);
+	const job = await bareJob(f.root);
+	await writeFile(join(job, "finish-webhook-env"), `${await f.config(join(f.parent, "slow-prompt.env"))}\n`);
+	await writeFile(join(job, "result"), "Stopped after committing partial work.\n");
+	await writeFile(join(job, "origin-pane"), "w1:p9\n");
+	const herdr = join(f.parent, "slow-herdr");
+	await writeFile(herdr, "#!/usr/bin/env node\nsetTimeout(() => {}, 20000);\n", { mode: 0o755 });
+	await runModule(
+		f.pkg,
+		{ ...f.env, TEST_JOB_DIR: job, LIMEN_HERDR: herdr },
+		`const { finalizeJob } = await import('./src/job/record.ts'); await finalizeJob(${JSON.stringify(job)}, 'stopped', 'bounded stop', Date.now() + 4000);`,
+	);
+	assert.match(await delivery(job), /^accepted: sender exited 0/);
+	assert.match(await readFile(join(job, "notify/herdr-prompt"), "utf8"), /^attempt 1: failed on w1:p9: herdr exceeded \d+ms/);
+	await assert.rejects(readFile(join(job, "notify/delivered/_herdr")));
+});
+
 test("a sender timeout gets one bounded successful retry and records both attempts", async (context) => {
 	const f = await fixture(context);
 	const job = await bareJob(f.root);

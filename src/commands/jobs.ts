@@ -131,6 +131,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 	const [taskStat, logStat] = await Promise.all([optionalStat(`${jobDir}/task.md`), optionalStat(`${jobDir}/log`)]);
 	const cleanup = detailed ? await text(`${jobDir}/cleanup`) : "";
 	const finishWebhook = detailed ? await inspectFinishWebhook(jobDir) : "";
+	const herdrWake = detailed ? await text(`${jobDir}/notify/herdr-prompt`) : "";
 	if (!taskStat || !logStat) return { compact: `INVALID ${id} · missing task.md or log`, record: { id, invalid: "missing task.md or log" } };
 	const log = detailed || human ? await readLog(`${jobDir}/log`) : { tail: "", detail: "" };
 	const display = (value: string) => (detailed || value.length <= 160 ? value : `${value.slice(0, 159)}…`);
@@ -176,6 +177,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 		if (versions) blocks.push(indented("versions", versions));
 		if (detailed && commits) blocks.push(indented("commits", commits));
 		if (result) blocks.push(indented("result", result));
+		if (herdrWake) blocks.push(indented("herdr-wake", herdrWake));
 		if (finishWebhook) blocks.push(indented("finish-webhook", finishWebhook));
 		if (cleanup)
 			blocks.push(
@@ -207,6 +209,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 			...(detailed && commits ? { commits } : {}),
 			...(result ? { result } : {}),
 			...(cleanup ? { cleanup } : {}),
+			...(herdrWake ? { herdrWake } : {}),
 			...(finishWebhook ? { finishWebhook } : {}),
 			...(diffstat ? { diffstat } : {}),
 			...(log.tail ? { logTail: log.tail } : {}),

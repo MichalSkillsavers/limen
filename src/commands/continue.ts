@@ -6,7 +6,18 @@ import { atomicWrite, finalizeJob } from "../job/record.ts";
 import { addBranchWorktree, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { launchWrapper } from "../runtime/wrapper.ts";
-import { capturedVersions, currentNotificationSession, HOSTED_NOTE, hostedAgentName, makeJobId, normalizeLabel, resolvePreamble, startHosted, waitForHandshake } from "./spawn.ts";
+import {
+	capturedVersions,
+	currentNotificationSession,
+	HOSTED_NOTE,
+	herdrWakePane,
+	hostedAgentName,
+	makeJobId,
+	normalizeLabel,
+	resolvePreamble,
+	startHosted,
+	waitForHandshake,
+} from "./spawn.ts";
 
 /** Resume a finished job's own engine session; restore a pruned checkout from its branch. */
 export async function continueCommand(args: readonly string[], cwd: string): Promise<void> {
@@ -79,6 +90,7 @@ export async function continueCommand(args: readonly string[], cwd: string): Pro
 	await mkdir(`${jobDir}/notify/subscribers`, { recursive: true });
 	const notificationSession = currentNotificationSession();
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
+	const coordinatorPane = herdrWakePane(notificationSession);
 	await Promise.all([
 		writeFile(`${jobDir}/task.md`, `${instruction}\n`, { flag: "wx", flush: true }),
 		writeFile(`${jobDir}/label`, `${finalLabel}\n`, { flag: "wx", flush: true }),
@@ -108,6 +120,7 @@ export async function continueCommand(args: readonly string[], cwd: string): Pro
 				]
 			: []),
 		...(coordinatorTab ? [writeFile(`${jobDir}/origin-tab`, `${coordinatorTab}\n`, { flag: "wx", flush: true })] : []),
+		...(coordinatorPane ? [writeFile(`${jobDir}/origin-pane`, `${coordinatorPane}\n`, { flag: "wx", flush: true })] : []),
 	]);
 	// Resume the parent's opt-in (or absence), not the current shell's destination.
 	const finishConfig = await text(`${parentDir}/finish-webhook-env`);

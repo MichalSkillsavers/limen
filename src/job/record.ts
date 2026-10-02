@@ -1,4 +1,5 @@
 import { appendFile, open, readdir, readFile, rename, rm } from "node:fs/promises";
+import { promptCoordinator } from "../integrations/coordinator-wake.ts";
 import { deliverFinishWebhook } from "../integrations/finish-webhook.ts";
 import { settleJobTab } from "../integrations/herdr.ts";
 import { commitList, headCommit } from "../project/git.ts";
@@ -42,9 +43,16 @@ export async function finalizeJob(jobDir: string, state: "done" | "failed" | "st
 		const writer = /\.(\d+)\.[0-9a-f]+\.tmp$/.exec(name);
 		if (writer && !processAlive(Number(writer[1]))) await rm(`${jobDir}/${name}`, { force: true });
 	}
-	await deliverFinishWebhook(jobDir, shutdownDeadline).catch(() =>
-		appendLimenLog(jobDir, "finish webhook: delivery could not be recorded; inspect finish-webhook-attempt before manual retry").catch(() => {}),
-	);
+	// The Herdr prompt is the coordinator's wake; the finish webhook is an opt-in side channel and never stands in for it.
+	// They run side by side so neither spends the other's share of a shutdown grace.
+	await Promise.all([
+		promptCoordinator(jobDir, shutdownDeadline).catch(() =>
+			appendLimenLog(jobDir, "coordinator wake via Herdr: could not be recorded; inspect notify/herdr-prompt").catch(() => {}),
+		),
+		deliverFinishWebhook(jobDir, shutdownDeadline).catch(() =>
+			appendLimenLog(jobDir, "finish webhook: delivery could not be recorded; inspect finish-webhook-attempt before manual retry").catch(() => {}),
+		),
+	]);
 	await settleJobTab(jobDir);
 }
 export async function recordCommits(jobDir: string): Promise<void> {

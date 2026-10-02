@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import test from "node:test";
-import { limen, onlyJobId, scratchRepo } from "./scratch.ts";
+import { limen, limenWithEnv, onlyJobId, scratchRepo } from "./scratch.ts";
 
 test("wait blocks for terminal state and reports the readable label", async (context) => {
 	const scratch = await scratchRepo(`#!/usr/bin/env node
@@ -23,4 +25,22 @@ test("wait rejects unknown jobs", async (context) => {
 	const result = limen(scratch, "wait", "missing");
 	assert.equal(result.status, 1);
 	assert.match(result.stderr, /no job matches/);
+});
+
+test("wait refuses in a coordinator instead of blocking its pane", async (context) => {
+	const scratch = await scratchRepo(`#!/usr/bin/env node
+setTimeout(() => console.log("finished"), 3000);
+`);
+	context.after(scratch.cleanup);
+	limen(scratch, "init");
+	const id = onlyJobId(limen(scratch, "spawn", "--label", "slow", "do work").stdout);
+	const started = Date.now();
+	const result = limenWithEnv(scratch, { LIMEN_COORDINATOR: "1" }, "wait", id);
+	assert.equal(result.status, 1);
+	assert.match(result.stderr, /LIMEN_COORDINATOR=1/);
+	assert.match(result.stderr, /limen jobs/);
+	assert.match(result.stderr, /state/);
+	assert.match(result.stderr, /wake/);
+	assert.ok(Date.now() - started < 2_000, "refusal must not wait for the running job");
+	assert.equal((await readFile(join(scratch.root, ".limen/jobs", id, "state"), "utf8")).trim(), "running");
 });

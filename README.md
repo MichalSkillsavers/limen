@@ -18,7 +18,7 @@ Jobs can live on an always-on **seat** (a VPS on Tailscale) while your laptop is
 
 ## Finish webhooks (opt-in)
 
-When a job reaches a terminal state (`done` / `failed` / `stopped`), limen can POST `{job, status, branch}` to one or more destinations so a bot or routine can wake. **Off by default.** Installing limen does not enable any project.
+When a job reaches a terminal state (`done` / `failed` / `stopped`), limen can POST `{job, status, branch}` to one or more destinations so a bot or routine can wake. **Off by default.** Installing limen does not enable any project. This is a side channel: it never stands in for the coordinator's own wake below.
 
 **Opt in per project** with a private, git-excluded file:
 
@@ -72,6 +72,8 @@ Project skills belong in `.agents/skills/<name>/SKILL.md` for portable discovery
 
 Tell the coordinator the outcome you want. It writes or moves the ticket, keeps `spec/build.md` aligned, commits the ticket so the worker can see it, and starts a job. Stay in that conversation. A wake arrives when a job finishes. Ask only when something looks wrong, or when the coordinator asks you — product ambiguity, a real tradeoff, credentials, or a merge.
 
+How the wake arrives depends on the coordinator. A Pi coordinator subscribes its session at spawn and the wake hook injects the completion in-process. A Herdr coordinator without a Pi session (OMP) has its pane recorded on the job as `origin-pane`; when the job ends, limen runs `herdr agent prompt` on that pane and waits for Herdr to observe the pane working. `limen jobs <id>` shows the result as `herdr-wake` (`turn observed`, `submitted …; no turn observed`, or `failed …`).
+
 A useful ask names the outcome and the first artifact, not a tour of the repo. The coordinator turns that into a short spawn plus a `Ticket:` pointer. It does not paste the ticket into the prompt.
 
 `done` means the run ended cleanly: the selected engine exited 0, or a hosted session ended, without a final `error` or `aborted` stop reason. A provider-errored run records `failed` with that reason. Neither state means the ticket is finished or the branch is safe to merge. The coordinator inspects the record, the diff, and the checks, then either merges, resumes a repair, or asks you.
@@ -104,7 +106,7 @@ Finished jobs keep their files under `.limen/jobs/`. Extra checkouts do not stay
 
 To keep a finished job's conversation, run `limen continue <job-id> "Follow-up instruction"`. If its checkout was pruned, Limen restores the recorded path from the surviving local branch and copies the saved session into a new linked job. Only committed branch contents return; pruned uncommitted files are lost. A missing branch or transcript prevents recovery, and a branch checked out elsewhere is not taken over.
 
-A detached job is bounded by 90 minutes (`--timeout 20m`) and 900 tool-start events (`LIMEN_MAX_TOOL_CALLS`). Hosted jobs have neither outer bound. Both modes fail a pending tool only when an owned child stays silent and its process tree makes no cumulative CPU progress for three minutes (`LIMEN_TOOL_STALL_MS` overrides the confirmation window). An uncertain engine identity or process snapshot records an advisory rather than stopping an unrelated process; the failed job retains its worktree and transcript. A bound records `failed`; it does not finish the ticket. Do not run `limen wait` in the coordinator conversation — it blocks you.
+A detached job is bounded by 90 minutes (`--timeout 20m`) and 900 tool-start events (`LIMEN_MAX_TOOL_CALLS`). Hosted jobs have neither outer bound. Both modes fail a pending tool only when an owned child stays silent and its process tree makes no cumulative CPU progress for three minutes (`LIMEN_TOOL_STALL_MS` overrides the confirmation window). An uncertain engine identity or process snapshot records an advisory rather than stopping an unrelated process; the failed job retains its worktree and transcript. A bound records `failed`; it does not finish the ticket. `limen wait` blocks until a job ends, so under `LIMEN_COORDINATOR=1` it refuses and points at `limen jobs`, the job's `state`, and the completion wake instead.
 
 ## Ticket authorship
 

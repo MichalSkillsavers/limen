@@ -2,6 +2,10 @@ import { type FSWatcher, watch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolveJob } from "../job/lookup.ts";
 export async function waitCommand(args: readonly string[], cwd: string): Promise<void> {
+	if (process.env.LIMEN_COORDINATOR === "1")
+		throw new Error(
+			"limen wait refuses under LIMEN_COORDINATOR=1: it would block this coordinator pane. Read `limen jobs <id>` or .limen/jobs/<id>/state instead; the completion wake starts your next turn when the job ends.",
+		);
 	const query = args[0];
 	if (!query || args.length !== 1) throw new Error("wait requires exactly one job id");
 	const { id, jobDir } = await resolveJob(cwd, query);
