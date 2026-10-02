@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { limen, limenWithEnv, scratchRepo } from "./scratch.ts";
 
-// Keep fake Herdr alive beyond the native test deadline; a timeout would fall through to real macOS notifications.
+// Keep slow fake transport within its own deadline; the preload below also intercepts macOS fallback.
 const fakeSeatTimeoutMs = "120000";
 
 test("sweep claims each advisory once without consuming wakes, honors liveness, and prunes the registry", async (context) => {
@@ -32,7 +32,7 @@ test("sweep claims each advisory once without consuming wakes, honors liveness, 
 	await writeFile(join(job, "advisory"), "idle while session remains open\n");
 	const old = new Date(Date.now() - 60_000);
 	await utimes(join(job, "advisory"), old, old);
-	const env = { LIMEN_HERDR: herdr, LIMEN_SEAT_RING_MS: "1", LIMEN_SEAT_NOTIFY_TIMEOUT_MS: fakeSeatTimeoutMs };
+	const env = { ...(await fakeNotifications(scratch.fakeBin, herdr)), LIMEN_SEAT_RING_MS: "1", LIMEN_SEAT_NOTIFY_TIMEOUT_MS: fakeSeatTimeoutMs };
 	assert.equal(limenWithEnv(scratch, env, "sweep").status, 0);
 	assert.equal(await readFile(log, "utf8"), "ring\n", "the first advisory reaches the fake bell");
 	assert.equal((await readdir(join(job, "notify/seat"))).length, 1);
@@ -71,7 +71,7 @@ test("seat sweep honors legacy receipts and atomically claims a terminal event",
 		herdr = join(scratch.fakeBin, "herdr-ring"),
 		jobs = join(scratch.root, ".limen/jobs"),
 		old = new Date(Date.now() - 60_000),
-		env = { ...process.env, LIMEN_HOME: home, LIMEN_HERDR: herdr, LIMEN_SEAT_RING_MS: "1", LIMEN_SEAT_NOTIFY_TIMEOUT_MS: fakeSeatTimeoutMs };
+		env = { ...process.env, ...(await fakeNotifications(scratch.fakeBin, herdr)), LIMEN_HOME: home, LIMEN_SEAT_RING_MS: "1", LIMEN_SEAT_NOTIFY_TIMEOUT_MS: fakeSeatTimeoutMs };
 	await writeFile(herdr, `#!/bin/sh\nprintf 'ring\\n' >> '${log}'\n`);
 	await chmod(herdr, 0o755);
 	await writeFile(log, "");
@@ -116,18 +116,21 @@ test("seat sweep honors legacy receipts and atomically claims a terminal event",
 	assert.equal(await readFile(log, "utf8"), "ring\nring\n", "concurrent sweeps show one bell");
 	assert.equal((await readdir(join(concurrent, "notify/seat"))).length, 1);
 
-	if (process.platform !== "darwin") {
-		const failed = join(jobs, "transport-failed");
-		await mkdir(failed);
-		await writeFile(join(failed, "state"), "done\n");
-		await writeFile(join(failed, "finished-at"), old.toISOString());
-		await utimes(join(failed, "state"), old, old);
-		await utimes(join(failed, "finished-at"), old, old);
-		const failingEnv = { ...env, LIMEN_HERDR: join(scratch.fakeBin, "missing-herdr") };
-		assert.match(limenWithEnv(scratch, failingEnv, "sweep").stderr, /seat notification failed/);
-		assert.equal(limenWithEnv(scratch, failingEnv, "sweep").status, 0);
-		assert.equal((await readdir(join(failed, "notify/seat"))).length, 1, "failed transport never retries ambiguously");
-	}
+	const failed = join(jobs, "transport-failed");
+	await mkdir(failed);
+	await writeFile(join(failed, "state"), "done\n");
+	await writeFile(join(failed, "finished-at"), old.toISOString());
+	await utimes(join(failed, "state"), old, old);
+	await utimes(join(failed, "finished-at"), old, old);
+	await writeFile(herdr, `#!/bin/sh\nprintf 'failed\\n' >> '${log}'\nexit 1\n`);
+	const firstFailure = limenWithEnv(scratch, env, "sweep");
+	assert.equal(firstFailure.status, 0, firstFailure.stderr);
+	assert.match(firstFailure.stderr, /seat notification failed/);
+	assert.equal(await readFile(log, "utf8"), "ring\nring\nfailed\nfailed\n", "Herdr and macOS fallback both use failed fake transport");
+	const retry = limenWithEnv(scratch, env, "sweep");
+	assert.equal(retry.status, 0, retry.stderr);
+	assert.equal(await readFile(log, "utf8"), "ring\nring\nfailed\nfailed\n", "an ambiguous failure stays quiet after restart");
+	assert.equal((await readdir(join(failed, "notify/seat"))).length, 1, "failed transport never retries ambiguously");
 });
 
 test("registry registration and pruning repeatedly reclaim dead locks across processes", async (context) => {
@@ -185,7 +188,7 @@ test("sweep reaps dead jobs and a later pass rings the unheard completion", asyn
 	await writeFile(join(job, "state"), "running\n");
 	await writeFile(join(job, "pid"), "999999999\n");
 	await writeFile(join(job, "started-at"), "2000-01-01T00:00:00.000Z\n");
-	const env = { LIMEN_HERDR: herdr, LIMEN_REAP_CONFIRM_MS: "1", LIMEN_SEAT_RING_MS: "60000", LIMEN_SEAT_NOTIFY_TIMEOUT_MS: fakeSeatTimeoutMs };
+	const env = { ...(await fakeNotifications(scratch.fakeBin, herdr)), LIMEN_REAP_CONFIRM_MS: "1", LIMEN_SEAT_RING_MS: "60000", LIMEN_SEAT_NOTIFY_TIMEOUT_MS: fakeSeatTimeoutMs };
 	assert.equal(limenWithEnv(scratch, env, "sweep").status, 0);
 	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "failed");
 	await new Promise((resolve) => setTimeout(resolve, 5));
@@ -213,6 +216,20 @@ test("sweep install writes a valid absolute launchd interval job and uninstall r
 	await assert.rejects(stat(path));
 	assert.equal(await readFile(kept, "utf8"), "keep\n");
 });
+
+async function fakeNotifications(bin: string, herdr: string): Promise<NodeJS.ProcessEnv> {
+	const preload = join(bin, "fake-seat.mjs");
+	await writeFile(
+		preload,
+		`import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+const execFile = childProcess.execFile;
+childProcess.execFile = (command, ...args) => execFile(command === "/usr/bin/osascript" ? process.env.LIMEN_HERDR : command, ...args);
+syncBuiltinESMExports();
+`,
+	);
+	return { LIMEN_HERDR: herdr, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=${new URL(`file://${preload}`).href}` };
+}
 
 function runChildren(tasks: readonly { readonly source: string; readonly args: readonly string[] }[], env: NodeJS.ProcessEnv, signal: AbortSignal) {
 	const children = tasks.map(({ source, args }) =>

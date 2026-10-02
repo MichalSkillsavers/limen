@@ -108,6 +108,8 @@ To keep a finished job's conversation, run `limen continue <job-id> "Follow-up i
 
 A detached job is bounded by 90 minutes (`--timeout 20m`) and 900 tool-start events (`LIMEN_MAX_TOOL_CALLS`). Hosted jobs have neither outer bound. Both modes fail a pending tool only when an owned child stays silent and its process tree makes no cumulative CPU progress for three minutes (`LIMEN_TOOL_STALL_MS` overrides the confirmation window). An uncertain engine identity or process snapshot records an advisory rather than stopping an unrelated process; the failed job retains its worktree and transcript. A bound records `failed`; it does not finish the ticket. `limen wait` blocks until a job ends, so under `LIMEN_COORDINATOR=1` it refuses and points at `limen jobs`, the job's `state`, and the completion wake instead.
 
+`limen sweep` scans registered projects for unheard terminal jobs and hosted-stall advisories. Each event gets one seat notification, even across restarts or concurrent sweeps; old timestamp receipts remain valid. Clearing and creating a new advisory permits a new bell. The sweep records `notify/seat` before transport, so an ambiguous notification failure logs an error but never retries that event automatically. Seat receipts do not consume coordinator wakes or finish webhooks.
+
 ## Ticket authorship
 
 For collaborators sharing a project, `limen ticket-author spec/features/active/F001-auth/ticket.md` reports the name, email, and commit that first added the ticket, following Git-recognized renames between lanes. Paths are relative to the current directory; absolute paths within the repository also work. The lookup reads the current branch's committed `HEAD`, never the current operator's Git config or GitHub session, and writes nothing.
