@@ -224,7 +224,7 @@ export async function runInternalJob(): Promise<void> {
 	else if (result.code === 0) {
 		if (seen.assistant) await atomicWrite(`${jobDir}/result`, `${seen.assistant}\n`).catch(() => {});
 		const failedReason = isFailedStopReason(seen.stop) ? seen.stop : "";
-		await finalizeJob(jobDir, failedReason ? "failed" : "done", failedReason || "pi exited 0");
+		await finalizeJob(jobDir, failedReason ? "failed" : "done", failedReason || `${profile.id} exited 0`);
 	} else await finalizeJob(jobDir, "failed", `worker exited with code ${result.code ?? "unknown"}`);
 }
 export async function failInternalJob(error: unknown): Promise<void> {
