@@ -4,7 +4,9 @@
    drill-down block map. One level shows the children of the focused block. Edges are
    lifted to the visible level. Edges that leave the focus end at "outside" ghost blocks.
    Kind, relation and status names come from the data; the lists below only pick default
-   styles, and every other value gets a generic fallback style. */
+   styles, and every other value gets a generic fallback style. Features and journeys are
+   an overlay list above the map: they light only the places they list, never draw a
+   block or a link. */
 (function () {
 	"use strict";
 
@@ -52,6 +54,10 @@
 		hoverId: null,
 		kbdId: null,
 		hoverBundle: null,
+		overlay: null, // selected feature or journey
+		ovHover: null,
+		ovKbd: null,
+		step: -1, // current journey step in the panel
 		drawerBuilt: false,
 		results: [],
 		active: -1,
@@ -314,6 +320,43 @@
 			b.inc.push(e);
 		});
 
+		// Overlays: features and journeys are not places. They only name places to light.
+		var rootId = str(obj(raw.project).rootId);
+		m.overlayByKey = new Map();
+		function overlays(list, kind, field) {
+			var out = [];
+			arr(list).forEach(function (r) {
+				if (!r || typeof r !== "object" || typeof r.id !== "string" || !r.id) return;
+				var key = kind + ":" + r.id;
+				if (m.overlayByKey.has(key)) return;
+				var o = {
+					key: key,
+					id: r.id,
+					kind: kind,
+					title: str(r.title) || r.id,
+					status: str(r.status),
+					summary: str(r.summary),
+					sources: strList(r.sources),
+					bodyHtml: str(r.bodyHtml),
+					source: str(r.source),
+					meta: obj(r.meta),
+					places: [],
+					missing: [],
+				};
+				strList(r[field]).forEach(function (pid) {
+					var n = m.byId.get(pid);
+					if (n) o.places.push({ id: pid, node: n });
+					else if (rootId && pid === rootId) o.places.push({ id: pid, node: null });
+					else o.missing.push(pid);
+				});
+				out.push(o);
+				m.overlayByKey.set(key, o);
+			});
+			return out;
+		}
+		m.features = overlays(raw.features, "feature", "touches");
+		m.journeys = overlays(raw.journeys, "journey", "steps");
+
 		m.diagnostics = arr(raw.diagnostics)
 			.filter(function (d) {
 				return d && typeof d === "object";
@@ -349,6 +392,9 @@
 				.concat(
 					m.edges.map(function (e) {
 						return e.status;
+					}),
+					m.features.concat(m.journeys).map(function (o) {
+						return o.status;
 					}),
 					[str(m.project.status)],
 				)
@@ -1333,18 +1379,29 @@
 	}
 
 	// Hover, keyboard focus, or selection lights one block (or one bundle) and its
-	// neighbours; everything else dims.
+	// neighbours; everything else dims. A feature or journey lights only the places it
+	// lists: a passing overlay (hover, keyboard focus) wins; a mouse over the graph wins
+	// over a selected overlay, whose places keep their ring.
 	function highlight() {
 		var level = S.level;
 		if (!level || !level.els) return;
 		var on = new Set(),
 			lit = new Set(),
 			mode = false;
-		var bu = S.hoverBundle || S.edgeSel;
-		var id = S.hoverId || S.kbdId;
-		if (!id && !bu && S.selected && S.selected !== S.focus && level.els.has(S.selected.id)) id = S.selected.id;
+		var passing = S.ovHover || S.ovKbd,
+			ov = passing || S.overlay;
+		var at = ov ? overlayMarks(level, ov) : null;
+		var held = passing || (S.overlay && !S.hoverId && !S.hoverBundle) ? ov : null;
+		var bu = held ? null : S.hoverBundle || S.edgeSel;
+		var id = held ? null : S.hoverId || S.kbdId;
+		if (!held && !id && !bu && S.selected && S.selected !== S.focus && level.els.has(S.selected.id)) id = S.selected.id;
 		if (S.hoverBundle) id = null;
-		if (id) {
+		if (held) {
+			mode = true;
+			at.marks.forEach(function (steps, key) {
+				on.add(key);
+			});
+		} else if (id) {
 			mode = true;
 			on.add(id);
 			level.bundles.forEach(function (b) {
@@ -1361,8 +1418,14 @@
 			on.add(bu.to.id);
 		}
 		D.canvas.classList.toggle("hl-mode", mode);
+		D.canvas.classList.toggle("ov-journey", !!ov && ov.kind === "journey");
+		var cur = ov && ov === S.overlay && S.step >= 0 ? S.step + 1 : 0;
 		level.els.forEach(function (b, key) {
+			var steps = at ? at.marks.get(key) : null;
 			b.classList.toggle("hl", on.has(key));
+			b.classList.toggle("ov", !!steps);
+			b.classList.toggle("ov-cur", !!steps && steps.indexOf(cur) >= 0);
+			stepTag(b, steps && ov.kind === "journey" ? steps.join(" · ") : "");
 		});
 		level.bundles.forEach(function (b) {
 			if (b.el) {
@@ -1374,6 +1437,260 @@
 				}
 			}
 		});
+		overlayNote(ov, at);
+	}
+
+	function stepTag(b, text) {
+		var tag = b.querySelector(".b-steps");
+		if (!text) {
+			if (tag) b.removeChild(tag);
+			return;
+		}
+		if (!tag) {
+			tag = el("span", "b-steps");
+			b.appendChild(tag);
+		}
+		if (tag.textContent !== text) tag.textContent = text;
+	}
+
+	// ----------------------------------------------------------------- overlays
+
+	// Where each listed place shows at this level: its own block, the block of a
+	// collapsed ancestor, the open block (or a block above it), or nowhere. Never a
+	// neighbour: overlays draw no links. `marks` maps a block id to 1-based list positions.
+	function overlayMarks(level, o) {
+		var fchain = level.focus ? level.focus.chain : [];
+		var r = { marks: new Map(), lit: 0, around: 0, off: 0, root: 0 };
+		o.places.forEach(function (p, i) {
+			if (!p.node) r.root++;
+			else if (!shown(p.node)) r.off++;
+			else {
+				var at = rep(p.node, fchain);
+				if (!at || (level.focus && within(level.focus, p.node))) r.around++;
+				else if (!level.els.has(at.node.id)) r.off++;
+				else {
+					if (!r.marks.has(at.node.id)) r.marks.set(at.node.id, []);
+					r.marks.get(at.node.id).push(i + 1);
+					r.lit++;
+				}
+			}
+		});
+		return r;
+	}
+
+	function overlayCount(o) {
+		return o.kind === "journey" ? plural(o.places.length, "step") : plural(o.places.length, "place");
+	}
+
+	function overlayNote(o, at) {
+		var box = D.ovNote;
+		if (!box) return;
+		var text = "Hover or select one to light the places it lists. Nothing else lights.";
+		if (o) {
+			var bits = [];
+			if (!o.places.length) bits.push("lists no place on this map");
+			else bits.push(at.lit + " of " + overlayCount(o) + " lit at this level");
+			if (at && at.around) bits.push(at.around + " at the open block or above it");
+			if (at && at.off) bits.push(at.off + " not shown at this level");
+			if (at && at.root) bits.push(at.root + " the whole project");
+			if (o.missing.length) bits.push(plural(o.missing.length, "unknown id"));
+			text = (o.kind === "journey" ? "Journey " : "Feature ") + o.title + ": " + bits.join(" · ");
+		}
+		if (box.textContent !== text) box.textContent = text;
+	}
+
+	function renderOverlays() {
+		var box = D.overlays;
+		clear(box);
+		D.ovItems = new Map();
+		D.ovNote = null;
+		box.hidden = !M.features.length && !M.journeys.length;
+		if (box.hidden) return;
+		[
+			["Features", M.features],
+			["Journeys", M.journeys],
+		].forEach(function (g) {
+			var grp = el("div", "lg-group ov-group");
+			grp.setAttribute("role", "group");
+			grp.setAttribute("aria-label", g[0]);
+			grp.appendChild(el("span", "lg-label", g[0]));
+			if (!g[1].length) grp.appendChild(el("span", "ov-none", "none on this map"));
+			g[1].forEach(function (o) {
+				var b = overlayItem(o);
+				D.ovItems.set(o.key, b);
+				grp.appendChild(b);
+			});
+			box.appendChild(grp);
+		});
+		D.ovNote = el("p", "ov-note");
+		D.ovNote.setAttribute("aria-live", "polite");
+		box.appendChild(D.ovNote);
+		updateOverlays();
+	}
+
+	function overlayItem(o) {
+		var b = button("ov-item ov-" + o.kind + " " + statusClass(o.status) + (o.places.length ? "" : " zero"), null, function () {
+			selectOverlay(S.overlay === o ? null : o);
+		});
+		b.dataset.key = o.key;
+		b.appendChild(el("span", "ov-name", o.title));
+		b.appendChild(el("span", "lg-count", overlayCount(o)));
+		if (o.status !== "ready") b.appendChild(badge(o.status));
+		b.title = o.summary || o.title;
+		b.setAttribute("aria-label", o.kind + " " + o.title + ", " + overlayCount(o) + ", " + (o.status || "no status"));
+		b.addEventListener("mouseenter", function () {
+			S.ovHover = o;
+			highlight();
+		});
+		b.addEventListener("mouseleave", function () {
+			if (S.ovHover === o) {
+				S.ovHover = null;
+				highlight();
+			}
+		});
+		// Keyboard focus lights like hover; a mouse click focuses without lighting.
+		b.addEventListener("focus", function () {
+			if (!b.matches(":focus-visible")) return;
+			S.ovKbd = o;
+			highlight();
+		});
+		b.addEventListener("blur", function () {
+			if (S.ovKbd === o) {
+				S.ovKbd = null;
+				highlight();
+			}
+		});
+		return b;
+	}
+
+	function updateOverlays() {
+		D.ovItems.forEach(function (b, key) {
+			b.setAttribute("aria-pressed", String(!!S.overlay && S.overlay.key === key));
+		});
+	}
+
+	function selectOverlay(o) {
+		S.overlay = o;
+		S.step = -1;
+		S.edgeSel = null;
+		hideTip();
+		updateOverlays();
+		renderPanel();
+		highlight();
+		if (o && D.main.classList.contains("panel-closed")) setPanel(true);
+	}
+
+	// Ordinary navigation to one place ends the overlay; drilling keeps it.
+	function dropOverlay() {
+		if (!S.overlay) return false;
+		S.overlay = null;
+		S.step = -1;
+		updateOverlays();
+		return true;
+	}
+
+	function goPlace(p) {
+		if (p.node) navigate(p.node.parent, p.node);
+		else navigate(null, null);
+	}
+
+	function goStep(i) {
+		var o = S.overlay;
+		if (!o || i < 0 || i >= o.places.length) return;
+		S.step = i;
+		goPlace(o.places[i]);
+	}
+
+	function renderOverlayPanel(box, o) {
+		var journey = o.kind === "journey";
+		var tags = el("div", "d-tags");
+		tags.appendChild(el("span", "tag ov-tag ov-" + o.kind, o.kind));
+		tags.appendChild(badge(o.status));
+		box.appendChild(tags);
+		box.appendChild(el("h2", "d-title", o.title));
+		box.appendChild(codeLine("d-id", o.id));
+		if (o.summary && !repeats(o.bodyHtml, o.summary)) box.appendChild(el("p", "d-sum", o.summary));
+		var acts = el("div", "d-actions");
+		if (journey && o.places.length) {
+			var prev = button("d-action", "Previous step", function () {
+				goStep(S.step - 1);
+			});
+			prev.dataset.key = "step-prev";
+			prev.disabled = S.step <= 0;
+			var next = button("d-action", S.step < 0 ? "First step" : "Next step", function () {
+				goStep(S.step + 1);
+			});
+			next.dataset.key = "step-next";
+			next.disabled = S.step >= o.places.length - 1;
+			acts.appendChild(prev);
+			acts.appendChild(next);
+		}
+		var close = button("d-action quiet", "Clear " + o.kind, function () {
+			selectOverlay(null);
+		});
+		close.dataset.key = "clear";
+		acts.appendChild(close);
+		box.appendChild(acts);
+		if (o.bodyHtml) box.appendChild(prose(o.bodyHtml));
+		else if (!o.summary) box.appendChild(el("p", "d-empty", "No description."));
+
+		var level = S.level,
+			at = level && level.els ? overlayMarks(level, o) : null;
+		var s = section(box, (journey ? "Steps" : "Touches") + " (" + o.places.length + ")");
+		if (!o.places.length) s.appendChild(el("p", "d-empty", journey ? "Lists no step on this map." : "Lists no place on this map."));
+		var list = el(journey ? "ol" : "ul", "d-parts ov-places");
+		o.places.slice(0, LIMIT.list).forEach(function (p, i) {
+			var li = el("li");
+			var b = button("d-link", null, function () {
+				if (journey) goStep(i);
+				else goPlace(p);
+			});
+			b.dataset.key = "place:" + i;
+			if (journey) b.appendChild(el("span", "ov-num", String(i + 1)));
+			if (p.node) {
+				b.appendChild(el("span", "kind-chip " + kindClass(p.node.kind)));
+				b.appendChild(el("span", "d-link-title", p.node.title));
+				b.appendChild(badge(p.node.status));
+			} else {
+				b.appendChild(el("span", "d-link-title", projectTitle()));
+				b.appendChild(el("span", "tag", "project"));
+			}
+			b.title = p.id;
+			if (journey && i === S.step) {
+				li.className = "current";
+				b.setAttribute("aria-current", "step");
+			}
+			li.appendChild(b);
+			var where = placeWhere(level, at, p, i);
+			if (where) li.appendChild(el("p", "ov-where", where));
+			list.appendChild(li);
+		});
+		if (o.places.length > LIMIT.list) list.appendChild(el("li", "more", o.places.length - LIMIT.list + " more"));
+		if (o.places.length) s.appendChild(list);
+		if (o.missing.length) {
+			var g = section(box, "Gaps (" + o.missing.length + ")");
+			g.appendChild(el("p", "d-note", "Listed ids with no place on this map. Nothing lights for them."));
+			sourceList(g, o.missing);
+		}
+		sourceList(box, o.sources);
+		if (o.source) box.appendChild(codeLine("d-foot", o.source));
+		metaList(box, o.meta);
+	}
+
+	// One plain line on where a listed place shows at the current level.
+	function placeWhere(level, at, p, i) {
+		if (!p.node) return "The whole project. No block lights for it.";
+		if (!level || !at) return "";
+		if (!shown(p.node)) return "Hidden by the legend.";
+		var key = "";
+		at.marks.forEach(function (steps, k) {
+			if (steps.indexOf(i + 1) >= 0) key = k;
+		});
+		if (key === p.node.id) return "";
+		if (key) return "Lit as " + M.byId.get(key).title + ", which holds it.";
+		if (level.focus === p.node) return "The open block.";
+		if (level.focus && within(level.focus, p.node)) return "Holds the open block.";
+		return "Not shown at this level.";
 	}
 
 	// ------------------------------------------------------------------ tooltip
@@ -1701,10 +2018,16 @@
 		);
 	}
 
+	// Opening a block keeps a selected overlay; picking one place ends it.
 	function activate(n, ghost) {
-		if (ghost) navigate(n.parent, n);
-		else if (shownKids(n).length) navigate(n, n);
-		else navigate(S.focus, n);
+		if (ghost) {
+			dropOverlay();
+			navigate(n.parent, n);
+		} else if (shownKids(n).length) navigate(n, n);
+		else {
+			dropOverlay();
+			navigate(S.focus, n);
+		}
 	}
 
 	function up() {
@@ -1714,11 +2037,17 @@
 			highlight();
 			return;
 		}
+		if (dropOverlay()) {
+			renderPanel();
+			highlight();
+			return;
+		}
 		if (S.focus) navigate(S.focus.parent, S.focus);
 		else if (S.selected) navigate(null, null);
 	}
 
 	function selectBundle(bu) {
+		dropOverlay();
 		S.edgeSel = bu;
 		hideTip();
 		renderPanel();
@@ -1756,12 +2085,25 @@
 	// -------------------------------------------------------------------- panel
 
 	function renderPanel() {
-		var box = D.panelBody;
+		var box = D.panelBody,
+			active = document.activeElement,
+			keep = active && box.contains(active) ? active.dataset.key : "";
 		clear(box);
 		D.panel.scrollTop = 0;
 		if (S.edgeSel) renderBundlePanel(box, S.edgeSel);
+		else if (S.overlay) renderOverlayPanel(box, S.overlay);
 		else if (S.selected) renderNodePanel(box, S.selected);
 		else renderProjectPanel(box);
+		if (keep) {
+			// A step button that just disabled hands focus to the current step.
+			var find = function (key) {
+				return Array.prototype.filter.call(box.querySelectorAll("button"), function (x) {
+					return x.dataset.key === key && !x.disabled;
+				})[0];
+			};
+			var again = find(keep) || find("place:" + S.step);
+			if (again) again.focus();
+		}
 	}
 
 	function renderProjectPanel(box) {
@@ -1783,6 +2125,8 @@
 		row("Top-level blocks", String(M.roots.length));
 		row("All blocks", String(M.nodes.length));
 		row("Connections", String(M.edges.length));
+		row("Features", String(M.features.length));
+		row("Journeys", String(M.journeys.length));
 		M.nodeKinds.forEach(function (k) {
 			row(
 				"Kind " + k,
@@ -2069,6 +2413,7 @@
 		var n = S.results[i];
 		if (!n) return;
 		closeSearch();
+		dropOverlay();
 		navigate(n.parent, n);
 		var b = S.level && S.level.els ? S.level.els.get(n.id) : null;
 		if (b) b.focus({ preventScroll: true });
@@ -2204,7 +2549,17 @@
 						meta.appendChild(
 							button("d-link small", "Show " + target.title, function () {
 								setDrawer(false);
+								dropOverlay();
 								navigate(target.parent, target);
+							}),
+						);
+					}
+					var ov = d.id && !target ? M.overlayByKey.get("feature:" + d.id) || M.overlayByKey.get("journey:" + d.id) : null;
+					if (ov) {
+						meta.appendChild(
+							button("d-link small", "Show " + ov.title, function () {
+								setDrawer(false);
+								selectOverlay(ov);
 							}),
 						);
 					}
@@ -2293,6 +2648,7 @@
 			panelBody: $("panel-body"),
 			drawer: $("drawer"),
 			tip: $("tip"),
+			overlays: $("overlays"),
 		};
 		var tag = $("archmap-data"),
 			raw = null;
@@ -2338,6 +2694,7 @@
 		else window.addEventListener("resize", scheduleRelayout);
 
 		renderDiagButton();
+		renderOverlays();
 		onHash();
 	}
 

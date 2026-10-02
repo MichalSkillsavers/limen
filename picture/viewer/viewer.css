@@ -34,6 +34,9 @@
 	--feat: #a21caf;
 	--feat-bg: #fdf4ff;
 	--feat-border: #e5a6ef;
+	--jour: #0369a1;
+	--jour-bg: #f0f9ff;
+	--jour-border: #7dc4ea;
 
 	--k-depends-on: #64748b;
 	--k-hosts: #0f766e;
@@ -85,6 +88,9 @@
 		--feat: #f0abfc;
 		--feat-bg: #251a2b;
 		--feat-border: #7e3f88;
+		--jour: #7dd3fc;
+		--jour-bg: #132433;
+		--jour-border: #2f6a8c;
 
 		--k-depends-on: #94a3b8;
 		--k-hosts: #2dd4bf;
@@ -427,6 +433,85 @@ button.crumb:hover {
 	flex-basis: 100%;
 }
 
+/* Overlays: features and journeys are a list, never blocks or links. */
+.overlays {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 16px;
+	max-height: 132px;
+	overflow-y: auto;
+	padding: 6px 20px 8px;
+	border-bottom: 1px solid var(--border);
+}
+.overlays[hidden] {
+	display: none;
+}
+.ov-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	max-width: 300px;
+	padding: 2px 8px 2px 6px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface);
+	cursor: pointer;
+	font-size: 12px;
+}
+.ov-item:hover {
+	border-color: var(--border-strong);
+}
+.ov-item::before {
+	flex: none;
+	font-size: 11px;
+}
+.ov-item.ov-feature::before {
+	content: "\25C6";
+	color: var(--feat);
+}
+.ov-item.ov-journey {
+	border-radius: 6px;
+}
+.ov-item.ov-journey::before {
+	content: "\2460";
+	color: var(--jour);
+}
+.ov-item.ov-feature[aria-pressed="true"] {
+	border-color: var(--feat);
+	background: var(--feat-bg);
+	box-shadow: 0 0 0 1px var(--feat);
+}
+.ov-item.ov-journey[aria-pressed="true"] {
+	border-color: var(--jour);
+	background: var(--jour-bg);
+	box-shadow: 0 0 0 1px var(--jour);
+}
+.ov-item.st-partial,
+.ov-item.st-stub,
+.ov-item.zero {
+	border-style: dashed;
+}
+.ov-item.zero .ov-name {
+	color: var(--faint);
+}
+.ov-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ov-none {
+	font-size: 12px;
+	color: var(--faint);
+}
+.ov-note {
+	flex-basis: 100%;
+	margin: 0;
+	font-size: 12px;
+	color: var(--muted);
+}
+
 .viewport {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -614,6 +699,43 @@ button.crumb:hover {
 }
 .block.ghost.muted {
 	opacity: 0.4;
+}
+
+/* A place an overlay lists: a ring, and for journeys its step numbers. */
+.canvas {
+	--ovc: var(--feat);
+}
+.canvas.ov-journey {
+	--ovc: var(--jour);
+}
+.block.ov {
+	overflow: visible;
+	box-shadow:
+		0 0 0 2px var(--ovc),
+		var(--shadow);
+}
+.block.ov.ov-cur {
+	box-shadow:
+		0 0 0 2px var(--ovc),
+		0 0 0 6px var(--accent-soft),
+		var(--shadow);
+}
+.b-steps {
+	position: absolute;
+	top: -10px;
+	left: 8px;
+	max-width: calc(100% - 16px);
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--ovc);
+	color: var(--surface);
+	font-size: 10.5px;
+	font-weight: 700;
+	line-height: 18px;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .frame {
@@ -825,6 +947,17 @@ button.crumb:hover {
 	border-color: var(--feat-border);
 	background: var(--feat-bg);
 	border-radius: 999px;
+}
+.tag.ov-feature {
+	color: var(--feat);
+	border-color: var(--feat-border);
+	background: var(--feat-bg);
+	border-radius: 999px;
+}
+.tag.ov-journey {
+	color: var(--jour);
+	border-color: var(--jour-border);
+	background: var(--jour-bg);
 }
 .kind-chip {
 	flex: none;
@@ -1050,6 +1183,27 @@ button.crumb:hover {
 .d-edge-title {
 	margin: 4px 0;
 	font-size: 14px;
+}
+.ov-places li.current .d-link {
+	background: var(--jour-bg);
+	box-shadow: inset 3px 0 0 var(--jour);
+}
+.ov-num {
+	flex: none;
+	min-width: 18px;
+	font-weight: 700;
+	color: var(--jour);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+.ov-where {
+	margin: 0 0 4px 32px;
+	font-size: 12px;
+	color: var(--muted);
+}
+.d-action:disabled {
+	opacity: 0.45;
+	cursor: default;
 }
 
 .prose {
