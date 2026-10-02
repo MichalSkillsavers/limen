@@ -12,7 +12,8 @@ const text = (path: string) =>
 		() => "",
 	);
 
-type Agent = { pane_id?: string; tab_id?: string; cwd?: string; agent_status?: string; interactive_ready?: boolean };
+type Agent = { pane_id?: string; tab_id?: string; cwd?: string; agent_status?: string; interactive_ready?: boolean; name?: string };
+type Tab = { tab_id?: string; label?: string; number?: number; agent_status?: string };
 
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -115,7 +116,7 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 			`Plant ${root}`,
 			`Running (${running.length}):`,
 			...(running.length ? running : ["  none"]),
-			`Ready to land (${ready.length}):`,
+			`Candidates to inspect (${ready.length}):`,
 			...(ready.length ? ready : ["  none"]),
 			`Needs a decision (${decide.length}):`,
 			...(decide.length ? decide : ["  none"]),
@@ -147,12 +148,16 @@ function coordinatorLines(root: string, workspace: boolean, workers: ReadonlySet
 			}
 			return path === "" || (workspace && path !== ".." && !path.startsWith("../") && !path.startsWith(".limen"));
 		});
-		return relevant.length
-			? relevant.map(
-					(agent) =>
-						`  ${agent.tab_id} · ${agent.agent_status ?? "unknown"}${agent.interactive_ready === false ? " (not interactive)" : ""}${agent.cwd && realpathSync(agent.cwd) !== plant ? ` · ${agent.cwd}` : ""}`,
-				)
-			: ["  none found (not proof of an idle plant)"];
+		if (!relevant.length) return ["  none found (not proof of an idle plant)"];
+		const tabs = listTabs(bin, []);
+		return relevant.map((agent) => {
+			const tab = tabs?.find((candidate) => candidate.tab_id === agent.tab_id);
+			const subject = tabs ? ((tab && tabLabel(tab)) ?? "unlabeled tab") : "tab label unknown";
+			const handle = agent.name ? `handle ${agent.name}` : "no handle";
+			const ready = agent.interactive_ready === false ? " (not interactive)" : "";
+			const where = agent.cwd && realpathSync(agent.cwd) !== plant ? ` · ${agent.cwd}` : "";
+			return `  ${subject} · ${handle} · ${agent.agent_status ?? "unknown"}${ready} · ${agent.tab_id}${agent.pane_id ? ` ${agent.pane_id}` : ""}${where}`;
+		});
 	} catch {
 		return recordedOriginLines(bin, origins, workers);
 	}
@@ -163,18 +168,28 @@ function recordedOriginLines(bin: string, origins: ReadonlySet<string>, workers:
 	const lines: string[] = [];
 	const spaces = new Set([...origins].map((tab) => tab.split(":")[0]).filter((space): space is string => !!space));
 	for (const workspace of spaces) {
-		const result = spawnSync(bin, ["tab", "list", "--workspace", workspace], { encoding: "utf8", timeout: 2_000 });
-		if (result.error || result.status !== 0) continue;
-		try {
-			const payload = JSON.parse(result.stdout) as { result?: { tabs?: { tab_id?: string; agent_status?: string }[] } };
-			for (const tab of payload.result?.tabs ?? []) {
-				if (tab.tab_id && origins.has(tab.tab_id) && !workers.has(tab.tab_id)) lines.push(`  ${tab.tab_id} · ${tab.agent_status ?? "unknown"}`);
-			}
-		} catch {
-			// Keep unavailable workspaces unconfirmed.
+		for (const tab of listTabs(bin, ["--workspace", workspace]) ?? []) {
+			if (tab.tab_id && origins.has(tab.tab_id) && !workers.has(tab.tab_id)) lines.push(`  ${tabLabel(tab) ?? "unlabeled tab"} · ${tab.agent_status ?? "unknown"} · ${tab.tab_id}`);
 		}
 	}
 	return lines.length
 		? ["  Agent list unavailable; recorded origin tabs only (coordinator role unconfirmed):", ...lines]
 		: ["  unknown (Herdr agent list unavailable; recorded origins unconfirmed)"];
+}
+
+/** Herdr's default tab label is the tab number, which names nothing. */
+function tabLabel(tab: Tab): string | undefined {
+	const label = tab.label?.trim();
+	return label && label !== String(tab.number) ? label : undefined;
+}
+
+function listTabs(bin: string, args: readonly string[]): readonly Tab[] | undefined {
+	const result = spawnSync(bin, ["tab", "list", ...args], { encoding: "utf8", timeout: 2_000 });
+	if (result.error || result.status !== 0) return undefined;
+	try {
+		const tabs = (JSON.parse(result.stdout) as { result?: { tabs?: Tab[] } }).result?.tabs;
+		return Array.isArray(tabs) ? tabs : undefined;
+	} catch {
+		return undefined;
+	}
 }
