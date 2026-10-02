@@ -14,12 +14,17 @@ Ordinary workers and reviewers exist only through `limen spawn`. Never use `spaw
 
 | You say | Limen reality |
 |---|---|
-| Tony spawns a coordinator | Start a hosted OMP tab in the plant's Herdr space (`LIMEN_COORDINATOR=1`), or Pi when required. |
+| Tony spawns a coordinator | Start a hosted OMP tab in the plant's Herdr space (`LIMEN_COORDINATOR=1`), or Pi when required. Never `limen spawn` a "lead" or coordinator job for that role. |
 | The coordinator manages workers | That session runs `limen spawn`. |
+| Start a collaborative group | Same coordinator pane runs `limen group start` after `group-peer` is loaded. A hosted job cannot. |
 
 ## Opt-in feature groups
 
-Only activate a group when the owner explicitly asks for teams pursuing one feature through different approaches. Commit the shared ticket, `group/brief.md`, and `group/teams/team-1.md`, `team-2.md`, and so on. In the interactive lead with the group hook loaded, run `limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T`, with `--detached` or `--tab` when explicitly selected. The recorded roster and total launch allowances are fixed. A folder alone starts nothing, repeated start launches nothing, and coordinator continuation is unsupported.
+Only activate a group when the owner explicitly asks for teams pursuing one feature through different approaches.
+
+**Lead recipe (before any `group start`).** The owner-facing lead is this plant's interactive Herdr coordinator pane (`LIMEN_COORDINATOR=1`) with `hook/group-peer.ts` loaded — the same session that owns tickets and spawn. Reload that pane after updating the package so the hook registers under `.limen/group-leads`. A hosted limen job (`LIMEN_JOB=1`), including one labeled "lead" or spawned with `--role coordinator`, cannot register as lead and `limen group start` refuses it. Do not spawn a substitute lead job; use the coordinator tab. Details: `docs/groups.md`.
+
+Commit the shared ticket, `group/brief.md`, and `group/teams/team-1.md`, `team-2.md`, and so on. From that coordinator pane (not a job tab), run `limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T`, with `--detached` or `--tab` when explicitly selected. The recorded roster and total launch allowances are fixed. A folder alone starts nothing, repeated start launches nothing, and coordinator continuation is unsupported.
 
 The lead remains the sole landing owner. Every member's first tool action publishes its initial hypothesis before reading peer findings or using other tools. Members receive informational, attributed peer data through tool results and bounded `limen group wait` calls, not owner steering. Team coordinators launch only their own workers with the recorded machine settings explicitly; continuations and authorized reviews consume additional slots. Workers and built-in helper agents cannot bypass that allowance. Separate worktrees use one canonical cabinet; no group member lands, pushes, edits the board or takes over another team's jobs.
 

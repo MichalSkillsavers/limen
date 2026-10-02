@@ -15,7 +15,10 @@ import { spawnCommand } from "./spawn.ts";
 import { stopCommand } from "./stop.ts";
 
 export async function startGroup(args: readonly string[], cwd: string): Promise<GroupRun> {
-	if (process.env.LIMEN_GROUP_ID || process.env.LIMEN_JOB === "1") throw new Error("only the owner-facing lead may start a group");
+	if (process.env.LIMEN_GROUP_ID || process.env.LIMEN_JOB === "1")
+		throw new Error(
+			"only the owner-facing lead may start a group: run limen group start from the plant's interactive Herdr coordinator pane (LIMEN_COORDINATOR=1) with hook/group-peer.ts loaded — a hosted limen job (LIMEN_JOB=1) cannot register as lead or start groups",
+		);
 	const featureArgument = args[0];
 	if (!featureArgument || featureArgument.startsWith("--")) throw new Error("group start requires a feature directory");
 	const flags = new Map<string, string>();
@@ -61,9 +64,15 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	const feature = relative(root, resolve(cwd, featureArgument));
 	if (feature.startsWith("..") || !feature.startsWith("spec/features/")) throw new Error("feature must be inside this repository's spec/features");
 	const lead = (await leadSession(root)) ?? "";
-	if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(lead)) throw new Error("group start requires an interactive lead session with the group hook loaded");
+	if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(lead))
+		throw new Error(
+			"group start requires the interactive Herdr coordinator pane (LIMEN_COORDINATOR=1) with hook/group-peer.ts loaded and registered under .limen/group-leads — reload that pane after updating the package; a hosted limen job never registers as lead",
+		);
 	const listener = Number(await readFile(`${root}/.limen/group-leads/${lead}`, "utf8").catch(() => ""));
-	if (listener <= 0 || !processAlive(listener)) throw new Error("group lead hook is not running; load hook/group-peer.ts and retry");
+	if (listener <= 0 || !processAlive(listener))
+		throw new Error(
+			"group lead hook is not running in this pane: load hook/group-peer.ts on the interactive Herdr coordinator (LIMEN_COORDINATOR=1) and retry — do not spawn a hosted job as lead",
+		);
 	const teams = Array.from({ length: count("--teams") }, (_, index) => `team-${index + 1}`);
 	for (const team of Object.keys(teamModels)) if (!teams.includes(team)) throw new Error(`--team-model names ${team}, which is not in the roster`);
 	const workersPerTeam = count("--workers-per-team");

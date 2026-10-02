@@ -79,7 +79,10 @@ export async function spawnCommand(args: readonly string[], cwd: string, coordin
 }
 async function spawnJob(args: readonly string[], cwd: string, group?: { run: GroupRun; team: string; role: "coordinator" | "worker" }): Promise<void> {
 	const parsed = parseSpawnArgs(args);
-	if (!group && parsed.role === "coordinator") throw new Error("managed coordinators require explicit group start");
+	if (!group && parsed.role === "coordinator")
+		throw new Error(
+			"managed team coordinators come only from limen group start; the owner-facing lead is the interactive Herdr coordinator pane (LIMEN_COORDINATOR=1) with group-peer loaded — never spawn a hosted job as lead or coordinator",
+		);
 	if (group) {
 		const run = group.run;
 		const route = teamRoute(run, group.team);

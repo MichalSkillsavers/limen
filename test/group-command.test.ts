@@ -92,6 +92,22 @@ async function launch(scratch: Scratch, added: NodeJS.ProcessEnv, ...args: strin
 	return { status: await result.promise, stdout, stderr };
 }
 
+test("group start refuses a hosted job and points at the Herdr coordinator lead recipe", async (context) => {
+	const scratch = await fixture();
+	context.after(scratch.cleanup);
+	const asJob = limenWithEnv(scratch, { ...lead, LIMEN_JOB: "1", LIMEN_JOB_ID: "pretend-lead" }, "group", "start", scratch.feature, ...settings);
+	assert.equal(asJob.status, 1);
+	assert.match(asJob.stderr, /LIMEN_COORDINATOR=1/);
+	assert.match(asJob.stderr, /LIMEN_JOB=1/);
+	assert.match(asJob.stderr, /group-peer/);
+	assert.equal(existsSync(`${scratch.root}/.limen/groups`), false);
+	const asMemberRole = limen(scratch, "spawn", "--detached", "--role", "coordinator", "--label", "fake group lead", "pretend to own the group");
+	assert.equal(asMemberRole.status, 1);
+	assert.match(asMemberRole.stderr, /LIMEN_COORDINATOR=1/);
+	assert.match(asMemberRole.stderr, /group start/);
+	assert.deepEqual(await readdir(`${scratch.root}/.limen/jobs`).catch(() => []), []);
+});
+
 test("duplicate and concurrent activation start one fixed roster, never repair or add agents", async (context) => {
 	const scratch = await fixture();
 	context.after(scratch.cleanup);
