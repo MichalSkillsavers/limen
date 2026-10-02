@@ -409,16 +409,6 @@ button.crumb:hover {
 	border-style: dashed;
 	color: var(--faint);
 }
-.lg-item.lg-side[aria-pressed="false"] {
-	opacity: 1;
-	text-decoration: none;
-	border-style: dashed;
-	background: transparent;
-}
-.lg-item.lg-side[aria-pressed="true"] {
-	border-color: var(--feat-border);
-	background: var(--feat-bg);
-}
 .lg-count {
 	color: var(--faint);
 	font-variant-numeric: tabular-nums;
@@ -632,20 +622,7 @@ button.crumb:hover {
 	color: var(--accent);
 }
 
-/* Kinds: features look different from modules. */
-.block.nk-feature {
-	border-radius: 18px;
-	background: var(--feat-bg);
-	border-color: var(--feat-border);
-	padding-left: 14px;
-	padding-right: 14px;
-}
-.block.nk-feature .b-kind {
-	color: var(--feat);
-}
-.block.nk-feature .b-kind::before {
-	content: "\25C6  ";
-}
+/* Kinds other than module get a fallback colour slot. */
 .block[class*="nk-x"] {
 	background: var(--surface-2);
 	border-top-width: 3px;
@@ -743,24 +720,6 @@ button.crumb:hover {
 	stroke: var(--frame);
 	stroke-width: 1;
 	stroke-dasharray: 5 4;
-}
-.band-label {
-	position: absolute;
-	padding-top: 6px;
-	border-top: 1px dashed var(--frame);
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--muted);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-.band-hint {
-	font-weight: 400;
-	color: var(--faint);
-}
-.show-side .band-hint {
-	display: none;
 }
 .frame-label {
 	position: absolute;
@@ -881,19 +840,6 @@ button.crumb:hover {
 .hl-mode .count:not(.hl):not(.picked) {
 	opacity: 0.1;
 }
-/* Side links (cross-cutting kinds) show only when lit or switched on. */
-.bundle.side,
-.count.side {
-	display: none;
-}
-.bundle.side.hl,
-.bundle.side.picked,
-.show-side .bundle.side,
-.count.side.hl,
-.count.side.picked,
-.show-side .count.side {
-	display: inline;
-}
 
 .swatch {
 	flex: none;
@@ -942,12 +888,6 @@ button.crumb:hover {
 	border: 1px solid var(--border);
 	border-radius: 5px;
 }
-.tag.nk-feature {
-	color: var(--feat);
-	border-color: var(--feat-border);
-	background: var(--feat-bg);
-	border-radius: 999px;
-}
 .tag.ov-feature {
 	color: var(--feat);
 	border-color: var(--feat-border);
@@ -967,11 +907,6 @@ button.crumb:hover {
 	border: 1px solid var(--border-strong);
 	border-radius: 2px;
 	background: var(--surface);
-}
-.kind-chip.nk-feature {
-	border-radius: 6px;
-	background: var(--feat-bg);
-	border-color: var(--feat-border);
 }
 .kind-chip[class*="nk-x"] {
 	background: var(--surface-2);
