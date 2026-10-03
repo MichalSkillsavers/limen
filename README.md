@@ -119,7 +119,9 @@ A detached job is bounded by 90 minutes (`--timeout 20m`) and 900 tool-start eve
 
 `limen picture build` renders a project's architecture map from a gitignored Markdown dataset (default `.limen/picture/`) into one offline `map.html` beside it. Places and the edges between them form the map; features and journeys sit in a list beside it, and selecting one lights exactly the places it names in `touches` or `steps` — never anything inferred from Git history. Build never calls a model, and the map is never committed or landed. The dataset rules live in [templates/picture/CONTRACT.md](templates/picture/CONTRACT.md).
 
-The first map is a detached `--role picture` job the coordinator starts by hand. After that, `limen picture tick --engine E --provider P --model M --thinking T` is one quiet pass: it compares the map's recorded commit with `HEAD` and starts a refresh job only when files were added, deleted, or renamed, or a source the map cites changed. Spec, docs, and map-only changes print nothing and spend nothing. One tip is attempted once; `--dry-run` prints the decision. Run it from an operator timer ([seat units](docs/seat/limen-picture.service)) or by hand.
+The first map is a detached `--role picture` job the coordinator starts by hand. After that, `limen picture tick --engine E --provider P --model M --thinking T` is one quiet pass: it compares the map's recorded commit with `HEAD` and starts a refresh job only when files were added, deleted, or renamed, or a source the map cites changed. Spec, docs, and map-only changes print nothing and spend nothing. One tip is attempted once; `--dry-run` prints the decision.
+
+The tick runs by itself only in a project that turns its watch on. **Off by default.** From the primary checkout, `limen picture watch on --engine E --provider P --model M --thinking T` installs one Git `reference-transaction` hook. Each time the top branch moves (a land, a merge, a pull), it starts one background tick. Worker branches and other refs start nothing. The hook never delays a merge or a spawn, and the refresh job wakes no conversation. `--branch` names the top branch when it is not the one checked out. `limen picture watch` prints the state, `limen picture watch off` removes the hook, and `.limen/picture-watch.log` records each move.
 
 ## Ticket authorship
 
@@ -213,7 +215,8 @@ limen open <id|suffix|label>
 limen close <FNNN>
 limen ticket-author <ticket-path>
 limen picture build [--dir D] [--out F] [--json F] [--strict]
-limen picture tick --engine E --provider P --model M --thinking T [--dir D] [--dry-run]
+limen picture tick --engine E --provider P --model M --thinking T [--dir D] [--branch B] [--dry-run]
+limen picture watch [off | on --engine E --provider P --model M --thinking T [--branch B] [--dir D]]
 ```
 
 IDs, unique suffixes, and unique labels are interchangeable where shown. `status` is the plant inbox: running jobs, finished candidates not yet landed, recent jobs that need a decision, and coordinator tabs. `continue` keeps the parent's engine. `land` merges a `done` job; a clean exit is not approval, so inspect the diff and checks first.

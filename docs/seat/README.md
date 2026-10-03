@@ -38,7 +38,7 @@ Drop-in: `User`, `WorkingDirectory` = the project, `PATH` that includes `limen`.
 
 ## Picture
 
-Optional. After the coordinator has started the first architecture map by hand, `limen-picture.{service,timer}` run one `limen picture tick` every 15 minutes. Drop-in: `User`, `WorkingDirectory` = the project, `PATH` that includes `limen`, and the board's picture engine, provider, model, and reasoning in `ExecStart`. A pass with no structural or cited code change since the map's revision prints nothing and calls no model. `systemctl enable --now limen-picture.timer`.
+Optional, per project, off by default. After the coordinator has started the first architecture map by hand, run `limen picture watch on --engine E --provider P --model M --thinking T` once from the project's primary checkout on the seat, with the board's picture engine, provider, model, and reasoning. It installs a Git hook, not a timer. Each move of the top branch starts one background `limen picture tick`. A move with no structural or cited code change since the map's revision prints nothing and calls no model. `limen picture watch off` removes it. A seat that still runs the retired `limen-picture.timer` should disable it: `systemctl disable --now limen-picture.timer`.
 
 ## From the Mac (window)
 

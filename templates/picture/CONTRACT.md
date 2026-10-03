@@ -20,6 +20,7 @@ One dataset is one directory. Default: `<project root>/.limen/picture/`, which `
 | `map.html` | Rendered view. Disposable; rebuilt from the Markdown. |
 | `map.json` | Optional model dump. Disposable. |
 | `job` | One line: the id of the last job `tick` started. |
+| `tick.lock` | Present only while one `tick` decides. Holds that pass's process id. |
 
 The generator reads only `*.md` directly inside the graph directories. It ignores subdirectories and every other file. The file name is the id plus `.md`; dots stay in the name (`nodes/alice.runtime.md`). A missing file is a gap. Nothing invents it.
 
@@ -78,17 +79,28 @@ The view opens on the whole plant (top-level places and edges lifted between the
 
 ## `limen picture tick`
 
-One pass, meant for an operator timer or a coordinator by hand. No loop, no intervals. The tip is the project root's `HEAD`; the cursor is the plant `revision`.
+One pass, started by the project's watch when its top branch moves, or by a coordinator by hand. No loop, no intervals. The tip is the project root's `HEAD`; the cursor is the plant `revision`. With `--branch B`, the pass runs only when the project root has `B` checked out; otherwise it prints one line and stops.
 
 1. No plant file or no `revision`: print one line saying the first picture starts by hand. Never spawn. The initial map is a coordinator decision.
 2. `revision` equals `HEAD`: silent.
 3. Diff `revision..HEAD` by path and status. Drop the dataset directory, `spec/`, `docs/`, `.agents/`, and root-level `*.md` first; dropped paths never count, even when cited. A remaining path is relevant when it was added, deleted, or renamed, or when it was modified and some node or edge `sources` entry names it exactly or as a directory prefix.
 4. Nothing relevant: silent. No model call. Spec-only, docs-only, and picture-only changes end here.
-5. `job` names a live job, or a job whose recorded base is `HEAD`: one line, no spawn. One tip is attempted once.
-6. Engine, provider, model, or reasoning flag missing: one line naming the relevant paths, no spawn. There is no package fallback model for the watcher.
-7. Otherwise spawn one detached picture job with those flags and record its id in `job`. The handoff names this contract's absolute path, the dataset's absolute directory, both commits, and the relevant paths.
+5. Another live pass holds `tick.lock`: one line, no spawn. A lock whose process is gone is taken over.
+6. `job` names a live job, or a job whose recorded base is `HEAD`: one line, no spawn. One tip is attempted once.
+7. Engine, provider, model, or reasoning flag missing: one line naming the relevant paths, no spawn. There is no package fallback model for the watcher.
+8. Otherwise spawn one detached picture job with those flags and record its id in `job`. The handoff names this contract's absolute path, the dataset's absolute directory, both commits, and the relevant paths.
 
 `--dry-run` prints the decision and never spawns. The watcher never commits, merges, lands, or blocks anything, and the map's own files can never trigger it.
+
+## `limen picture watch`
+
+Off by default. A project turns it on from its primary checkout with `limen picture watch on --engine E --provider P --model M --thinking T`. `--branch` names the top branch (default: the branch checked out there); `--dir` names the dataset. `limen picture watch` prints the state, and `limen picture watch off` turns it off.
+
+The watch is one `reference-transaction` hook in the repository's own hooks directory; no hook means off. It never replaces a hook it did not write, and it refuses a `core.hooksPath` outside the repository.
+
+When a ref update moves the top branch, the hook starts one background `limen picture tick --branch <top>` in the project root and returns at once. It never delays or rejects the update. Every other ref (worker branches, worktrees, `HEAD`) starts nothing. The watch reads no job records; it sees only the branch.
+
+The tick does not inherit the mover's Git overrides, wake routing, or job identity, so a refresh job wakes no conversation. Each move and the tick's output are appended to `<root>/.limen/picture-watch.log`.
 
 ## The picture job
 
