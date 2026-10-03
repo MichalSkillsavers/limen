@@ -328,6 +328,7 @@ export default function limenWake(pi: PiApi): void {
 		return routed;
 	};
 	const observe = (jobs: string, id: string) => {
+		if (existsSync(join(jobs, id, "group"))) return;
 		if (!session || !routable(join(jobs, id))) return;
 		const state = stateOf(jobs, id);
 		if (!isObservable(state)) return;

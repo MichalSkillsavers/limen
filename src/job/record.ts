@@ -4,6 +4,8 @@ import { deliverFinishWebhook } from "../integrations/finish-webhook.ts";
 import { settleJobTab } from "../integrations/herdr.ts";
 import { commitList, headCommit } from "../project/git.ts";
 import { processAlive, processInfo } from "../runtime/contain.ts";
+import { jobMembership, saveJson } from "./group-cabinet.ts";
+import { syncLifecycle } from "./group-events.ts";
 
 // The job record is a directory of plain files. `state` is the commit point observers key on;
 // everything a reader needs must be durable before it flips to a terminal value.
@@ -36,6 +38,11 @@ export async function finalizeJob(jobDir: string, state: "done" | "failed" | "st
 	const inbox = await readdir(`${jobDir}/steer/inbox`).catch(() => []);
 	await appendLimenLog(jobDir, inbox.length ? `${state}: ${detail}; ${inbox.length} steer(s) never delivered` : `${state}: ${detail}`).catch(() => {});
 	await atomicWrite(`${jobDir}/state`, `${state}\n`);
+	const group = await textFile(`${jobDir}/group`);
+	if (group) {
+		const membership = await jobMembership(jobDir);
+		if (membership) await syncLifecycle(membership.run, "skip").catch(() => {});
+	}
 	await rm(`${jobDir}/pid`, { force: true });
 	await rm(`${jobDir}/born`, { force: true });
 	// A tmp whose writer still runs is an in-flight rename by a racing finalizer, not a leftover; deleting it makes that rename ENOENT and crashes the other process.
@@ -46,9 +53,11 @@ export async function finalizeJob(jobDir: string, state: "done" | "failed" | "st
 	// The Herdr prompt is the coordinator's wake; the finish webhook is an opt-in side channel and never stands in for it.
 	// They run side by side so neither spends the other's share of a shutdown grace.
 	await Promise.all([
-		promptCoordinator(jobDir, shutdownDeadline).catch(() =>
-			appendLimenLog(jobDir, "coordinator wake via Herdr: could not be recorded; inspect notify/herdr-prompt").catch(() => {}),
-		),
+		group
+			? Promise.resolve()
+			: promptCoordinator(jobDir, shutdownDeadline).catch(() =>
+					appendLimenLog(jobDir, "coordinator wake via Herdr: could not be recorded; inspect notify/herdr-prompt").catch(() => {}),
+				),
 		deliverFinishWebhook(jobDir, shutdownDeadline).catch(() =>
 			appendLimenLog(jobDir, "finish webhook: delivery could not be recorded; inspect finish-webhook-attempt before manual retry").catch(() => {}),
 		),
@@ -76,4 +85,5 @@ async function recordBorn(jobDir: string): Promise<void> {
 	const outcome = await processInfo(process.pid);
 	if (outcome.kind !== "present" || ["done", "failed", "stopped"].includes(await textFile(`${jobDir}/state`))) return;
 	await atomicWrite(`${jobDir}/born`, `${outcome.process.born}\n`);
+	if (await textFile(`${jobDir}/group`)) await saveJson(`${jobDir}/group-owner.json`, { pid: process.pid, born: outcome.process.born });
 }

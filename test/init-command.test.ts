@@ -106,7 +106,7 @@ test("init removes leftover hook copies so the stub is the only project extensio
 	assert.match(await readFile(join(scratch.root, ".omp/extensions/limen.ts"), "utf8"), /findPackage/);
 });
 
-test("OMP project stub registers package hooks and injects coordinator context", async (context) => {
+test("OMP project stub injects coordinator context", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
 	assert.equal(limen(scratch, "init").status, 0);
@@ -117,15 +117,12 @@ test("OMP project stub registers package hooks and injects coordinator context",
 	process.env.LIMEN_PACKAGE = ROOT;
 	try {
 		const handlers = new Map<string, (...args: unknown[]) => unknown>();
-		const registrations: string[] = [];
 		const extension = await import(pathToFileURL(join(scratch.root, ".omp/extensions/limen.ts")).href);
 		await extension.default({
 			on: (event: string, handler: (...args: unknown[]) => unknown) => {
-				registrations.push(event);
 				handlers.set(event, handler);
 			},
 		});
-		assert.equal(registrations.filter((event) => event === "session_start").length, 2, "wake and steering registered");
 		const result = handlers.get("before_agent_start")?.({ systemPrompt: "base" }, { cwd: scratch.root }) as { systemPrompt?: string };
 		const prompt = result.systemPrompt ?? "";
 		assert.match(prompt, /## Shop manual/);

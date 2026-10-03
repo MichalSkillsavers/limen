@@ -6,6 +6,9 @@ import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureFinishAuthor, finishWebhookEnv } from "../integrations/finish-webhook.ts";
 import { herdrAvailable, openHostedTab, openWatchTab } from "../integrations/herdr.ts";
+import type { GroupRun } from "../job/group-cabinet.ts";
+import { claimMember, groupIdentity, groupLock, groupPath, teamRoute } from "../job/group-cabinet.ts";
+import { syncLifecycle } from "../job/group-events.ts";
 import { parseDuration } from "../job/job.ts";
 import { appendLimenLog, atomicWrite, finalizeJob } from "../job/record.ts";
 import {
@@ -61,8 +64,46 @@ type WorktreePlan =
 	| { readonly kind: "add-new"; readonly path: string; readonly branch: string };
 const HANDSHAKE_POLL_MS = 20;
 const handshakeMs = (): number => (Number(process.env.LIMEN_HANDSHAKE_MS) > 0 ? Number(process.env.LIMEN_HANDSHAKE_MS) : 10_000);
-export async function spawnCommand(args: readonly string[], cwd: string): Promise<void> {
+export async function spawnCommand(args: readonly string[], cwd: string, coordinator?: { run: GroupRun; team: string }): Promise<void> {
+	const identity = coordinator ? undefined : await groupIdentity(cwd);
+	const group = coordinator
+		? { run: coordinator.run, team: coordinator.team, role: "coordinator" as const }
+		: identity?.member
+			? { run: identity.run, team: identity.member.team, role: "worker" as const }
+			: undefined;
+	if (identity?.member?.role === "worker") throw new Error("group workers cannot launch jobs; ask their team coordinator");
+	if (group) {
+		await groupLock(`${groupPath(group.run)}/launch`, () => spawnJob(args, cwd, group), "wait");
+		return;
+	}
+	await spawnJob(args, cwd);
+}
+async function spawnJob(args: readonly string[], cwd: string, group?: { run: GroupRun; team: string; role: "coordinator" | "worker" }): Promise<void> {
 	const parsed = parseSpawnArgs(args);
+	if (!group) {
+		const roleClaim = claimsOwnerFacingLead("", parsed.role, false);
+		if (roleClaim) throw new Error(roleClaim);
+	}
+	if (group) {
+		const run = group.run;
+		const route = teamRoute(run, group.team);
+		if (
+			parsed.engine !== run.engine ||
+			parsed.provider !== route.provider ||
+			parsed.model !== route.model ||
+			parsed.thinking !== (group.role === "coordinator" ? run.thinking : run.workerThinking)
+		)
+			throw new Error("group launches require the recorded engine/provider/model/reasoning explicitly");
+		if (parsed.repo || (parsed.branch && !parsed.review) || (parsed.role && parsed.role !== group.role) || parsed.timeoutMs)
+			throw new Error("group launches use isolated new branches, recorded roles and deadlines; omit --repo, ordinary --branch and --timeout");
+		if (
+			parsed.review &&
+			!(await Promise.all(run.members.filter((member) => member.team === group.team).map((member) => text(`${run.root}/.limen/jobs/${member.id}/branch`))).then((branches) =>
+				branches.includes(parsed.branch ?? ""),
+			))
+		)
+			throw new Error("group review requires a candidate branch owned by this team");
+	}
 	const herdr = herdrAvailable();
 	const tab = parsed.detached ? false : parsed.tab || herdr;
 	if (parsed.tab && parsed.detached) throw new Error("--tab and --detached cannot be combined");
@@ -70,8 +111,10 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 	if (tab && !herdr) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
 	const loaded = await readSpawnTask(parsed.task, parsed.taskFile, cwd);
 	const options = { ...parsed, tab, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
-	const leadClaim = claimsOwnerFacingLead(options.label, options.role, tab);
-	if (leadClaim) throw new Error(leadClaim);
+	if (!group) {
+		const leadClaim = claimsOwnerFacingLead(options.label, options.role, tab);
+		if (leadClaim) throw new Error(leadClaim);
+	}
 	const profile = resolveSpawnEngine(options.engine);
 	const engine = profile.id;
 	const model = options.model ?? (process.env[options.review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
@@ -79,13 +122,13 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 	const notificationSession = currentNotificationSession();
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
 	const coordinatorPane = herdrWakePane(notificationSession);
-	const workspace = workspaceRoot(cwd);
-	const root = workspace ?? repoRoot(cwd);
+	const workspace = group ? undefined : workspaceRoot(cwd);
+	const root = group?.run.root ?? workspace ?? repoRoot(cwd);
 	if (workspace && !options.repo) throw new Error("workspace spawn requires --repo <immediate-child>");
 	if (!workspace && options.repo) throw new Error("--repo is available only from a non-Git workspace coordinator");
 	const repository = workspace ? workspaceRepository(root, options.repo ?? "") : root;
 	const task = loaded.raw ? loaded.text : workspace ? workspaceTask(options.task, root, options.repo ?? "") : options.task;
-	const role = options.review ? "reviewer" : (options.role ?? "worker");
+	const role = options.review ? "reviewer" : (group?.role ?? options.role ?? "worker");
 	if (options.base && !/^[0-9a-f]{40}$/.test(options.base)) throw new Error("--base requires a full commit SHA");
 	if (options.head && !/^[0-9a-f]{40}$/.test(options.head)) throw new Error("--head requires a full commit SHA");
 	const preamble = resolvePreamble(root, role);
@@ -115,8 +158,9 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 	});
 	if (options.head && branchCommit(repository, branch) !== options.head) throw new Error("pinned review head moved before spawn");
 	const baseCommit = plan.kind === "add-new" ? headCommit(repository) : branchCommit(repository, branch);
-	for (const [, ticket] of task.matchAll(/\bTicket: (spec\/\S+)/g))
+	for (const [, ticket] of task.matchAll(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g))
 		if (ticket && !commitHasFile(repository, baseCommit, ticket)) throw new Error(`ticket ${ticket} is missing from the base commit`);
+	const member = group ? await claimMember(group.run, group.team, group.role, id) : undefined;
 	const jobDir = `${jobsRoot}/${id}`;
 	const publishing = `${dirname(jobsRoot)}/.publishing-${id}`;
 	await mkdir(publishing);
@@ -124,6 +168,13 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 		await Promise.all([
 			writeFile(`${publishing}/started-at`, `${new Date().toISOString()}\n`, { flag: "wx", flush: true }),
 			writeFile(`${publishing}/worktree`, `${plan.path}\n`, { flag: "wx", flush: true }),
+			...(group && member
+				? [
+						writeFile(`${publishing}/group`, `${group.run.id}\n`, { flag: "wx", flush: true }),
+						writeFile(`${publishing}/team`, `${group.team}\n`, { flag: "wx", flush: true }),
+						writeFile(`${publishing}/deadline`, `${member.deadline}\n`, { flag: "wx", flush: true }),
+					]
+				: []),
 		]);
 		await rename(publishing, jobDir);
 	} catch (error) {
@@ -154,7 +205,7 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 			...(options.tab
 				? [writeFile(`${jobDir}/hosted`, HOSTED_NOTE, { flag: "wx", flush: true }), writeFile(`${jobDir}/agent-name`, `${hostedAgentName(id)}\n`, { flag: "wx", flush: true })]
 				: []),
-			...(notificationSession
+			...(!group && notificationSession
 				? [
 						writeFile(`${jobDir}/origin-session`, `${notificationSession}\n`, { flag: "wx", flush: true }),
 						writeFile(`${jobDir}/notify/subscribers/${notificationSession}`, `${new Date().toISOString()}\n`, { flag: "wx", flush: true }),
@@ -163,17 +214,27 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 			...(coordinatorTab ? [writeFile(`${jobDir}/origin-tab`, `${coordinatorTab}\n`, { flag: "wx", flush: true })] : []),
 			...(coordinatorPane ? [writeFile(`${jobDir}/origin-pane`, `${coordinatorPane}\n`, { flag: "wx", flush: true })] : []),
 		]);
+		if (group && member) {
+			const guidance = await readFile(`${PACKAGE_ROOT}/templates/group-member.md`, "utf8");
+			const hypothesis = await readFile(`${root}/${group.run.feature}/group/teams/${group.team}.md`, "utf8");
+			await writeFile(
+				`${jobDir}/task.md`,
+				`${guidance}\nCanonical root: ${root}\nGroup: ${group.run.id}\nTeam: ${group.team}\nFeature: ${group.run.feature}\n${memberRoute(group.run, group.team)}\nApproach note:\n${hypothesis}\n\n${taskBody}`,
+			);
+		}
 		await writeFile(`${jobDir}/finish-webhook-author`, `${captureFinishAuthor(cwd, loaded.text, Boolean(workspace))}\n`, { flag: "wx", flush: true });
 		const finishConfig = finishWebhookEnv(root, cwd);
 		if (finishConfig) await writeFile(`${jobDir}/finish-webhook-env`, `${finishConfig}\n`, { flag: "wx", mode: 0o600, flush: true });
 		await writeFile(`${jobDir}/notify/ready`, "1\n", { flag: "wx", flush: true });
 		await runPrepare(jobDir, worktree, parsed.prepare ?? process.env.LIMEN_PREPARE?.trim());
 	} catch (error) {
-		await rm(jobDir, { recursive: true, force: true });
+		if (group) await finalizeJob(jobDir, "failed", `group launch failed: ${String(error)}`);
+		else await rm(jobDir, { recursive: true, force: true });
 		throw error;
 	}
 	const versions = capturedVersions(profile).then((text) => writeFile(`${jobDir}/versions`, text, { flag: "wx", flush: true }));
 	await atomicWrite(`${jobDir}/state`, "running\n");
+	if (group) await syncLifecycle(group.run, "skip");
 	if (options.tab) {
 		await startHosted({
 			jobDir,
@@ -203,6 +264,11 @@ export async function spawnCommand(args: readonly string[], cwd: string): Promis
 		LIMEN_LABEL: options.label,
 		LIMEN_CONTEXT_ROOT: root,
 	};
+	if (group) {
+		environment.LIMEN_GROUP_ID = group.run.id;
+		environment.LIMEN_TEAM_ID = group.team;
+		environment.LIMEN_TIMEOUT_MS = String(Math.max(1, (member?.deadline ?? group.run.deadline) - Date.now()));
+	}
 	environment.LIMEN_PROVIDER = options.provider ?? "";
 	environment.LIMEN_THINKING = options.thinking ?? "";
 	if (model) environment.LIMEN_MODEL = model;
@@ -244,6 +310,8 @@ export async function startHosted(input: {
 	readonly continueFile?: string;
 }): Promise<void> {
 	const agentName = hostedAgentName(input.id);
+	const group = (await text(`${input.jobDir}/group`)) || "";
+	const team = (await text(`${input.jobDir}/team`)) || "";
 	try {
 		await openHostedTab({
 			jobDir: input.jobDir,
@@ -258,6 +326,8 @@ export async function startHosted(input: {
 				LIMEN_JOB_LABEL: input.label,
 				LIMEN_CONTEXT_ROOT: input.root,
 				LIMEN_ROLE: input.role,
+				LIMEN_GROUP_ID: group,
+				LIMEN_TEAM_ID: team,
 				HERDR_ENV: "1",
 				PATH: `/usr/bin${process.env.PATH ? `:${process.env.PATH}` : ""}`,
 			},
@@ -271,6 +341,8 @@ export async function startHosted(input: {
 			LIMEN_LABEL: input.label,
 			LIMEN_CONTEXT_ROOT: input.root,
 			LIMEN_ROLE: input.role,
+			LIMEN_GROUP_ID: group,
+			LIMEN_TEAM_ID: team,
 			LIMEN_AGENT_NAME: agentName,
 			LIMEN_HOSTED_START: "1",
 			LIMEN_MODEL: input.model ?? "",
@@ -363,9 +435,13 @@ function parseSpawnArgs(args: readonly string[]): SpawnOptions {
 	}
 	if (review && role) throw new Error("--role and --review cannot be combined");
 	if ((base || head) && !review) throw new Error("--base and --head require --review");
-	if (taskFile && task.length) throw new Error("spawn accepts a positional task or --task-file, not both");
+	// With --task-file the file is the task, so positional words can only be its title.
+	if (taskFile && task.length) {
+		if (label) throw new Error("with --task-file, give the title positionally or as --label, not both");
+		label = normalizeLabel(task.join(" "));
+	}
 	if (!taskFile && (task.length === 0 || !task.join(" ").trim())) throw new Error("spawn requires task text");
-	const out: SpawnOptions = { task: task.join(" "), review, tab, detached, ...(role ? { role } : {}), ...(engine ? { engine } : {}) };
+	const out: SpawnOptions = { task: taskFile ? "" : task.join(" "), review, tab, detached, ...(role ? { role } : {}), ...(engine ? { engine } : {}) };
 	if (label) out.label = label;
 	if (taskFile) out.taskFile = taskFile;
 	if (prepare) out.prepare = prepare;
@@ -419,7 +495,7 @@ export async function capturedVersions(profile: EngineProfile): Promise<string> 
 	return `${profile.id} ${version}\n${extra ? `herdr ${extra}\n` : ""}${hunkVersion ? `hunk ${hunkVersion}\n` : ""}`;
 }
 function workspaceTask(task: string, root: string, repo: string): string {
-	const pointer = task.replace(/\bTicket: (spec\/\S+)/g, (_all, path: string) => `Ticket: ${root}/${path}`);
+	const pointer = task.replace(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g, (_all, path: string) => `Ticket: ${root}/${path}`);
 	return `Repository: ${repo}. Work only in this repository.\n\n${pointer}`;
 }
 const once = <T>(current: T | undefined, flag: string, value: T): T => {
@@ -445,6 +521,11 @@ export function hostedAgentName(jobId: string): string {
 	const dashed = cut.replace(/^\d{4}-\d{2}-\d{2}-/, "").replace(/[^a-z0-9_-]+/g, "-");
 	const slug = dashed.replace(/^[^a-z]+/, "").slice(0, 17) || "job";
 	return hex ? `limen-${slug}-${hex}` : `limen-${slug}`.slice(0, 32);
+}
+// The shell in a member's tab may put another installed Limen first on PATH; name the package that runs this group.
+function memberRoute(run: GroupRun, team: string): string {
+	const route = teamRoute(run, team);
+	return `Limen command (use this path for every limen command): ${resolve(PACKAGE_ROOT, "bin/limen")}\nTeam worker launch settings (pass exactly): --engine ${run.engine} --provider ${route.provider} --model ${route.model} --thinking ${run.workerThinking}`;
 }
 export function currentNotificationSession(): string | undefined {
 	const value = process.env.PI_SESSION_ID?.trim();

@@ -1062,3 +1062,31 @@ function descendantPids(rootPid: number): number[] {
 	}
 	return found;
 }
+
+test("a positional title labels a task file, and a trailing period does not break the ticket pointer", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const path = "spec/features/active/F741-launch-ergonomics/ticket.md";
+	await mkdir(join(scratch.root, "spec/features/active/F741-launch-ergonomics"), { recursive: true });
+	await writeFile(join(scratch.root, path), "outcome\n");
+	const bytes = `Build the slice.\n\nTicket: ${path}.\n`;
+	await writeFile(join(scratch.root, "hand.md"), bytes);
+	git(scratch.root, "add", ".");
+	git(scratch.root, "commit", "-m", "ticket and task");
+
+	const titled = limen(scratch, "spawn", "Build the slice", "--task-file", "hand.md");
+	assert.equal(titled.status, 0, titled.stderr);
+	const id = onlyJobId(titled.stdout);
+	await waitForState(scratch.root, id, "done");
+	assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "label"), "utf8"), "Build the slice\n");
+	assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "task.md"), "utf8"), bytes);
+
+	const both = limen(scratch, "spawn", "Build the slice", "--task-file", "hand.md", "--label", "other");
+	assert.equal(both.status, 1);
+	assert.match(both.stderr, /positionally or as --label, not both/);
+
+	const help = limen(scratch, "spawn", "--help");
+	assert.equal(help.status, 0, help.stderr);
+	assert.match(help.stdout, /--task-file F\|-/);
+});
