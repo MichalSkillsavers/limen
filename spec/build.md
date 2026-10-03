@@ -25,6 +25,7 @@
 
 ## NOW
 
+- `F753-readme-is-scannable` (🟠 ACTIVE): README gets headings, lists, and labels so a reader can scan it; facts and rules unchanged.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
 ## NEXT
