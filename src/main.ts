@@ -97,7 +97,8 @@ usage:
   limen linear [on [--team T --project P]|off|status]   # Linear mirror toggle — renames spec/linear.md ↔ .off; --team/--project write a fresh config
   limen github connect|disconnect|status|doctor  # bind projects and diagnose seat safety
   limen picture build [--dir D] [--out F] [--json F] [--strict]  # local offline architecture map, no model call
-  limen picture tick [--dir D] [--dry-run] --engine E --provider P --model M --thinking T  # quiet one-tip pass
+  limen picture tick [--dir D] [--branch B] [--dry-run] --engine E --provider P --model M --thinking T  # quiet one-tip pass
+  limen picture watch [off | on [--branch B] [--dir D] --engine E --provider P --model M --thinking T]  # per-project, off by default: one tick when the top branch moves
   limen github ensure [registered-root]       # require a live registered Herdr coordinator
   limen github poll                           # run one polling pass as the isolated App user
 Pass a short coordinator instruction, not $(cat ticket.md). The ticket is a pointer, not the prompt.`;

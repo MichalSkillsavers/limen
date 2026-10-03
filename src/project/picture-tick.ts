@@ -1,11 +1,12 @@
 import { execFile, spawnSync } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { link, mkdir, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { atomicWrite, textFile } from "../job/record.ts";
 import { readPicture } from "../picture/picture-build.ts";
 import type { PictureModel } from "../picture/picture-model.ts";
+import { processAlive } from "../runtime/contain.ts";
 import { liveJob } from "../runtime/reap.ts";
 import { headCommit } from "./git.ts";
 
@@ -15,8 +16,13 @@ const CONTRACT = fileURLToPath(new URL("../../templates/picture/CONTRACT.md", im
 const MODEL_FLAGS = ["--engine", "--provider", "--model", "--thinking"];
 
 export async function pictureTick(root: string, dir: string, flags: ReadonlyMap<string, string>, dryRun: boolean): Promise<void> {
+	const branch = flags.get("--branch");
+	const checkedOut = branch && git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]).stdout.trim();
+	if (branch && checkedOut !== branch) {
+		console.log(`picture tick skipped: ${root} has ${checkedOut || "a detached HEAD"} checked out, not ${branch}`);
+		return;
+	}
 	const head = headCommit(root);
-	const short = head.slice(0, 8);
 	let model: PictureModel;
 	try {
 		model = await readPicture(dir);
@@ -41,6 +47,21 @@ export async function pictureTick(root: string, dir: string, flags: ReadonlyMap<
 	const datasetPath = relative(root, dir).split(sep).join("/");
 	const relevant = relevantPicturePaths(diff.stdout, sources, datasetPath);
 	if (!relevant.length) return;
+	// Two branch moves seconds apart start two ticks; only one may decide and spawn.
+	const lock = join(dir, "tick.lock");
+	if (!(await claimTick(lock))) {
+		console.log("picture tick already running");
+		return;
+	}
+	try {
+		await decide(root, dir, flags, dryRun, revision, head, relevant);
+	} finally {
+		await rm(lock, { force: true });
+	}
+}
+
+async function decide(root: string, dir: string, flags: ReadonlyMap<string, string>, dryRun: boolean, revision: string, head: string, relevant: readonly string[]): Promise<void> {
+	const short = head.slice(0, 8);
 	const job = await textFile(join(dir, "job"));
 	if (job && /^[a-zA-Z0-9._-]+$/.test(job)) {
 		const record = join(root, ".limen", "jobs", job);
@@ -78,6 +99,28 @@ export async function pictureTick(root: string, dir: string, flags: ReadonlyMap<
 	await mkdir(dir, { recursive: true });
 	await atomicWrite(join(dir, "job"), `${id}\n`);
 	console.log(`picture rebuild running: ${id} through ${short}`);
+}
+
+async function claimTick(lock: string): Promise<boolean> {
+	// Link a finished file into place so a reader never sees an empty lock.
+	const temporary = `${lock}.${process.pid}`;
+	await writeFile(temporary, `${process.pid}\n`);
+	try {
+		for (let attempt = 0; attempt < 2; attempt++) {
+			try {
+				await link(temporary, lock);
+				return true;
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+				const owner = Number(await textFile(lock));
+				if (Number.isInteger(owner) && owner > 0 && processAlive(owner)) return false;
+				await rm(lock, { force: true });
+			}
+		}
+		return false;
+	} finally {
+		await rm(temporary, { force: true });
+	}
 }
 
 export function relevantPicturePaths(diff: string, sources: readonly string[], dataset: string): string[] {

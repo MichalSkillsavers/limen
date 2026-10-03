@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -112,6 +113,26 @@ test("tick does not retry an attempted tip or overlap a live picture job", async
 		await rm(join(record, "base"));
 		assert.match(limen(s, "picture", "tick", "--dry-run").stdout, /previous-picture running/);
 		assert.deepEqual(await readdir(join(s.root, ".limen/jobs")), ["previous-picture"]);
+	} finally {
+		await s.cleanup();
+	}
+});
+
+test("tick on a watched branch skips another checkout and yields to a live tick, not a dead one", async () => {
+	const s = await scratchRepo();
+	try {
+		const base = await code(s);
+		const dir = await dataset(s, base);
+		await writeFile(join(s.root, "src/worker.ts"), "export const task = 2;\n");
+		git(s.root, "add", "src");
+		git(s.root, "commit", "-m", "new behavior");
+		assert.match(limen(s, "picture", "tick", "--branch", "trunk", "--dry-run").stdout, /skipped: .* has main checked out, not trunk/);
+		await writeFile(join(dir, "tick.lock"), `${process.pid}\n`);
+		assert.equal(limen(s, "picture", "tick", "--branch", "main", "--dry-run").stdout, "picture tick already running\n");
+		const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+		await writeFile(join(dir, "tick.lock"), `${dead}\n`);
+		assert.match(limen(s, "picture", "tick", "--branch", "main", "--dry-run").stdout, /src\/worker\.ts; dry run/);
+		assert.deepEqual((await readdir(dir)).sort(), ["nodes"]);
 	} finally {
 		await s.cleanup();
 	}
