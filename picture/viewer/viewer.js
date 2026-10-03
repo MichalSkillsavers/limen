@@ -5,7 +5,7 @@
    lifted to the visible level. Edges that leave the focus end at "outside" ghost blocks.
    Kind, relation and status names come from the data; the lists below only pick default
    styles, and every other value gets a generic fallback style. Features and journeys are
-   an overlay list above the map: they light only the places they list, never draw a
+   an Explore index beside the map: they light only the places they list, never draw a
    block or a link. */
 (function () {
 	"use strict";
@@ -16,18 +16,18 @@
 	var STATUS_STYLES = ["ready", "partial", "stub"];
 	var FALLBACK_SLOTS = 6;
 	var GEO = {
-		blockW: 176,
-		blockH: 78,
+		blockW: 208,
+		blockH: 94,
 		ghostH: 60,
 		gapX: 34,
 		dummyW: 8,
 		dummySep: 12,
-		pad: 24,
+		pad: 48,
 		frameTop: 36,
 		framePad: 18,
 		arrow: 9,
 		lane: 4,
-		minScale: 0.6,
+		minScale: 0.85,
 	};
 	var LIMIT = { results: 12, tip: 8, list: 150, diagGroup: 300 };
 	var ANIM_MS = 180;
@@ -46,6 +46,9 @@
 		kbdId: null,
 		hoverBundle: null,
 		overlay: null, // selected feature or journey
+		inspect: false,
+		tab: "feature",
+		pendingFocus: null,
 		ovHover: null,
 		ovKbd: null,
 		step: -1, // current journey step in the panel
@@ -207,7 +210,7 @@
 			revision = str(M.project.revision),
 			tip = str(tag.getAttribute("data-tip"));
 		clear(box);
-		var rev = el("span", "project-revision", revision ? "Revision " : "Revision not recorded");
+		var rev = el("span", "project-revision", revision ? "Snapshot " : "Snapshot not recorded");
 		if (revision) {
 			rev.appendChild(el("code", null, revision.slice(0, 7)));
 			rev.title = revision;
@@ -347,6 +350,16 @@
 		}
 		m.features = overlays(raw.features, "feature", "touches");
 		m.journeys = overlays(raw.journeys, "journey", "steps");
+		m.memberships = new Map();
+		m.features.concat(m.journeys).forEach(function (o) {
+			var seen = new Set();
+			o.places.forEach(function (p) {
+				if (seen.has(p.id)) return;
+				seen.add(p.id);
+				if (!m.memberships.has(p.id)) m.memberships.set(p.id, []);
+				m.memberships.get(p.id).push(o);
+			});
+		});
 
 		m.diagnostics = arr(raw.diagnostics)
 			.filter(function (d) {
@@ -416,9 +429,14 @@
 	// Visible stand-in for node `n` while `fchain` (focus chain) is open.
 	// Inside the focus → the focus child that contains `n`. The focus itself → null.
 	// Outside → the ancestor of `n` just below the deepest common ancestor (a ghost).
-	function rep(n, fchain) {
+	function rep(n, fchain, visibleIds) {
 		var d = fchain.length,
 			c = n.chain;
+		if (visibleIds) {
+			for (var at = c.length - 1; at >= d; at--) {
+				if (visibleIds.has(c[at].id)) return { node: c[at], ghost: false };
+			}
+		}
 		if (!d) return { node: c[0], ghost: false };
 		if (c.length > d && c[d - 1] === fchain[d - 1]) return { node: c[d], ghost: false };
 		if (c.length === d && c[d - 1] === fchain[d - 1]) return null;
@@ -430,13 +448,29 @@
 	function lift(focus) {
 		var fchain = focus ? focus.chain : [];
 		var visible = shownKids(focus);
+		var overview = S.overlay && S.step < 0 && !S.inspect ? S.overlay.key : "";
+		// An overview reveals the places the selected work names, even across
+		// collapsed boundaries. They remain real places in this one map.
+		if (overview) {
+			S.overlay.places.forEach(function (p) {
+				if (p.node && shown(p.node) && (!focus || (p.node !== focus && within(p.node, focus))) && visible.indexOf(p.node) < 0) visible.push(p.node);
+			});
+			visible.sort(function (a, b) {
+				return a.index - b.index;
+			});
+		}
+		var visibleIds = new Set(
+			visible.map(function (n) {
+				return n.id;
+			}),
+		);
 		var bundles = new Map(),
 			ghosts = new Map(),
 			own = 0;
 		M.edges.forEach(function (e) {
 			if (!shown(e.from) || !shown(e.to)) return;
-			var a = rep(e.from, fchain),
-				b = rep(e.to, fchain);
+			var a = rep(e.from, fchain, visibleIds),
+				b = rep(e.to, fchain, visibleIds);
 			if (!a || !b) {
 				own++;
 				return;
@@ -470,7 +504,7 @@
 		g.forEach(function (x) {
 			x.band = x.inc ? "bottom" : "top";
 		});
-		return { focus: focus, visible: visible, ghosts: g, bundles: list, own: own };
+		return { focus: focus, overview: overview, visible: visible, visibleIds: visibleIds, ghosts: g, bundles: list, own: own };
 	}
 	function ghostOf(map, node) {
 		var g = map.get(node.id);
@@ -487,7 +521,7 @@
 	// x positions come from order-preserving least squares (pool adjacent violators).
 
 	function layout(level, perRow) {
-		var W = Math.max(2, perRow);
+		var W = Math.max(2, Math.min(3, perRow));
 		var items = [],
 			byId = new Map();
 		function add(node, band) {
@@ -639,6 +673,24 @@
 		mids.forEach(function (it) {
 			if (it.layer < 0) put(it, t);
 		});
+		// Dense cycles otherwise form a long spine. Pack neighbouring ranks into
+		// readable rows; arrowheads still retain each edge's original direction.
+		var rankCount = mids.reduce(function (n, it) {
+			return Math.max(n, it.layer - t + 1);
+		}, 0);
+		var packedRows = Math.ceil(mids.length / W);
+		if (rankCount > packedRows) {
+			var compression = Math.ceil(rankCount / packedRows);
+			count = [];
+			mids
+				.slice()
+				.sort(function (a, b) {
+					return a.layer - b.layer || a.i - b.i;
+				})
+				.forEach(function (it) {
+					put(it, t + Math.floor((it.layer - t) / compression));
+				});
+		}
 		var maxMid = t - 1;
 		mids.forEach(function (it) {
 			if (it.layer > maxMid) maxMid = it.layer;
@@ -663,6 +715,7 @@
 				lo = up === p.a ? p.b : p.a;
 			p.upper = up;
 			p.lower = lo;
+			p.sameRow = up.layer === lo.layer;
 			var chain = [up];
 			for (var k = up.layer + 1; k < lo.layer; k++) {
 				var d = { id: "~" + dn++, dummy: true, band: "dummy", w: GEO.dummyW, h: 0, layer: k, pos: 0, cx: 0, y: 0, up: [], down: [], pair: p, i: up.i + 0.5 };
@@ -692,7 +745,15 @@
 
 		// Rows (y). The focus frame gets a header above its first row.
 		var hasFrame = !!level.focus;
-		var y = GEO.pad,
+		var arcClearance = [];
+		pairs.forEach(function (p) {
+			if (!p.sameRow) return;
+			var lanes = p.bundles.reduce(function (n, bu) {
+				return n + bu.laneList.length;
+			}, 0);
+			arcClearance[p.upper.layer] = Math.max(arcClearance[p.upper.layer] || 0, 24 + Math.abs(p.upper.cx - p.lower.cx) * 0.025 + (lanes - 1) * GEO.lane);
+		});
+		var y = Math.max(GEO.pad, (arcClearance[0] || 0) + 10),
 			rowTop = [],
 			rowH = [];
 		for (L = 0; L < nL; L++) {
@@ -710,7 +771,7 @@
 				layers[L].forEach(function (it) {
 					segs += it.down.length;
 				});
-				y += 48 + Math.min(40, segs * 3);
+				y += Math.max(48 + Math.min(40, segs * 3), (arcClearance[L + 1] || 0) + 10);
 			}
 		}
 		layers.forEach(function (row, k) {
@@ -958,7 +1019,7 @@
 			p.vis = lanes;
 			var below = p.chain[1],
 				above = p.chain[p.chain.length - 2];
-			var upList = p.upper.ports.bot,
+			var upList = p.sameRow ? p.upper.ports.top : p.upper.ports.bot,
 				loList = p.lower.ports.top;
 			lanes.forEach(function (lane, k) {
 				lane.k = k;
@@ -975,10 +1036,14 @@
 		Lo.pairs.forEach(function (p) {
 			var up = p.upper,
 				lo = p.lower,
-				y0 = up.y + up.h;
+				y0 = p.sameRow ? up.y : up.y + up.h;
 			p.vis.forEach(function (lane) {
 				var off = (lane.k - (lane.n - 1) / 2) * GEO.lane;
 				var pts = [{ x: lane.bx, y: y0 }];
+				if (p.sameRow) {
+					var arc = up.y - 24 - Math.abs(up.cx - lo.cx) * 0.025 - lane.k * GEO.lane;
+					pts.push({ x: lane.bx, y: arc }, { x: lane.tx, y: arc });
+				}
 				for (var c = 1; c < p.chain.length - 1; c++) {
 					var d = p.chain[c];
 					pts.push({ x: d.cx + off, y: d.y, d: d }, { x: d.cx + off, y: d.y + d.h, d: d });
@@ -1046,6 +1111,7 @@
 			D.canvas.style.height = "";
 			D.canvas.style.transform = "";
 			D.blocks.appendChild(el("p", "empty", S.hideKind.size ? "No blocks to show. The legend hides some block kinds." : "No blocks to show at this level."));
+			highlight();
 			return;
 		}
 		var per = Math.floor((vw - 2 * GEO.pad - (level.focus ? 2 * GEO.framePad : 0) + GEO.gapX) / (GEO.blockW + GEO.gapX));
@@ -1203,6 +1269,10 @@
 			b.appendChild(foot);
 			label += ", " + plural(kids, "part") + ", opens";
 		}
+		if (!ghost && n.parent && n.parent !== S.focus) {
+			b.appendChild(el("span", "b-parent", "in " + n.parent.title));
+			label += ", in " + n.parent.title;
+		}
 		b.setAttribute("aria-label", label);
 		if (n.summary) b.title = n.summary;
 		b.addEventListener("click", function () {
@@ -1260,9 +1330,8 @@
 	}
 
 	// Hover, keyboard focus, or selection lights one block (or one bundle) and its
-	// neighbours; everything else dims. A feature or journey lights only the places it
-	// lists: a passing overlay (hover, keyboard focus) wins; a mouse over the graph wins
-	// over a selected overlay, whose places keep their ring.
+	// neighbours; everything else dims. A feature or journey keeps only its explicit
+	// places lit, including while the reader moves over the graph.
 	function highlight() {
 		var level = S.level;
 		if (!level || !level.els) return;
@@ -1270,9 +1339,9 @@
 			lit = new Set(),
 			mode = false;
 		var passing = S.ovHover || S.ovKbd,
-			ov = passing || S.overlay;
+			ov = S.overlay || passing;
 		var at = ov ? overlayMarks(level, ov) : null;
-		var held = passing || (S.overlay && !S.hoverId && !S.hoverBundle) ? ov : null;
+		var held = ov;
 		var bu = held ? null : S.hoverBundle || S.edgeSel;
 		var id = held ? null : S.hoverId || S.kbdId;
 		if (!held && !id && !bu && S.selected && S.selected !== S.focus && level.els.has(S.selected.id)) id = S.selected.id;
@@ -1305,8 +1374,17 @@
 			var steps = at ? at.marks.get(key) : null;
 			b.classList.toggle("hl", on.has(key));
 			b.classList.toggle("ov", !!steps);
+			b.classList.toggle("ov-carrier", !!at && at.carriers.has(key) && !steps);
 			b.classList.toggle("ov-cur", !!steps && steps.indexOf(cur) >= 0);
 			stepTag(b, steps && ov.kind === "journey" ? steps.join(" · ") : "");
+			var carrier = b.querySelector(".b-carrier");
+			if (at && at.carriers.has(key) && !steps) {
+				if (!carrier) {
+					carrier = el("span", "b-carrier");
+					b.appendChild(carrier);
+				}
+				carrier.textContent = "Contains " + plural(at.carriers.get(key).length, "listed place");
+			} else if (carrier) b.removeChild(carrier);
 		});
 		level.bundles.forEach(function (b) {
 			if (b.el) {
@@ -1341,71 +1419,137 @@
 	// neighbour: overlays draw no links. `marks` maps a block id to 1-based list positions.
 	function overlayMarks(level, o) {
 		var fchain = level.focus ? level.focus.chain : [];
-		var r = { marks: new Map(), lit: 0, around: 0, off: 0, root: 0 };
+		var r = { marks: new Map(), carriers: new Map(), lit: 0, around: 0, off: 0, root: 0 };
 		o.places.forEach(function (p, i) {
 			if (!p.node) r.root++;
 			else if (!shown(p.node)) r.off++;
-			else {
-				var at = rep(p.node, fchain);
+			else if (level.els.has(p.id)) {
+				if (!r.marks.has(p.id)) r.marks.set(p.id, []);
+				r.marks.get(p.id).push(i + 1);
+				r.lit++;
+			} else {
+				var at = rep(p.node, fchain, level.visibleIds);
 				if (!at || (level.focus && within(level.focus, p.node))) r.around++;
-				else if (!level.els.has(at.node.id)) r.off++;
-				else {
-					if (!r.marks.has(at.node.id)) r.marks.set(at.node.id, []);
-					r.marks.get(at.node.id).push(i + 1);
-					r.lit++;
-				}
+				else if (level.els.has(at.node.id)) {
+					if (!r.carriers.has(at.node.id)) r.carriers.set(at.node.id, []);
+					r.carriers.get(at.node.id).push(i + 1);
+				} else r.off++;
 			}
 		});
 		return r;
 	}
 
+	function commonOverlayFocus(o) {
+		if (
+			!o ||
+			!o.places.length ||
+			o.places.some(function (p) {
+				return !p.node;
+			})
+		)
+			return null;
+		var chain = o.places[0].node.chain.slice(0, -1);
+		o.places.forEach(function (p) {
+			var i = 0;
+			while (i < chain.length && i < p.node.chain.length - 1 && chain[i] === p.node.chain[i]) i++;
+			chain = chain.slice(0, i);
+		});
+		return chain.length ? chain[chain.length - 1] : null;
+	}
+
 	function overlayCount(o) {
-		return o.kind === "journey" ? plural(o.places.length, "step") : plural(o.places.length, "place");
+		return o.kind === "journey"
+			? plural(o.places.length, "step")
+			: plural(
+					new Set(
+						o.places.map(function (p) {
+							return p.id;
+						}),
+					).size,
+					"place",
+				);
 	}
 
 	function overlayNote(o, at) {
 		var box = D.ovNote;
 		if (!box) return;
-		var text = "Hover or select one to light the places it lists. Nothing else lights.";
-		if (o) {
-			var bits = [];
-			if (!o.places.length) bits.push("lists no place on this map");
-			else bits.push(at.lit + " of " + overlayCount(o) + " lit at this level");
-			if (at && at.around) bits.push(at.around + " at the open block or above it");
-			if (at && at.off) bits.push(at.off + " not shown at this level");
-			if (at && at.root) bits.push(at.root + " the whole project");
+		var text = "Choose a feature or journey in Explore. Click a place to read how it fits.";
+		if (o && at) {
+			var inside = 0;
+			at.carriers.forEach(function (positions) {
+				inside += positions.length;
+			});
+			var bits = [o.title, at.lit + " of " + overlayCount(o) + " visible"];
+			if (inside) bits.push(inside + " inside collapsed places");
+			if (at.around) bits.push(at.around + " at this level or above");
+			if (at.off) bits.push(at.off + " outside this view");
+			if (at.root) bits.push(at.root + " at project level");
 			if (o.missing.length) bits.push(plural(o.missing.length, "unknown id"));
-			text = (o.kind === "journey" ? "Journey " : "Feature ") + o.title + ": " + bits.join(" · ");
+			text = bits.join(" · ");
 		}
 		if (box.textContent !== text) box.textContent = text;
+		$("selection-bar").classList.toggle("has-selection", !!S.overlay);
 	}
 
 	function renderOverlays() {
-		var box = D.overlays;
+		var box = D.overlays,
+			tabs = D.explorerTabs;
 		clear(box);
+		clear(tabs);
 		D.ovItems = new Map();
-		D.ovNote = null;
-		box.hidden = !M.features.length && !M.journeys.length;
-		if (box.hidden) return;
 		[
-			["Features", M.features],
-			["Journeys", M.journeys],
+			["feature", "Features", M.features],
+			["journey", "Journeys", M.journeys],
+			["place", "Places", M.nodes],
 		].forEach(function (g) {
-			var grp = el("div", "lg-group ov-group");
-			grp.setAttribute("role", "group");
-			grp.setAttribute("aria-label", g[0]);
-			grp.appendChild(el("span", "lg-label", g[0]));
-			if (!g[1].length) grp.appendChild(el("span", "ov-none", "none on this map"));
-			g[1].forEach(function (o) {
-				var b = overlayItem(o);
-				D.ovItems.set(o.key, b);
-				grp.appendChild(b);
+			var b = button("explorer-tab", null, function () {
+				S.tab = g[0];
+				S.ovHover = S.ovKbd = null;
+				renderOverlays();
+				highlight();
+				Array.from(tabs.children)
+					.find(function (x) {
+						return x.dataset.kind === S.tab;
+					})
+					.focus();
 			});
-			box.appendChild(grp);
+			b.dataset.kind = g[0];
+			b.setAttribute("aria-pressed", String(S.tab === g[0]));
+			b.appendChild(el("span", null, g[1]));
+			b.appendChild(el("span", "index-count", g[2].length));
+			tabs.appendChild(b);
 		});
-		D.ovNote = el("p", "ov-note");
-		D.ovNote.setAttribute("aria-live", "polite");
-		box.appendChild(D.ovNote);
+		var list = S.tab === "feature" ? M.features : S.tab === "journey" ? M.journeys : M.nodes;
+		if (!list.length) {
+			box.appendChild(
+				el(
+					"p",
+					"index-empty",
+					S.tab === "place"
+						? "No places recorded. The picture worker maps them from the codebase."
+						: "No " + (S.tab === "feature" ? "features" : "journeys") + " recorded. The picture worker adds them from the project specs.",
+				),
+			);
+		}
+		list.forEach(function (o) {
+			var b;
+			if (S.tab === "place") {
+				b = button("index-place", null, function () {
+					S.inspect = !!S.overlay;
+					S.pendingFocus = o.id;
+					navigate(o.parent, o);
+					setPanel(true);
+				});
+				b.dataset.id = o.id;
+				b.style.setProperty("--depth", o.chain.length - 1);
+				b.appendChild(el("span", "ov-name", o.title));
+				b.appendChild(el("span", "index-meta", o.kids.length ? plural(o.kids.length, "part") : o.sources[0] || o.id));
+			} else {
+				b = overlayItem(o);
+				D.ovItems.set(o.key, b);
+			}
+			box.appendChild(b);
+		});
 		updateOverlays();
 	}
 
@@ -1414,8 +1558,10 @@
 			selectOverlay(S.overlay === o ? null : o);
 		});
 		b.dataset.key = o.key;
+		b.appendChild(el("span", "index-kind", o.kind));
 		b.appendChild(el("span", "ov-name", o.title));
-		b.appendChild(el("span", "lg-count", overlayCount(o)));
+		b.appendChild(el("span", "index-meta", overlayCount(o)));
+		if (o.summary) b.appendChild(el("span", "index-summary", o.summary));
 		if (o.status !== "ready") b.appendChild(badge(o.status));
 		b.title = o.summary || o.title;
 		b.setAttribute("aria-label", o.kind + " " + o.title + ", " + overlayCount(o) + ", " + (o.status || "no status"));
@@ -1451,35 +1597,56 @@
 	}
 
 	function selectOverlay(o) {
+		if (D.panelBody.contains(document.activeElement)) S.pendingFocus = "overlay";
 		S.overlay = o;
 		S.step = -1;
+		S.inspect = false;
 		S.edgeSel = null;
+		S.ovHover = S.ovKbd = null;
 		hideTip();
-		updateOverlays();
-		renderPanel();
-		highlight();
-		if (o && D.main.classList.contains("panel-closed")) setPanel(true);
+		if (o) {
+			if (window.innerWidth <= 760) S.pendingFocus = "overlay";
+			if (S.tab !== o.kind) {
+				S.tab = o.kind;
+				renderOverlays();
+			}
+			setPanel(true);
+			if (window.innerWidth <= 760) setExplorer(false);
+		}
+		var focus = o ? commonOverlayFocus(o) : S.focus;
+		navigate(focus, o ? null : S.selected);
 	}
 
-	// Ordinary navigation to one place ends the overlay; drilling keeps it.
 	function dropOverlay() {
 		if (!S.overlay) return false;
 		S.overlay = null;
 		S.step = -1;
+		S.inspect = false;
+		S.ovHover = S.ovKbd = null;
 		updateOverlays();
 		return true;
 	}
 
-	function goPlace(p) {
+	function goPlace(p, focusPanel) {
+		S.pendingFocus = focusPanel || S.inspect ? "overlay" : null;
 		if (p.node) navigate(p.node.parent, p.node);
 		else navigate(null, null);
 	}
 
-	function goStep(i) {
+	function goStep(i, focusPanel) {
 		var o = S.overlay;
 		if (!o || i < 0 || i >= o.places.length) return;
 		S.step = i;
-		goPlace(o.places[i]);
+		S.inspect = false;
+		goPlace(o.places[i], focusPanel);
+		if (D.announcer) D.announcer.textContent = "Step " + (i + 1) + " of " + o.places.length + ": " + (o.places[i].node ? o.places[i].node.title : projectTitle());
+	}
+
+	function overlayOverview() {
+		S.pendingFocus = "overlay";
+		S.inspect = false;
+		S.step = -1;
+		navigate(commonOverlayFocus(S.overlay), null);
 	}
 
 	function renderOverlayPanel(box, o) {
@@ -1490,6 +1657,7 @@
 		box.appendChild(tags);
 		box.appendChild(el("h2", "d-title", o.title));
 		box.appendChild(codeLine("d-id", o.id));
+		if (journey) box.appendChild(el("p", "journey-progress", S.step < 0 ? "Journey overview · " + overlayCount(o) : "Step " + (S.step + 1) + " of " + o.places.length));
 		if (o.summary && !repeats(o.bodyHtml, o.summary)) box.appendChild(el("p", "d-sum", o.summary));
 		var acts = el("div", "d-actions");
 		if (journey && o.places.length) {
@@ -1505,6 +1673,7 @@
 			next.disabled = S.step >= o.places.length - 1;
 			acts.appendChild(prev);
 			acts.appendChild(next);
+			acts.appendChild(button("d-action quiet", "Overview", overlayOverview));
 		}
 		var close = button("d-action quiet", "Clear " + o.kind, function () {
 			selectOverlay(null);
@@ -1512,6 +1681,20 @@
 		close.dataset.key = "clear";
 		acts.appendChild(close);
 		box.appendChild(acts);
+		if (journey && S.step >= 0) {
+			var current = o.places[S.step].node || M.project,
+				card = el("div", "step-place");
+			card.appendChild(el("span", "index-kind", "CURRENT PLACE"));
+			card.appendChild(el("strong", null, current.title));
+			if (current.summary) card.appendChild(el("p", null, current.summary));
+			card.appendChild(
+				button("d-action", o.places[S.step].node ? "Inspect this place" : "Inspect project", function () {
+					S.inspect = true;
+					goPlace(o.places[S.step]);
+				}),
+			);
+			box.appendChild(card);
+		}
 		if (o.bodyHtml) box.appendChild(prose(o.bodyHtml));
 		else if (!o.summary) box.appendChild(el("p", "d-empty", "No description."));
 
@@ -1520,11 +1703,14 @@
 		var s = section(box, (journey ? "Steps" : "Touches") + " (" + o.places.length + ")");
 		if (!o.places.length) s.appendChild(el("p", "d-empty", journey ? "Lists no step on this map." : "Lists no place on this map."));
 		var list = el(journey ? "ol" : "ul", "d-parts ov-places");
-		o.places.slice(0, LIMIT.list).forEach(function (p, i) {
+		o.places.forEach(function (p, i) {
 			var li = el("li");
 			var b = button("d-link", null, function () {
 				if (journey) goStep(i);
-				else goPlace(p);
+				else {
+					S.inspect = true;
+					goPlace(p);
+				}
 			});
 			b.dataset.key = "place:" + i;
 			if (journey) b.appendChild(el("span", "ov-num", String(i + 1)));
@@ -1546,7 +1732,6 @@
 			if (where) li.appendChild(el("p", "ov-where", where));
 			list.appendChild(li);
 		});
-		if (o.places.length > LIMIT.list) list.appendChild(el("li", "more", o.places.length - LIMIT.list + " more"));
 		if (o.places.length) s.appendChild(list);
 		if (o.missing.length) {
 			var g = section(box, "Gaps (" + o.missing.length + ")");
@@ -1564,11 +1749,11 @@
 		if (!level || !at) return "";
 		if (!shown(p.node)) return "Hidden by the legend.";
 		var key = "";
-		at.marks.forEach(function (steps, k) {
+		at.carriers.forEach(function (steps, k) {
 			if (steps.indexOf(i + 1) >= 0) key = k;
 		});
-		if (key === p.node.id) return "";
-		if (key) return "Lit as " + M.byId.get(key).title + ", which holds it.";
+		if (level.els.has(p.id)) return "";
+		if (key) return "Inside " + M.byId.get(key).title + ". Open it to see this place.";
 		if (level.focus === p.node) return "The open block.";
 		if (level.focus && within(level.focus, p.node)) return "Holds the open block.";
 		return "Not shown at this level.";
@@ -1648,12 +1833,12 @@
 		box.appendChild(row);
 		var sum = f0 ? f0.summary : str(M.project.summary);
 		if (sum) box.appendChild(el("p", "lh-sum", sum));
-		if (S.unknown) box.appendChild(el("p", "notice", 'No block has the id "' + S.unknown + '". The map shows the top level.'));
+		if (S.unknown) box.appendChild(el("p", "notice", 'This picture does not contain "' + S.unknown + '".'));
 		var n = 0;
 		level.bundles.forEach(function (bu) {
 			n += bu.edges.length;
 		});
-		var bits = [plural(level.visible.length, "block"), plural(n, "connection")];
+		var bits = [plural(level.visible.length, "place"), plural(n, "connection")];
 		if (level.ghosts.length) bits.push(level.ghosts.length + " outside");
 		var stats = el("p", "lh-stats", bits.join(" · "));
 		if (level.own) stats.appendChild(el("span", "lh-own", " · " + plural(level.own, "connection") + " of this block itself: see Details"));
@@ -1724,13 +1909,13 @@
 		}
 		if (M.statuses.length) {
 			var gs = el("div", "lg-group lg-status");
-			gs.appendChild(el("span", "lg-label", "Status"));
+			gs.appendChild(el("span", "lg-label", "Source coverage"));
 			M.statuses.forEach(function (s) {
 				gs.appendChild(badge(s));
 			});
 			box.appendChild(gs);
 		}
-		box.appendChild(el("p", "lg-hint", "Arrows point from the user to the used part. Click a block with parts to open it. Esc goes up."));
+		box.appendChild(el("p", "lg-hint", "Arrows point from the user to the used part. Coverage describes the cited sources. Open a place to see its parts. Esc returns."));
 		if (keep) {
 			var again = Array.prototype.filter.call(box.querySelectorAll("button"), function (x) {
 				return x.dataset.key === keep;
@@ -1766,37 +1951,82 @@
 
 	// --------------------------------------------------------------- navigation
 
-	function hashFor(focus, selected) {
-		if (focus && (!selected || selected === focus)) return "#" + encodeURIComponent(focus.id) + "/";
-		if (selected) return "#" + encodeURIComponent(selected.id);
-		return "#";
+	function hashFor(focus, selected, overlay, step, inspect) {
+		var path = focus && (!selected || selected === focus) ? encodeURIComponent(focus.id) + "/" : selected ? encodeURIComponent(selected.id) : "";
+		var query = new URLSearchParams();
+		if (overlay) {
+			query.set(overlay.kind, overlay.id);
+			if (overlay.kind === "journey" && step >= 0) query.set("step", String(step + 1));
+			if (inspect) query.set("detail", "place");
+		}
+		return "#" + path + (query.size ? "?" + query.toString() : "");
 	}
 	function parseHash() {
-		var h = location.hash.replace(/^#/, "");
+		var hash = location.hash.replace(/^#/, ""),
+			cut = hash.indexOf("?");
+		var h = cut < 0 ? hash : hash.slice(0, cut);
+		var query = new URLSearchParams(cut < 0 ? "" : hash.slice(cut + 1));
 		try {
 			h = decodeURIComponent(h);
 		} catch (err) {
 			/* keep raw */
 		}
-		if (!h) return { focus: null, selected: null, unknown: "" };
+		var result = { focus: null, selected: null, unknown: "", overlay: null, step: -1, inspect: false };
+		var kind = query.has("journey") ? "journey" : query.has("feature") ? "feature" : "";
+		if (kind) {
+			var id = query.get(kind);
+			result.overlay = M.overlayByKey.get(kind + ":" + id) || null;
+			if (!result.overlay) result.unknown = kind + ": " + id;
+			else {
+				var stepText = query.get("step"),
+					step = Number(stepText) - 1;
+				if (kind === "journey" && /^\d+$/.test(stepText || "") && Number.isSafeInteger(step) && step >= 0 && step < result.overlay.places.length) result.step = step;
+				result.inspect = query.get("detail") === "place";
+			}
+		}
+		if (!h) {
+			if (result.overlay && result.step >= 0) {
+				var p = result.overlay.places[result.step];
+				if (p.node) {
+					result.focus = p.node.parent;
+					result.selected = p.node;
+				}
+			} else if (result.overlay) result.focus = commonOverlayFocus(result.overlay);
+			return result;
+		}
 		var open = h.charAt(h.length - 1) === "/";
 		if (open) h = h.slice(0, -1);
 		var n = M.byId.get(h);
-		if (!n) return { focus: null, selected: null, unknown: h };
-		if (open && n.kids.length) return { focus: n, selected: n, unknown: "" };
-		return { focus: n.parent, selected: n, unknown: "" };
+		if (!n) {
+			result.unknown = h;
+			return result;
+		}
+		result.focus = open && n.kids.length ? n : n.parent;
+		result.selected = n;
+		return result;
 	}
 	function navigate(focus, selected) {
 		S.edgeSel = null;
-		var h = hashFor(focus, selected);
+		var h = hashFor(focus, selected, S.overlay, S.step, S.inspect);
 		if ((location.hash || "#") === h) {
-			apply(focus, selected, "");
+			onHash();
 			return;
 		}
-		location.hash = h; // hashchange → apply
+		location.hash = h;
 	}
 	function onHash() {
 		var r = parseHash();
+		if (r.overlay || r.selected) setPanel(true);
+		S.overlay = r.overlay;
+		S.step = r.step;
+		S.inspect = r.inspect;
+		S.edgeSel = null;
+		S.ovHover = S.ovKbd = null;
+		if (r.overlay && S.tab !== r.overlay.kind && S.tab !== "place") {
+			S.tab = r.overlay.kind;
+			renderOverlays();
+		}
+		updateOverlays();
 		apply(r.focus, r.selected, r.unknown);
 	}
 
@@ -1817,7 +2047,8 @@
 		});
 		var prev = S.focus,
 			prevLevel = S.level;
-		var changed = unhid || !prevLevel || prev !== focus;
+		var overview = S.overlay && S.step < 0 && !S.inspect ? S.overlay.key : "";
+		var changed = unhid || !prevLevel || prev !== focus || prevLevel.overview !== overview;
 		var hadFocus = D.blocks.contains(document.activeElement);
 		var dir = 0,
 			origin = null;
@@ -1846,7 +2077,14 @@
 		}
 		renderCrumbs();
 		renderPanel();
-		revealSelected(hadFocus);
+		if (S.pendingFocus === "overlay") {
+			var title = D.panelBody.querySelector("h2");
+			if (title) {
+				title.tabIndex = -1;
+				title.focus({ preventScroll: true });
+			}
+		} else revealSelected(hadFocus || !!S.pendingFocus);
+		S.pendingFocus = null;
 	}
 
 	function revealSelected(takeFocus) {
@@ -1878,16 +2116,12 @@
 		);
 	}
 
-	// Opening a block keeps a selected overlay; picking one place ends it.
+	// Place inspection keeps the selected feature or journey visible as context.
 	function activate(n, ghost) {
-		if (ghost) {
-			dropOverlay();
-			navigate(n.parent, n);
-		} else if (shownKids(n).length) navigate(n, n);
-		else {
-			dropOverlay();
-			navigate(S.focus, n);
-		}
+		S.inspect = !!S.overlay;
+		if (!ghost && shownKids(n).length) navigate(n, n);
+		else navigate(ghost ? n.parent : S.focus, n);
+		setPanel(true);
 	}
 
 	function up() {
@@ -1897,9 +2131,12 @@
 			highlight();
 			return;
 		}
+		if (S.overlay && S.inspect) {
+			overlayOverview();
+			return;
+		}
 		if (dropOverlay()) {
-			renderPanel();
-			highlight();
+			navigate(S.focus, S.selected);
 			return;
 		}
 		if (S.focus) navigate(S.focus.parent, S.focus);
@@ -1907,7 +2144,6 @@
 	}
 
 	function selectBundle(bu) {
-		dropOverlay();
 		S.edgeSel = bu;
 		hideTip();
 		renderPanel();
@@ -1947,23 +2183,27 @@
 	function renderPanel() {
 		var box = D.panelBody,
 			active = document.activeElement,
-			keep = active && box.contains(active) ? active.dataset.key : "";
+			keep = active && box.contains(active) ? active.dataset.key : "",
+			oldScroll = D.panel.scrollTop;
 		clear(box);
-		D.panel.scrollTop = 0;
+		if (S.overlay && (S.inspect || S.edgeSel)) renderOverlayContext(box);
 		if (S.edgeSel) renderBundlePanel(box, S.edgeSel);
-		else if (S.overlay) renderOverlayPanel(box, S.overlay);
+		else if (S.overlay && !S.inspect) renderOverlayPanel(box, S.overlay);
 		else if (S.selected) renderNodePanel(box, S.selected);
 		else renderProjectPanel(box);
 		if (keep) {
-			// A step button that just disabled hands focus to the current step.
+			// Keep journey controls reachable when a navigation button disables.
 			var find = function (key) {
 				return Array.prototype.filter.call(box.querySelectorAll("button"), function (x) {
 					return x.dataset.key === key && !x.disabled;
 				})[0];
 			};
-			var again = find(keep) || find("place:" + S.step);
-			if (again) again.focus();
-		}
+			var again = find(keep) || find(keep === "step-next" ? "step-prev" : keep === "step-prev" ? "step-next" : "place:" + S.step);
+			if (again) {
+				again.focus({ preventScroll: true });
+				D.panel.scrollTop = oldScroll;
+			} else D.panel.scrollTop = 0;
+		} else D.panel.scrollTop = 0;
 	}
 
 	function renderProjectPanel(box) {
@@ -2008,9 +2248,52 @@
 			);
 		});
 		st.appendChild(dl);
+		renderMemberships(box, str(p.rootId));
 		sourceList(box, strList(p.sources));
 		metaList(box, obj(p.meta));
 		if (M.generatedAt) box.appendChild(el("p", "d-foot", "Generated " + M.generatedAt));
+	}
+
+	function renderOverlayContext(box) {
+		var o = S.overlay,
+			context = el("div", "overlay-context ov-" + o.kind);
+		context.appendChild(el("span", "index-kind", o.kind));
+		context.appendChild(el("strong", null, o.title));
+		context.appendChild(
+			button("d-action quiet", "Return to " + o.kind, function () {
+				if (o.kind === "journey" && S.step >= 0) goStep(S.step, true);
+				else overlayOverview();
+			}),
+		);
+		box.appendChild(context);
+	}
+
+	function renderMemberships(box, id) {
+		var memberships = M.memberships.get(id) || [];
+		var s = section(box, "Specified work here"),
+			list = el("ul", "d-parts memberships");
+		if (!memberships.length) {
+			s.appendChild(el("p", "d-note", "No feature or journey names this place in this picture."));
+			return;
+		}
+		memberships.forEach(function (o) {
+			var li = el("li"),
+				b = button("d-link membership ov-" + o.kind, null, function () {
+					selectOverlay(o);
+				});
+			b.appendChild(el("span", "index-kind", o.kind));
+			b.appendChild(el("span", "d-link-title", o.title));
+			if (o.kind === "journey") {
+				var positions = [];
+				o.places.forEach(function (p, i) {
+					if (p.id === id) positions.push(i + 1);
+				});
+				b.title = "Steps " + positions.join(", ");
+			}
+			li.appendChild(b);
+			list.appendChild(li);
+		});
+		s.appendChild(list);
 	}
 
 	function metaList(box, meta) {
@@ -2045,6 +2328,7 @@
 		}
 		if (n.bodyHtml) box.appendChild(prose(n.bodyHtml));
 		else if (!n.summary) box.appendChild(el("p", "d-empty", "No description."));
+		renderMemberships(box, n.id);
 		sourceList(box, n.sources);
 		if (n.kids.length) {
 			var ps = section(box, "Parts (" + n.kids.length + ")"),
@@ -2160,11 +2444,13 @@
 		var acts = el("div", "d-actions");
 		acts.appendChild(
 			button("d-action", "Go to " + bu.from.title, function () {
+				S.inspect = !!S.overlay;
 				navigate(bu.from.parent, bu.from);
 			}),
 		);
 		acts.appendChild(
 			button("d-action", "Go to " + bu.to.title, function () {
+				S.inspect = !!S.overlay;
 				navigate(bu.to.parent, bu.to);
 			}),
 		);
@@ -2189,9 +2475,21 @@
 		if (edges.length > LIMIT.list) box.appendChild(el("p", "more", edges.length - LIMIT.list + " more"));
 	}
 
+	function setExplorer(open) {
+		D.main.classList.toggle("explorer-closed", !open);
+		D.explorerToggle.setAttribute("aria-expanded", String(open));
+		if (open && window.innerWidth <= 760) setPanel(false);
+		scheduleRelayout();
+	}
+
 	function setPanel(open) {
 		D.main.classList.toggle("panel-closed", !open);
 		D.panelToggle.setAttribute("aria-expanded", String(open));
+		if (open && window.innerWidth <= 760) {
+			D.main.classList.add("explorer-closed");
+			D.explorerToggle.setAttribute("aria-expanded", "false");
+		}
+		scheduleRelayout();
 	}
 
 	// ------------------------------------------------------------------- search
@@ -2201,30 +2499,29 @@
 		if (!q) return [];
 		var terms = q.split(/\s+/),
 			res = [];
-		M.nodes.forEach(function (n) {
+		M.features.concat(M.journeys, M.nodes).forEach(function (n, index) {
 			var t = n.title.toLowerCase(),
 				id = n.id.toLowerCase(),
-				s = n.summary.toLowerCase(),
+				summary = n.summary.toLowerCase();
+			var paths = n.sources.join(" ").toLowerCase(),
 				score = -1;
 			if (t === q || id === q) score = 0;
 			else if (t.indexOf(q) === 0) score = 1;
 			else if (id.indexOf(q) === 0 || id.indexOf("." + q) >= 0) score = 2;
 			else if (t.indexOf(q) >= 0) score = 3;
 			else if (id.indexOf(q) >= 0) score = 4;
-			else if (s.indexOf(q) >= 0) score = 5;
-			else {
-				var hay = t + " " + id + " " + s;
-				if (
-					terms.every(function (w) {
-						return hay.indexOf(w) >= 0;
-					})
-				)
-					score = 6;
-			}
-			if (score >= 0) res.push({ n: n, score: score });
+			else if (paths.indexOf(q) >= 0) score = 5;
+			else if (summary.indexOf(q) >= 0) score = 6;
+			else if (
+				terms.every(function (w) {
+					return (t + " " + id + " " + summary + " " + paths).indexOf(w) >= 0;
+				})
+			)
+				score = 7;
+			if (score >= 0) res.push({ n: n, score: score, index: index });
 		});
 		res.sort(function (a, b) {
-			return a.score - b.score || a.n.chain.length - b.n.chain.length || a.n.index - b.n.index;
+			return a.score - b.score || a.index - b.index;
 		});
 		return res.slice(0, LIMIT.results).map(function (r) {
 			return r.n;
@@ -2251,7 +2548,7 @@
 			li.setAttribute("role", "option");
 			li.setAttribute("aria-selected", String(i === S.active));
 			var top = el("div", "r-top");
-			top.appendChild(el("span", "kind-chip " + kindClass(n.kind)));
+			top.appendChild(el("span", "index-kind", n.key ? n.kind : "place"));
 			top.appendChild(el("span", "r-title", n.title));
 			top.appendChild(badge(n.status));
 			li.appendChild(top);
@@ -2273,10 +2570,15 @@
 		var n = S.results[i];
 		if (!n) return;
 		closeSearch();
-		dropOverlay();
-		navigate(n.parent, n);
-		var b = S.level && S.level.els ? S.level.els.get(n.id) : null;
-		if (b) b.focus({ preventScroll: true });
+		if (n.key) {
+			S.pendingFocus = "overlay";
+			selectOverlay(n);
+		} else {
+			dropOverlay();
+			S.pendingFocus = n.id;
+			navigate(n.parent, n);
+			setPanel(true);
+		}
 	}
 
 	function closeSearch() {
@@ -2327,7 +2629,7 @@
 		var b = D.diagToggle,
 			counts = levelCounts();
 		clear(b);
-		b.appendChild(el("span", null, "Diagnostics"));
+		b.appendChild(el("span", null, "Map notes"));
 		if (!counts.length) b.appendChild(el("span", "dcount lv-none", "0"));
 		counts.forEach(function (c) {
 			b.appendChild(el("span", "dcount " + levelClass(c[0]), String(c[1])));
@@ -2349,7 +2651,7 @@
 		var box = D.drawer;
 		clear(box);
 		var head = el("div", "dr-head");
-		head.appendChild(el("h2", null, "Diagnostics"));
+		head.appendChild(el("h2", null, "Map notes"));
 		var counts = levelCounts();
 		head.appendChild(
 			el(
@@ -2509,6 +2811,10 @@
 			drawer: $("drawer"),
 			tip: $("tip"),
 			overlays: $("overlays"),
+			explorerTabs: $("explorer-tabs"),
+			explorerToggle: $("explorer-toggle"),
+			ovNote: $("overlay-note"),
+			announcer: $("announcer"),
 		};
 		var tag = $("archmap-data"),
 			raw = null;
@@ -2545,6 +2851,9 @@
 		D.diagToggle.addEventListener("click", function () {
 			setDrawer(D.drawer.hidden);
 		});
+		D.explorerToggle.addEventListener("click", function () {
+			setExplorer(D.main.classList.contains("explorer-closed"));
+		});
 		D.panelToggle.addEventListener("click", function () {
 			setPanel(D.main.classList.contains("panel-closed"));
 		});
@@ -2553,6 +2862,11 @@
 		if (window.ResizeObserver) new ResizeObserver(scheduleRelayout).observe(D.viewport);
 		else window.addEventListener("resize", scheduleRelayout);
 
+		S.tab = M.features.length ? "feature" : M.journeys.length ? "journey" : "place";
+		if (window.innerWidth <= 760) {
+			setPanel(false);
+			setExplorer(false);
+		}
 		renderDiagButton();
 		renderOverlays();
 		onHash();

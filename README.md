@@ -284,7 +284,11 @@ The architecture map is a local file. `limen picture build` makes it from a Mark
 
 ### What the map shows
 
-The map shows places and the edges between them. A list next to the map shows features and journeys. When you select one, the map lights exactly the places that it names in `touches` or `steps`. The map never uses Git history to find places.
+The map shows places and the edges between them. **Explore** lists Features, Journeys, and Places beside the map. Search finds them by name, id, summary, or cited source path.
+
+Select a feature or journey to reveal the places it names in `touches` or `steps`, including places inside different modules. Only those places light; nested places keep their parent captions. During a drill-down, collapsed containers show where listed places sit without lighting as touches. Open a place to read its sources, connections, and the features and journeys that name it.
+
+Follow a journey with Previous step and Next step, including repeated visits and steps at the whole project. The URL preserves the selected feature or journey, place, and step, so reload and browser Back keep the context. The map never uses Git history to find places.
 
 **The list is not a live feature list.** It shows where a feature touches the code. It does not show if a feature is planned, active, or done, because the board (`spec/build.md`) owns feature state.
 
