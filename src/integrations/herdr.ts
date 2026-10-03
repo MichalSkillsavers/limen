@@ -20,7 +20,7 @@ export async function openWatchTab(input: {
 	readonly role: string;
 }): Promise<HerdrPlace | undefined> {
 	if (process.env.HERDR_ENV !== "1") return;
-	return createTab({ ...input, mode: "watch", follow: true, focus: false });
+	return createTab({ ...input, label: `${input.label} · running`, mode: "watch", follow: true, focus: false });
 }
 
 export async function openHostedTab(input: {
@@ -34,7 +34,8 @@ export async function openHostedTab(input: {
 	if (!herdrAvailable()) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use an ordinary job instead");
 	const place = await createTab({
 		jobDir: input.jobDir,
-		label: input.label,
+		// Herdr reports a pane waiting for input as idle; the label carries the job state.
+		label: `${input.label} · running`,
 		cwd: input.cwd,
 		workspaceCwd: input.workspaceCwd ?? input.cwd,
 		logPath: `${input.jobDir}/log`,
@@ -343,6 +344,9 @@ export async function closeJobTab(herdr: string, jobDir: string, tab: string): P
 		}
 	}
 	await note(`failed after one retry (${refusal})`);
+	// The tab stays open; its label must stop saying running.
+	const [label, state] = await Promise.all([text(`${jobDir}/label`), text(`${jobDir}/state`)]);
+	advisoryCall(herdr, ["tab", "rename", tab, `${label || basename(jobDir)} · ${state || "finished"}`]);
 }
 
 export async function openDiffTab(input: {
@@ -396,7 +400,7 @@ export async function openJobPlace(input: { readonly jobDir: string; readonly cw
 	const watch = input.running && !hosted;
 	const place = await createTab({
 		jobDir: input.jobDir,
-		label: input.running ? label : `${label} · ${state}`,
+		label: `${label} · ${state}`,
 		cwd: input.cwd,
 		logPath: `${input.jobDir}/log`,
 		mode: watch ? "watch" : "log",

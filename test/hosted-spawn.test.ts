@@ -899,6 +899,8 @@ test("hosted supervisor writes one idle advisory and stays running", async (cont
 	await new Promise((resolve) => setTimeout(resolve, 2_500));
 	await assert.rejects(readFile(join(job, "advisory")), "zero tool calls must not advisory");
 	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "running");
+	const tabs = () => readFile(join(herdr.dir, "state.json"), "utf8").then((value) => JSON.parse(value).tabs as Record<string, { readonly label: string }>);
+	assert.equal((await tabs())["w1:t1"]?.label, "F027 idle · running", "Herdr reports this pane idle; the tab label must still read running");
 	await mkdir(join(job, "session"), { recursive: true });
 	const entries = [
 		JSON.stringify({ type: "session", version: 3 }),
@@ -932,6 +934,8 @@ test("hosted supervisor writes one idle advisory and stays running", async (cont
 	assert.equal((await readFile(join(job, "advisory"), "utf8")).trim(), advisory, "same stall must not rewrite");
 	await writeFile(join(job, "session-ended"), `${new Date().toISOString()}\n`);
 	await waitForState(scratch.root, id, "done");
+	await waitForFile(join(job, "log"), /herdr tab close w1:t1: closed\n/);
+	assert.equal((await tabs())["w1:t1"], undefined, "a finished job tab closes");
 });
 
 test("hosted supervisor finalizes a clean tool-using idle without claiming the session ended", async (context) => {
