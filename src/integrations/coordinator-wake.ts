@@ -55,7 +55,7 @@ async function wakeText(jobDir: string): Promise<string> {
 	const location = repo ? ` in repository ${repo}` : "";
 	const meaning =
 		state === "done"
-			? "The worker ended; merge is not ready until you inspect its branch diff, commits, final message and checks, then land it or resume focused fixes."
+			? "Job done. Next step: land it after you check its diff, commits, final message, and checks. If a check still blocks landing, name that check and resume a focused fix."
 			: "Inspect the failure in its log and session before deciding whether to resume work; do not treat it as a new-spawn or release signal.";
 	return `Limen job ${JSON.stringify(label || id)} is ${state} (${id}) on branch ${branch}${location}. ${meaning} Start with \`limen jobs ${id}\`. Keep the user informed; ask only when a genuine product decision needs them.`;
 }

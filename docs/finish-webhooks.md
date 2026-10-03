@@ -2,7 +2,7 @@
 
 `bin/tony-finish-ping.sh <label> <job-state> <branch>` sends a JSON POST to
 each explicitly configured destination. A `done` job emits `status: "waiting"`,
-`jobState: "done"`, and `handoff: "Waiting on landing owner; merge not ready"`.
+`jobState: "done"`, and `handoff: "Job done. Next step: land it, or name the check that still blocks landing."`.
 The durable job state remains `done`; the webhook status deliberately cannot be
 mistaken for landing approval by a recipient that ignores new fields. Existing
 receivers that only accept `status: "done"` must handle `waiting` as a handoff,

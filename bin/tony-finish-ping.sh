@@ -139,7 +139,7 @@ function send(target, index) {
         ...(args[1] === 'done' ? { jobState: 'done' } : {}),
         ...(event ? { finishEvent: event } : {}),
         handoff: args[1] === 'done'
-          ? 'Waiting on landing owner; merge not ready'
+          ? 'Job done. Next step: land it, or name the check that still blocks landing.'
           : ['failed', 'stopped'].includes(args[1])
             ? 'Job failed or stopped; inspect the job record before proceeding'
             : 'Unrecognized job status; inspect the job record before proceeding',
