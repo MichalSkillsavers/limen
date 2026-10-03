@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -80,7 +80,8 @@ test("wake ignores history, announces start, and steers once on terminal change"
 	);
 	await writeFile(join(jobs, "new/state"), "done\n");
 	await waitUntil(() => messages.length === 1);
-	assert.equal(statuses.at(-1), undefined);
+	// A finished job stays named on the job line until it lands or its feature closes.
+	await waitUntil(() => statuses.at(-1) === "limen 0 · F001 done");
 	// Idle coordinators get a normal user message (visible turn), not a buried steer.
 	assert.equal(messages[0]?.deliverAs, undefined);
 	await writeFile(join(jobs, "new/state"), "failed\n");
@@ -758,22 +759,27 @@ test("settled coordinator labels count watched and visible unwatched RUNNING job
 	await rm(join(jobs, "c/notify/subscribers/coordinator-a"));
 	assert.match(await report("4 RUNNING · 2 watched · 2 unwatched"), /c think \(unwatched\)/);
 	for (const id of ["a", "b", "c"]) await writeFile(join(jobs, id, "state"), "done\n");
-	assert.match(await report("1 RUNNING · 0 watched · 1 unwatched"), /d think \(unwatched\)$/);
+	// Watched jobs that finished stay named; c lost its subscription, so it is not this coordinator's to report.
+	assert.match(await report("1 RUNNING · 0 watched · 1 unwatched"), /d think \(unwatched\) · a done b done$/);
 	await assert.rejects(readFile(join(jobs, "d/notify/subscribers/coordinator-a")), "visibility must not subscribe this session");
 	assert.ok(!messages.some((message) => message.includes("(d)")), "unwatched work is not a completion wake for this session");
 	await writeFile(join(jobs, "d/activity"), "wait\n");
-	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.some((arg) => /idle=.*d wait \(unwatched\)$/.test(arg))));
+	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.some((arg) => /idle=.*d wait \(unwatched\) · a done b done$/.test(arg))));
 	await writeFile(join(jobs, "d/pid"), "99999999\n");
-	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.some((arg) => /idle=.*d dead \(unwatched\)$/.test(arg))));
+	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.some((arg) => /idle=.*d dead \(unwatched\) · a done b done$/.test(arg))));
 	assert.ok(
 		(await readCalls(calls)).some((call) => call.includes("⚠ Limen · 1 needs attention")),
 		"dead evidence must not be relabeled waiting",
 	);
 	await writeFile(join(jobs, "d/state"), "stopped\n");
+	assert.match(await report("0 RUNNING · 0 watched · 0 unwatched"), / · a done b done$/);
+	// A retired record leaves the line after the next coordinator turn.
+	for (const id of ["a", "b"]) await rm(join(jobs, id), { recursive: true });
+	handlers.get("agent_settled")?.({}, session);
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("--clear-state-labels")));
 });
 
-test("the coordinator tab keeps a running count on its stem and loses it when the last job ends", async (context) => {
+test("the coordinator tab keeps running and finished counts on its stem; an owner turn clears the finished count", async (context) => {
 	stashEnv(context, "LIMEN_JOB", undefined);
 	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-tab-")));
 	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -818,15 +824,86 @@ test("the coordinator tab keeps a running count on its stem and loses it when th
 	await waitUntilAsync(async () => (await renames()).includes("chat settings · 2 running"));
 	// A job another tab spawned is not this conversation's count.
 	await plant("three", "w9:t9");
+	await writeFile(join(jobs, "one/finished-at"), `${new Date().toISOString()}\n`);
 	await writeFile(join(jobs, "one/state"), "done\n");
-	await waitUntilAsync(async () => (await renames()).includes("chat settings · 1 running"));
-	await writeFile(join(jobs, "two/state"), "done\n");
-	await waitUntilAsync(async () => (await renames()).at(-1) === "chat settings");
+	await waitUntilAsync(async () => (await renames()).includes("chat settings · 1 running · 1 finished"));
+	await writeFile(join(jobs, "two/finished-at"), `${new Date().toISOString()}\n`);
+	await writeFile(join(jobs, "two/state"), "failed\n");
+	const current = () => readFile(label, "utf8");
+	await waitUntilAsync(async () => (await current()) === "chat settings · 2 finished");
+	// A Limen wake is not the owner speaking. Absence of a rename needs one sweep interval (500 ms) to pass.
+	handlers.get("message_start")?.({ message: { role: "user", content: [{ type: "text", text: 'Limen job "two work" is failed (two).' }] } }, session);
+	await new Promise((resolve) => setTimeout(resolve, 600));
+	assert.equal(await current(), "chat settings · 2 finished");
+	handlers.get("message_start")?.({ message: { role: "user", content: [{ type: "text", text: "what is left?" }] } }, session);
+	await waitUntilAsync(async () => (await current()) === "chat settings");
 	assert.equal(await readFile(label, "utf8"), "chat settings", "the stem survives every tail rewrite");
 	assert.ok(
-		(await renames()).every((name) => !/running.*running/.test(name)),
+		(await renames()).every((name) => !/running.*running|finished.*finished/.test(name)),
 		"a tail is replaced, never stacked",
 	);
+});
+
+test("a finished job leaves the coordinator title and job line once it lands or its feature closes", async (context) => {
+	stashEnv(context, "LIMEN_JOB", undefined);
+	const root = await mkdtemp(join(tmpdir(), "limen-finished-"));
+	context.after(() => rm(root, { recursive: true, force: true }));
+	const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd: root, stdio: "ignore" });
+	git("init", "-q", "-b", "main");
+	git("commit", "-q", "--allow-empty", "-m", "base");
+	git("checkout", "-q", "-b", "limen/land");
+	await writeFile(join(root, "landed.txt"), "work\n");
+	git("add", "landed.txt");
+	git("commit", "-q", "-m", "work to land");
+	git("checkout", "-q", "main");
+	const label = join(root, "tab-label");
+	await writeFile(label, "chat settings");
+	const fake = join(root, "herdr");
+	await writeFile(
+		fake,
+		`#!/bin/sh\ncase "$1 $2" in\n'tab get') printf '{"result":{"tab":{"label":"%s"}}}' "$(cat ${label})" ;;\n'tab rename') printf '%s' "$4" > "${label}" ;;\nesac\n`,
+	);
+	await chmod(fake, 0o755);
+	stashEnv(context, "LIMEN_HERDR", fake);
+	stashEnv(context, "HERDR_ENV", "1");
+	stashEnv(context, "HERDR_PANE_ID", "w1:p1");
+	stashEnv(context, "HERDR_TAB_ID", "w1:t1");
+	await mkdir(join(root, ".agents/limen"), { recursive: true });
+	const jobs = join(root, ".limen/jobs");
+	for (const [id, jobLabel, branch, commits] of [
+		["close", "F901 closing work", "limen/close", ""],
+		["land", "landing work", "limen/land", "abc1234 work to land\n"],
+	] as const) {
+		await mkdir(join(jobs, id), { recursive: true });
+		await writeFile(join(jobs, id, "label"), `${jobLabel}\n`);
+		await writeFile(join(jobs, id, "branch"), `${branch}\n`);
+		await writeFile(join(jobs, id, "commits"), commits);
+		await writeFile(join(jobs, id, "origin-tab"), "w1:t1\n");
+		await subscribe(jobs, id, "coordinator-a");
+		await writeFile(join(jobs, id, "state"), "done\n");
+	}
+	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
+	const statuses: Array<string | undefined> = [];
+	limenWake({ on: (event, handler) => handlers.set(event, handler), sendUserMessage() {} });
+	const session = {
+		cwd: root,
+		isIdle: () => true,
+		sessionManager: sessionManager("coordinator-a"),
+		ui: { notify() {}, setStatus: (_key: string, value: string | undefined) => statuses.push(value) },
+	};
+	handlers.get("session_start")?.({}, session);
+	context.after(() => handlers.get("session_shutdown")?.({}, session));
+	const current = () => readFile(label, "utf8");
+	await waitUntilAsync(async () => (await current()) === "chat settings · 2 finished");
+	assert.equal(statuses.at(-1), "limen 0 · F901 done landing done");
+	git("merge", "-q", "--ff-only", "limen/land");
+	handlers.get("agent_settled")?.({}, session);
+	await waitUntilAsync(async () => (await current()) === "chat settings · 1 finished");
+	assert.equal(statuses.at(-1), "limen 0 · F901 done");
+	await mkdir(join(root, "spec/features/done/2026-10/F901-closing-work"), { recursive: true });
+	handlers.get("agent_settled")?.({}, session);
+	await waitUntilAsync(async () => (await current()) === "chat settings");
+	assert.equal(statuses.at(-1), undefined);
 });
 
 test("a tab still carrying herdr's own number is never decorated", async (context) => {

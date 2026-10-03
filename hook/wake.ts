@@ -2,6 +2,7 @@ import { execFile, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, type FSWatcher, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { derivePulse, type Pulse, producedNothing } from "../src/job/job.ts";
+import { unlandedBranches } from "../src/project/git.ts";
 import { registerProject } from "../src/project/seat.ts";
 import { processGroupAlive } from "../src/runtime/contain.ts";
 import { reapDeadJobs } from "../src/runtime/reap.ts";
@@ -31,7 +32,8 @@ type PiApi = {
 const DEFAULT_FALLBACK_GRACE_MS = 5 * 60_000;
 const CLAIM_STALE_MS = 30_000;
 const CACHE_REFRESH_MS = 30_000;
-const TAB_TAIL = /\s*·\s*\d+\s+running$/;
+const TAB_TAIL = /(?:\s*·\s*\d+\s+(?:running|finished))+$/;
+type FinishedJob = { readonly id: string; readonly label: string; readonly state: string; readonly finishedAt: number };
 type HerdrPane = { readonly binary: string; readonly pane: string };
 
 export default function limenWake(pi: PiApi): void {
@@ -53,7 +55,9 @@ export default function limenWake(pi: PiApi): void {
 	let herdrSeq = Date.now();
 	let herdrMetadata: string | undefined;
 	let herdrMetadataAt = 0;
-	let tabTail = -1;
+	let tabTail: string | undefined;
+	let ownerTurnAt = 0;
+	let finishedCache: { readonly key: string; readonly until: number; readonly jobs: readonly FinishedJob[] } | undefined;
 	const firstDead = new Map<string, number>();
 	const settled = new Set<string>();
 	let ownsJobs: boolean | undefined;
@@ -157,24 +161,36 @@ export default function limenWake(pi: PiApi): void {
 		if (ownsJobs === undefined) ownsJobs = sessionOwnsJobs(jobs, sessionId);
 		return ownsJobs;
 	};
-	// Limen owns the tab tail; the coordinator owns the stem. Rewriting only on a count change keeps this to a spawn or a completion.
-	const updateTabTail = (jobs: string, running: readonly string[]) => {
+	// Limen owns the tab tail; the coordinator owns the stem. Rewriting only on a tail change keeps this to a spawn, a completion, a land, or an owner turn.
+	const updateTabTail = (jobs: string, running: readonly string[], finished: readonly FinishedJob[]) => {
 		const tab = process.env.HERDR_TAB_ID?.trim();
 		if (!herdr || !tab) return;
 		const count = running.filter((id) => text(join(jobs, id, "origin-tab")) === tab).length;
-		if (count === tabTail) return;
-		tabTail = count;
+		// The finished count is news since the owner last spoke; the job line keeps naming older finished jobs.
+		const fresh = finished.filter(({ id, finishedAt }) => finishedAt >= ownerTurnAt && text(join(jobs, id, "origin-tab")) === tab).length;
+		const tail = `${count > 0 ? ` · ${count} running` : ""}${fresh > 0 ? ` · ${fresh} finished` : ""}`;
+		if (tail === tabTail) return;
+		tabTail = tail;
 		const current = tabLabel(herdr.binary, tab);
 		if (current === undefined) return;
 		const stem = current.replace(TAB_TAIL, "").trim();
 		// A tab still carrying Herdr's own number was never named by a coordinator; decorating it would invent a stem.
 		if (!stem || /^\d+$/.test(stem)) return;
-		const next = count > 0 ? `${stem} · ${count} running` : stem;
+		const next = `${stem}${tail}`;
 		if (next !== current) herdrCall(["tab", "rename", tab, next]);
 	};
+	// Lands and closes happen in Git and spec/, outside the jobs directory: refresh when a job leaves the running set, after each coordinator turn, and on the cache timer.
+	const finishedNow = (jobs: string, running: readonly string[]): readonly FinishedJob[] => {
+		const key = running.join("\n");
+		if (finishedCache && finishedCache.key === key && Date.now() < finishedCache.until) return finishedCache.jobs;
+		const found = finishedJobs(jobs, process.env.HERDR_TAB_ID?.trim(), sessionId);
+		finishedCache = { key, until: Date.now() + CACHE_REFRESH_MS, jobs: found };
+		return found;
+	};
 	const updateStatus = (jobs: string, running: readonly string[]) => {
-		updateTabTail(jobs, running);
-		const next = runningDisplay(jobs, sessionId, running);
+		const finished = finishedNow(jobs, running);
+		updateTabTail(jobs, running, finished);
+		const next = jobDisplay(jobs, sessionId, running, finished);
 		if (!next) {
 			clearStatus();
 			return;
@@ -444,7 +460,9 @@ export default function limenWake(pi: PiApi): void {
 		initialSweep = true;
 		footerAlive = true;
 		footerNoted = false;
-		tabTail = -1;
+		tabTail = undefined;
+		ownerTurnAt = 0;
+		finishedCache = undefined;
 		pendingDeliveries.clear();
 		activeDeliveries.clear();
 		firstDead.clear();
@@ -488,6 +506,8 @@ export default function limenWake(pi: PiApi): void {
 	pi.on("message_start", (event) => {
 		const message = eventMessage(event);
 		if (!message || message.role !== "user") return;
+		// Every Limen wake opens with "Limen job"; any other user message is the owner's turn and resets the title's finished count.
+		if (!message.content.startsWith("Limen job ")) ownerTurnAt = Date.now();
 		const pending = [...pendingDeliveries.values()].find((candidate) => !candidate.entered && candidate.message === message.content);
 		if (!pending) return;
 		pending.entered = true;
@@ -508,6 +528,7 @@ export default function limenWake(pi: PiApi): void {
 		for (const pending of pendingDeliveries.values()) pending.settled = true;
 		confirmDeliveries();
 		activeDeliveries.clear();
+		finishedCache = undefined;
 		sweep();
 	});
 	pi.on("session_shutdown", () => {
@@ -647,10 +668,12 @@ export function progressFilename(filename: string | null): boolean {
 	if (!filename) return false;
 	return /^[^/]+\/(activity|last-tool)$/.test(filename.replaceAll("\\", "/"));
 }
-function runningDisplay(
+/** The job line: each running job with its pulse, then each finished job with its state, until it lands or closes. */
+function jobDisplay(
 	jobs: string,
 	session: string,
 	runningIds: readonly string[],
+	finished: readonly FinishedJob[],
 ): { readonly status: string; readonly title: string; readonly summary: string; readonly pulses: readonly Pulse[]; readonly watched: number } | undefined {
 	const running = runningIds.map((id) => {
 		const label = text(join(jobs, id, "label")) || id;
@@ -659,19 +682,67 @@ function runningDisplay(
 		const watching = subscribed(join(jobs, id), session);
 		return { label, pulse, watching, status: `${shortLabel(label)} ${pulse === "tool" && tool ? `${pulse}:${tool}` : pulse}${watching ? "" : " (unwatched)"}` };
 	});
-	if (running.length === 0) return undefined;
-	const summary = `${running
-		.slice(0, 3)
-		.map(({ status }) => status)
-		.join(" ")}${running.length > 3 ? ` +${running.length - 3}` : ""}`;
+	if (running.length === 0 && finished.length === 0) return undefined;
+	const summary = [running.map(({ status }) => status), finished.map(({ label, state }) => `${shortLabel(label)} ${state}`)]
+		.filter((names) => names.length > 0)
+		.map((names) => `${names.slice(0, 3).join(" ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`)
+		.join(" · ");
 	const title =
-		running.length === 1
-			? `Limen · ${running[0]?.label}`
-			: `Limen · ${running.length} jobs · ${running
-					.slice(0, 3)
-					.map(({ label }) => shortLabel(label))
-					.join(" ")}`;
+		running.length === 0
+			? `Limen · ${finished.length} finished`
+			: running.length === 1
+				? `Limen · ${running[0]?.label}`
+				: `Limen · ${running.length} jobs · ${running
+						.slice(0, 3)
+						.map(({ label }) => shortLabel(label))
+						.join(" ")}`;
 	return { status: `limen ${running.length} · ${summary}`, title, summary, pulses: running.map(({ pulse }) => pulse), watched: running.filter(({ watching }) => watching).length };
+}
+/** Finished jobs this coordinator still answers for: terminal, spawned from its tab or watched by its session, not landed, and not closed. */
+function finishedJobs(jobs: string, tab: string | undefined, session: string): FinishedJob[] {
+	const root = dirname(dirname(jobs));
+	const closed = new Set<string>();
+	// `limen close` treats a feature as closed once its folder is in done/ or dropped/; its jobs leave the line with it.
+	for (const lane of ["done", "dropped"]) {
+		const laneDir = join(root, "spec", "features", lane);
+		if (!existsSync(laneDir)) continue;
+		for (const month of readdirSync(laneDir, { withFileTypes: true })) {
+			if (!month.isDirectory()) continue;
+			for (const name of readdirSync(join(laneDir, month.name))) {
+				const feature = /^(F\d+)-/i.exec(name)?.[1];
+				if (feature) closed.add(feature.toUpperCase());
+			}
+		}
+	}
+	const candidates: Array<FinishedJob & { readonly branch: string; readonly repo: string; readonly landable: boolean }> = [];
+	for (const id of readdirSync(jobs).sort()) {
+		const job = join(jobs, id);
+		const state = text(join(job, "state"));
+		if (!isTerminal(state) || existsSync(join(job, "group"))) continue;
+		if (!(tab && text(join(job, "origin-tab")) === tab) && !subscribed(job, session)) continue;
+		const label = text(join(job, "label")) || id;
+		const feature = /\bF\d+\b/i.exec(`${label}\n${id}`)?.[0]?.toUpperCase();
+		if (feature && closed.has(feature)) continue;
+		const finishedAt = Date.parse(text(join(job, "finished-at"))) || 0;
+		candidates.push({ id, label, state, finishedAt, branch: text(join(job, "branch")), repo: text(join(job, "repo")), landable: text(join(job, "commits")) !== "" });
+	}
+	// Only a job with commits can land. Without commits it stays until its feature closes or `limen prune` retires the record.
+	const landed = new Set<string>();
+	for (const [repo, group] of Map.groupBy(
+		candidates.filter(({ landable, branch }) => landable && branch),
+		({ repo }) => repo,
+	)) {
+		try {
+			const unlanded = unlandedBranches(
+				repo ? join(root, repo) : root,
+				group.map(({ branch }) => branch),
+			);
+			for (const job of group) if (!unlanded.has(job.branch)) landed.add(job.id);
+		} catch {
+			// Git state unknown: the job stays visible rather than silently dropped.
+		}
+	}
+	return candidates.filter(({ id }) => !landed.has(id));
 }
 function pulseOf(jobs: string, id: string): Pulse {
 	const pid = Number(text(join(jobs, id, "pid")));
