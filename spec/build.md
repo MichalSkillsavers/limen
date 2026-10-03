@@ -24,7 +24,6 @@
 
 ## NOW
 
-- `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. Release of the group command is next: slices 1–6 are on `main`; the candidate branch needs a rebase onto the new `src/` layout and keeps the full trial and native proof.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
 ## NEXT
@@ -41,6 +40,7 @@
 
 ## PROVEN
 
+- `F740-collaborative-groups` (🟢 PROVEN): `limen group` released — bounded teams on one feature, peer findings delivered, lead is sole landing owner; full two-team sssnark trial kept. Landed on Adam's order; full native check on `02731ba` was still running at landing.
 - `F751-done-job-names-the-next-step` (🟢 PROVEN): a done job's finish message says the job is done and names the next step: land it, or name the check that blocks landing. No surface says "merge not ready".
 - `F728-hosted-engine-liveness` (🟢 PROVEN): a hosted OMP job stays running when Herdr loses its agent row but `omp` is still on the pane; reproduced on `main` first. Merged `a1f9e4f`. The long-labels hosted test is unstable before and after.
 - `F749-finish-guide-without-open-proof` (🟢 PROVEN): the finish guide drops the finished proof steps and links the F091 record.
