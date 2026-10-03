@@ -12,6 +12,7 @@ Rules:
 - Write only inside the dataset directory the handoff names, at its absolute path in the primary checkout. Commit nothing to the repository. Never write the map into `spec/` or any tracked path.
 - Read source at the named commit, and the board, feature folders, and vision for intent. Never invent state. A missing module, file, or proof is a gap you name in the body or mark `partial`, not a blank you fill. A landed design, a planned edge, or a rejected transport is prose, never a solid edge.
 - Link a feature to modules only through its `touches` list, and a journey only through its `steps`, each written from that feature's or journey's own sources. Never derive either from Git history or commit messages.
+- Cite in `sources` every project file that a body names, on the same place, edge, feature, or journey. `limen picture tick` refreshes the map only when a cited file changes, so a file named only in prose goes stale without a refresh. A `source.missing` warning means a cited path does not exist in the project root; correct the path or remove it.
 - Place every changed path the handoff names, or name it as unplaced in the plant body. Never drop one silently.
 - Run `limen picture build --dir <dataset>` and fix every error diagnostic. Then write the plant `revision` as your last dataset edit, and run `limen picture build --dir <dataset>` once more so the map's header carries that revision.
 - Do not edit the board, tickets, outcomes, vision, or styleguide. Do not open tickets or start other jobs.
