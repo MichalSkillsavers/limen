@@ -23,12 +23,11 @@
 
 ## NOW
 
-- `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. Release of the group command waits until F746–F750, F741, and F728 are on `main`; the candidate branch needs a rebase onto the new `src/` layout and keeps the full trial and native proof.
+- `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. Release of the group command is next: slices 1–6 are on `main`; the candidate branch needs a rebase onto the new `src/` layout and keeps the full trial and native proof.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
 ## NEXT
 
-- `F728-hosted-engine-liveness` (🟠 ACTIVE): reproduce the hosted OMP fallback gap first; no recovery change without a reproduction.
 
 ## PARKED
 
@@ -41,6 +40,7 @@
 
 ## PROVEN
 
+- `F728-hosted-engine-liveness` (🟢 PROVEN): a hosted OMP job stays running when Herdr loses its agent row but `omp` is still on the pane; reproduced on `main` first. Merged `a1f9e4f`. The long-labels hosted test is unstable before and after.
 - `F749-finish-guide-without-open-proof` (🟢 PROVEN): the finish guide drops the finished proof steps and links the F091 record.
 - `F748-map-is-a-local-file` (🟢 PROVEN): the map is described as a local file, not in Git, not a live feature list, and not refreshed by a board-only change; the vision note matches.
 - `F747-setup-guides-match-the-seat` (🟢 PROVEN): seat guides say the seat owns the project copy and job files; new jobs use OMP; Linux identity is current; the old VPS walkthrough is an old record.
