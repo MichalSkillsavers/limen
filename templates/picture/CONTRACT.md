@@ -28,7 +28,7 @@ The generator reads only `*.md` directly inside the graph directories. It ignore
 
 Each graph file starts with YAML between two `---` lines; the first line of the file is `---`. Scalars, `null`, and block lists (`- item`) only. No block scalars (`|`, `>`).
 
-Common required fields: `schema` (`architecture-map/1`), `kind`, `id`, `project`, `title`, `status`. Optional: `sources`, a list of paths relative to the project root. Unknown keys are kept as metadata.
+Common required fields: `schema` (`architecture-map/1`), `kind`, `id`, `project`, `title`, `status`. Optional: `sources`, a list of paths relative to the project root. Cite every project file that the body names: the tick counts a modified file only when some `sources` entry names it. Unknown keys are kept as metadata.
 
 | Kind | Directory | Required beyond common | Notes |
 | --- | --- | --- | --- |
@@ -73,24 +73,24 @@ Present tense, active voice, one idea per sentence, under 25 words. No contracti
 
 ## `limen picture build`
 
-Deterministic and offline. Reads the dataset, writes one self-contained HTML file that works from `file://` with no network. Never calls a model. The embedded model is `architecture-map-model/2`: `project`, `nodes`, `edges`, `features` (common fields plus `touches`), `journeys` (common fields plus `steps`), and `diagnostics`; `--json` writes the same model. Diagnostics (dangling edge, unknown parent, bad id, unknown touch or step, and so on) are listed in the view and on stderr; `--strict` exits 1 on any error diagnostic, otherwise the map still renders. The header names the plant `revision` and, when the project's current `HEAD` differs, says the map is behind and names that commit.
+Deterministic and offline. Reads the dataset, writes one self-contained HTML file that works from `file://` with no network. Never calls a model. The embedded model is `architecture-map-model/2`: `project`, `nodes`, `edges`, `features` (common fields plus `touches`), `journeys` (common fields plus `steps`), and `diagnostics`; `--json` writes the same model. Diagnostics (dangling edge, unknown parent, bad id, unknown touch or step, and so on) are listed in the view and on stderr; `--strict` exits 1 on any error diagnostic, otherwise the map still renders. Each `sources` path that does not exist in the project root is a `source.missing` warning; it does not fail `--strict`. The header names the plant `revision` and, when the project's current `HEAD` differs, says the map is behind and names that commit.
 
-The view opens on the whole plant (top-level places and edges lifted between them), drills into a place, deep-links by `#<id>`, searches by id and title, and shows each place's body, sources, and edges. Partial and stub places look incomplete. Features and journeys appear as a list beside the map, never as blocks or links; hovering or selecting one lights exactly the places in its `touches` or `steps`, and nothing lights otherwise.
+The view opens on the whole plant (top-level places and edges lifted between them), drills into a place, deep-links by `#<id>`, searches by id and title, and shows each place's body, sources, and edges. Partial and stub places look incomplete. Features and journeys appear as a list beside the map, never as blocks or links; hovering or selecting one lights exactly the places in its `touches` or `steps`, and nothing lights otherwise. The panel for a place lists the features and journeys whose `touches` or `steps` name that place; selecting one there lights it.
 
 ## `limen picture tick`
 
 One pass, started by the project's watch when its top branch moves, or by a coordinator by hand. No loop, no intervals. The tip is the project root's `HEAD`; the cursor is the plant `revision`. With `--branch B`, the pass runs only when the project root has `B` checked out; otherwise it prints one line and stops.
 
 1. No plant file or no `revision`: print one line saying the first picture starts by hand. Never spawn. The initial map is a coordinator decision.
-2. `revision` equals `HEAD`: silent.
-3. Diff `revision..HEAD` by path and status. Drop the dataset directory, `spec/`, `docs/`, `.agents/`, and root-level `*.md` first; dropped paths never count, even when cited. A remaining path is relevant when it was added, deleted, or renamed, or when it was modified and some node or edge `sources` entry names it exactly or as a directory prefix.
-4. Nothing relevant: silent. No model call. Spec-only, docs-only, and picture-only changes end here; a change to the board (`spec/build.md`) or a feature folder never starts a refresh.
+2. `revision` equals `HEAD`: silent. `--dry-run` prints one line that the map is current.
+3. Diff `revision..HEAD` by path and status. Drop the dataset directory, `spec/`, `docs/`, `.agents/`, and root-level `*.md` first; dropped paths never count, even when cited. A remaining path is relevant when it was added, deleted, or renamed, or when it was modified and a `sources` entry of the plant, a module, an edge, a feature, or a journey names it exactly or as a directory prefix.
+4. Nothing relevant: silent. No model call. `--dry-run` prints one line that no relevant change happened. Spec-only, docs-only, and picture-only changes end here; a change to the board (`spec/build.md`) or a feature folder never starts a refresh.
 5. Another live pass holds `tick.lock`: one line, no spawn. A lock whose process is gone is taken over.
 6. `job` names a live job, or a job whose recorded base is `HEAD`: one line, no spawn. One tip is attempted once.
 7. Engine, provider, model, or reasoning flag missing: one line naming the relevant paths, no spawn. There is no package fallback model for the watcher.
 8. Otherwise spawn one detached picture job with those flags and record its id in `job`. The handoff names this contract's absolute path, the dataset's absolute directory, both commits, and the relevant paths.
 
-`--dry-run` prints the decision and never spawns. The watcher never commits, merges, lands, or blocks anything, and the map's own files can never trigger it.
+`--dry-run` prints one line with the decision in every case and never spawns. The watcher never commits, merges, lands, or blocks anything, and the map's own files can never trigger it.
 
 ## `limen picture watch`
 

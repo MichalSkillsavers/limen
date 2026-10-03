@@ -8,6 +8,7 @@ import { readViewer } from "../src/picture/html.ts";
 import { renderMarkdown } from "../src/picture/markdown.ts";
 import { buildPicture, readPicture } from "../src/picture/picture-build.ts";
 import { buildModel, type PictureFile } from "../src/picture/picture-model.ts";
+import { limen, scratchRepo } from "./scratch.ts";
 
 const revision = "abcdef0123456789abcdef0123456789abcdef01";
 const now = new Date("2026-10-02T18:00:00Z");
@@ -198,6 +199,40 @@ test("missing datasets preserve ENOENT and broken graph paths fail honestly", as
 	assert.equal(empty.project.rootId, null);
 	await writeFile(join(dir, "nodes"), "not a directory");
 	await assert.rejects(readPicture(dir), { code: "ENOTDIR" });
+});
+
+test("build warns once for each cited path missing from the project root and still renders the map", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(() => scratch.cleanup());
+	const dir = join(scratch.root, ".limen/picture");
+	for (const directory of ["nodes", "features"]) await mkdir(join(dir, directory), { recursive: true });
+	await mkdir(join(scratch.root, "src"));
+	await writeFile(join(scratch.root, "src/real.ts"), "export const real = 1;\n");
+	const files = [
+		record("sample.plant", { kind: "plant", parent: "null", sources: "\n  - ./src/" }),
+		record("sample.a", { sources: "\n  - src/real.ts\n  - src/gone.ts" }),
+		record("sample.feature", { kind: "feature", touches: "\n  - sample.a", sources: "\n  - src/feature-gone.ts" }),
+	];
+	for (const file of files) await writeFile(join(dir, file.source), file.text);
+	const result = limen(scratch, "picture", "build", "--strict", "--json", join(dir, "model.json"));
+	assert.equal(result.status, 0, result.stderr);
+	assert.deepEqual(
+		result.stderr.split("\n").filter((line) => /^(error|warn|info) /.test(line)),
+		[
+			'warn source.missing features/sample.feature.md: source "src/feature-gone.ts" does not exist in the project root',
+			'warn source.missing nodes/sample.a.md: source "src/gone.ts" does not exist in the project root',
+		],
+	);
+	assert.match(result.stdout, /^picture: 1 places, 0 edges; wrote .*map\.html\n$/);
+	assert.match(await readFile(join(dir, "map.html"), "utf8"), /id="archmap-data"/);
+	const model = JSON.parse(await readFile(join(dir, "model.json"), "utf8")) as { diagnostics: { code: string; id: string; line: number }[] };
+	assert.deepEqual(
+		model.diagnostics.map((diagnostic) => [diagnostic.code, diagnostic.id, diagnostic.line]),
+		[
+			["source.missing", "sample.feature", 10],
+			["source.missing", "sample.a", 9],
+		],
+	);
 });
 
 test("missing or malformed shipped viewer assets fail rather than substitute another view", async (context) => {

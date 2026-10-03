@@ -78,6 +78,47 @@ test("tick identifies cited edits and structural renames without calling a model
 	}
 });
 
+test("tick counts files cited only by a feature or journey and dry run always prints its decision", async () => {
+	const s = await scratchRepo();
+	try {
+		await code(s);
+		await writeFile(join(s.root, "src/journey.ts"), "export const journey = 1;\n");
+		await writeFile(join(s.root, "src/uncited.ts"), "export const uncited = 1;\n");
+		git(s.root, "add", "src");
+		git(s.root, "commit", "-m", "more code");
+		const base = git(s.root, "rev-parse", "HEAD").trim();
+		const dir = await dataset(s, base);
+		await mkdir(join(dir, "features"));
+		await mkdir(join(dir, "journeys"));
+		await writeFile(
+			join(dir, "features/sample.feature.md"),
+			"---\nschema: architecture-map/1\nkind: feature\nid: sample.feature\nproject: sample\ntitle: Feature\nstatus: ready\ntouches:\n  - sample.worker\nsources:\n  - src/other.ts\n---\nThe feature.\n",
+		);
+		await writeFile(
+			join(dir, "journeys/sample.journey.md"),
+			"---\nschema: architecture-map/1\nkind: journey\nid: sample.journey\nproject: sample\ntitle: Journey\nstatus: ready\nsteps:\n  - sample.plant\n  - sample.worker\nsources:\n  - src/journey.ts\n---\nThe journey.\n",
+		);
+		assert.equal(limen(s, "picture", "tick", "--dry-run").stdout, `picture ${base.slice(0, 8)}: map is current; dry run\n`);
+		assert.equal(limen(s, "picture", "tick").stdout, "");
+		await writeFile(join(s.root, "src/uncited.ts"), "export const uncited = 2;\n");
+		git(s.root, "add", "src");
+		git(s.root, "commit", "-m", "uncited edit");
+		const uncited = git(s.root, "rev-parse", "HEAD").trim();
+		assert.equal(limen(s, "picture", "tick", "--dry-run").stdout, `picture ${base.slice(0, 8)}..${uncited.slice(0, 8)}: no relevant change; dry run\n`);
+		assert.equal(limen(s, "picture", "tick").stdout, "");
+		await writeFile(join(s.root, "src/other.ts"), "export const other = 2;\n");
+		await writeFile(join(s.root, "src/journey.ts"), "export const journey = 2;\n");
+		git(s.root, "add", "src");
+		git(s.root, "commit", "-m", "overlay-cited edits");
+		const result = limen(s, "picture", "tick", "--dry-run");
+		assert.equal(result.status, 0, result.stderr);
+		assert.match(result.stdout, /^picture [0-9a-f]{8}\.\.[0-9a-f]{8}: src\/journey\.ts, src\/other\.ts; dry run\n$/);
+		await noJob(s);
+	} finally {
+		await s.cleanup();
+	}
+});
+
 test("tick requires a known researched revision and never creates an initial job", async () => {
 	const s = await scratchRepo();
 	try {

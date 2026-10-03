@@ -281,10 +281,11 @@ The architecture map is a local file. `limen picture build` makes it from a Mark
 
 - **Not in Git:** The dataset and the map are not in Git. Nobody commits or lands them. A new clone has no map.
 - **Rules:** [templates/picture/CONTRACT.md](templates/picture/CONTRACT.md) has the dataset rules.
+- **Source check:** Build warns (`source.missing`) for each cited source path that does not exist in the project root. The map still renders.
 
 ### What the map shows
 
-The map shows places and the edges between them. A list next to the map shows features and journeys. When you select one, the map lights exactly the places that it names in `touches` or `steps`. The map never uses Git history to find places.
+The map shows places and the edges between them. A list next to the map shows features and journeys. When you select one, the map lights exactly the places that it names in `touches` or `steps`. The panel for a place lists the features and journeys that name it, and a click on one lights it. The map never uses Git history to find places.
 
 **The list is not a live feature list.** It shows where a feature touches the code. It does not show if a feature is planned, active, or done, because the board (`spec/build.md`) owns feature state.
 
@@ -295,9 +296,9 @@ The coordinator starts the first map by hand, as an interactive `--role picture`
 After that, `limen picture tick --engine E --provider P --model M --thinking T` does one quiet pass. It compares the commit recorded in the map with `HEAD`. It starts a detached refresh job only in two cases:
 
 - files were added, deleted, or renamed, or
-- a source that the map cites changed.
+- a source that the map cites changed. A source that only a feature or a journey cites counts too.
 
-Changes to specs, docs, or the map only print nothing and cost nothing. So a change to the board only (`spec/build.md`) never refreshes the map. The tick tries each tip one time. `--dry-run` prints the decision.
+Changes to specs, docs, or the map only print nothing and cost nothing. So a change to the board only (`spec/build.md`) never refreshes the map. The tick tries each tip one time. `--dry-run` prints the decision in one line, also when the map is current or nothing relevant changed.
 
 ### Map watch
 

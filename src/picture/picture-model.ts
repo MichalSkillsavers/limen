@@ -133,7 +133,18 @@ const SUMMARY_MAX = 200;
 const LEVEL_RANK = { error: 0, warn: 1, info: 2 };
 const KIND_RANK: Record<string, number> = { module: 0 };
 
-export function buildModel({ files, diagnostics = [], now = new Date() }: { files: readonly PictureFile[]; diagnostics?: readonly Diagnostic[]; now?: Date }): PictureModel {
+export function buildModel({
+	files,
+	diagnostics = [],
+	now = new Date(),
+	exists,
+}: {
+	files: readonly PictureFile[];
+	diagnostics?: readonly Diagnostic[];
+	now?: Date;
+	/** Answers whether a cited path exists under the project root; when omitted, sources are not checked. */
+	exists?: ((path: string) => boolean) | undefined;
+}): PictureModel {
 	const diags = [...diagnostics];
 	const diag: Report = (level, code, message, source = null, id = null, line = null) => {
 		diags.push({ level, code, message, source, id, line });
@@ -145,6 +156,13 @@ export function buildModel({ files, diagnostics = [], now = new Date() }: { file
 		if (rec) byId.set(rec.id, rec);
 	}
 	const records = [...byId.values()];
+	if (exists) {
+		for (const r of records) {
+			for (const path of r.sources) {
+				if (!exists(path)) diag("warn", "source.missing", `source "${path}" does not exist in the project root`, r.source, r.id, r.lines.sources ?? null);
+			}
+		}
+	}
 
 	const plants = records.filter((r) => r.kind === "plant");
 	const plantIds = new Set(plants.map((p) => p.id));
