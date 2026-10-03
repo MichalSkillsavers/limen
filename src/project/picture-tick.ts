@@ -36,17 +36,23 @@ export async function pictureTick(root: string, dir: string, flags: ReadonlyMap<
 		console.log("no map revision; start the first picture by hand");
 		return;
 	}
-	if (revision === head) return;
+	if (revision === head) {
+		if (dryRun) console.log(`picture ${head.slice(0, 8)}: map is current; dry run`);
+		return;
+	}
 	if (!/^[0-9a-f]{40}$/.test(revision) || git(root, ["cat-file", "-e", `${revision}^{commit}`]).status !== 0) {
 		console.log(`picture revision ${revision} is not a known commit; rebuild by hand`);
 		return;
 	}
 	const diff = git(root, ["diff", "--name-status", "-z", "-M", revision, head]);
 	if (diff.status !== 0) throw new Error(diff.stderr.trim());
-	const sources = [...model.nodes, ...model.edges, model.project].flatMap((node) => node.sources);
+	const sources = [...model.nodes, ...model.edges, ...model.features, ...model.journeys, model.project].flatMap((node) => node.sources);
 	const datasetPath = relative(root, dir).split(sep).join("/");
 	const relevant = relevantPicturePaths(diff.stdout, sources, datasetPath);
-	if (!relevant.length) return;
+	if (!relevant.length) {
+		if (dryRun) console.log(`picture ${revision.slice(0, 8)}..${head.slice(0, 8)}: no relevant change; dry run`);
+		return;
+	}
 	// Two branch moves seconds apart start two ticks; only one may decide and spawn.
 	const lock = join(dir, "tick.lock");
 	if (!(await claimTick(lock))) {
