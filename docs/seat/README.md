@@ -1,6 +1,8 @@
 # Seat bring-up
 
-Operator checklist. Limen does not run these. Copy the units, set the drop-ins, enable the timers.
+Operator checklist and the current setup steps. Limen does not run these. Copy the units, set the drop-ins, enable the timers.
+
+The seat owns the project copy (the Git checkout), the worktrees, and the job files in `.limen/jobs/`. The laptop is only a window. [vps.md](../vps.md) is an old record of one setup pass, not this checklist.
 
 Units next to this file: `bell.sh`, `limen-bell.{service,timer}`, `limen-prune.{service,timer}`.
 
@@ -13,16 +15,16 @@ Units next to this file: `bell.sh`, `limen-bell.{service,timer}`, `limen-prune.{
 ## On the box
 
 1. `tailscale up`. Confirm you can `ssh you@that-name` from the Mac.
-2. Node 24, Git, `gh`, `pi` on `PATH`. Install Herdr the same way you did on the Mac.
-3. Clone limen, `npm install && npm link`. Clone **one** project. `limen init` there.
+2. Node 24, Git, `gh`, `omp` on `PATH`. Install Herdr the same way you did on the Mac.
+3. Clone limen, `npm install && npm link`. Clone **one** project. `limen init` there. This is the only project copy that runs jobs.
 4. Model provider, `gh auth login`, and deploy tokens stay on the seat. The **GitHub App key** for the optional PR doorbell is different: it belongs only to the separate `limen-github` Unix user, never to the worker/coordinator account.
 5. Disable automatic reboot under live jobs (`Unattended-Upgrade::Automatic-Reboot "false";`). Patch when you choose.
 6. Start a persistent Herdr session (or `herdr server` under systemd) so attach works with the lid closed.
-7. `herdr integration install pi` if hosted tabs are wanted later. First jobs: `limen spawn --detached`. `LIMEN_SPAWN` is not a flag yet.
+7. `herdr integration install omp` for hosted OMP tabs. New jobs use OMP. First smoke job: `limen spawn --detached`.
 
 ## Bell
 
-Prefer **Moshi** if the phone already gets Herdr/pi pings: pair `moshi-hook` on the box (`--store file` on Linux), `service install`, `loginctl enable-linger`. Steps: [vps.md](../vps.md).
+Prefer **Moshi** if the phone already gets Herdr pings: pair `moshi-hook` on the box (`--store file` on Linux), `service install`, `loginctl enable-linger`. Steps: [vps.md](../vps.md).
 
 ntfy is the fallback when Moshi is not in play:
 
@@ -47,7 +49,7 @@ herdr --remote you@seat-name
 # optional: --session <name> if the seat is not using the default session
 ```
 
-Coordinator Pi runs **on the seat**. Do not `limen spawn` from a laptop clone of the same repo.
+The coordinator runs **on the seat**, on OMP. Do not `limen spawn` from a laptop clone of the same repo.
 
 Preview: on the seat, bind the app to `127.0.0.1`, then `tailscale serve 3000`. Open the printed HTTPS URL. Do not `tailscale funnel` unless you mean the public internet.
 
@@ -59,9 +61,9 @@ Preview: on the seat, bind the app to `127.0.0.1`, then `tailscale serve 3000`. 
 
 If 1 fails, do not move the coordinator. If 1–3 work, the laptop is a window from then on.
 
-## Linux stop
+## Linux process identity
 
-`limen stop` on Linux cannot use Darwin process identity. Treat it as best-effort. Job files are truth.
+Linux reads process identity from `/proc/<pid>/stat`. `limen stop` and process containment use the same code as on macOS. Job files are truth.
 
 ## GitHub doorbell
 
@@ -69,8 +71,8 @@ Use the checked-in [GitHub seat setup](github-setup.sh) and [remote operator tri
 
 The historical Alice draft under `tmp/` is not a deployment source. Use a root-owned Node 24 binary source, not a symlink to `~overment/.nvm`; a worker-owned Node or Herdr binary is unsafe even at mode 0755. A poller can execute worker-owned code and expose its key.
 
-## Not yet
+## Not built
 
-`LIMEN_SPAWN` / `LIMEN_NOTIFY` and Linux process-identity parity remain separate work.
+`LIMEN_SPAWN` and `LIMEN_NOTIFY` do not exist.
 
 Pickup narrative and traps: [docs/remote.md](../remote.md).

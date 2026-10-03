@@ -1,6 +1,6 @@
-# VPS walkthrough
+# VPS walkthrough (old record)
 
-What we actually did to stand up an always-on host. Flow and traps: [remote.md](remote.md). Checklist and leftover ntfy units: [seat/](seat/README.md).
+> This is an old record of one setup pass on the Alice VPS. It is evidence of what was done, not the current checklist. For current setup, use the [seat checklist](seat/README.md). Flow and traps: [remote.md](remote.md).
 
 Limen does not run this. The box is a plant (any product). Limen is a tenant you add later.
 
@@ -146,17 +146,11 @@ moshi-hook status                 # must say paired; daemon running
 
 `status` saying `unpaired` + `no HostID` means the daemon is socket-only. Phone SSH can work while the bell does not.
 
-## 4 · First repo (not done in this pass)
+## 4 · First repo
 
-One clone. Not five. Coordinator stays on the laptop until prove 1–2–3.
+This pass stopped before the first repository. That step was finished later: the Alice checkout at `/home/overment/alice` is the seat's project copy, and it holds the job files. The current steps are in the [seat checklist](seat/README.md).
 
-```bash
-# still missing on the box: Node 24, Git, gh, pi, Herdr, limen
-# then: clone ONE repo, limen init
-# keys (model, gh) live only here — same identity as the laptop
-```
-
-Path convention we intended: `/home/overment/<product>`.
+Path convention: `/home/overment/<product>`.
 
 ## 5 · Prove, then live here
 
