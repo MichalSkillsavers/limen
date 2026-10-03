@@ -27,3 +27,5 @@ A hosted OMP job remains running when its agent listing temporarily disappears b
 ## Notes
 
 Source inspection in `spec/quality/2026-09-2.md` found this gap after Pi/OMP selection landed (F727). It is not a reproduced live OMP failure; live hosted OMP proof was outside that engine slice. The ticket's regression should establish the exact failure before changing recovery.
+
+Decision (Adam, 2026-10-03): reproduce first. The first commit is a regression that fails on current `main`, or a live hosted OMP run that shows the gap. If neither shows the gap, write that result in `reproduction.md` in this folder and change no recovery code.

@@ -34,3 +34,5 @@ An owner can explicitly start a bounded group of teams on one feature. Each team
 ## Notes
 
 `design.md` defines the first-release contract. The scenario uses a disposable local repository; success there does not authorize autonomous merging in a real project.
+
+Release decision (Adam, 2026-10-03): groups already work well. Release the group command on `main` with its guide. Keep the full two-team trial and the full native proof; do not shrink either. Start only after the status, setup, map, finish-guide, wake, and map-content slices are on `main`. The candidate branch predates the move of `src/` into subfolders. Its trial feature folder reuses the number F741, which already names the OMP finish wake; file that evidence under this folder instead.
