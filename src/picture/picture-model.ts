@@ -143,7 +143,7 @@ export function buildModel({
 	diagnostics?: readonly Diagnostic[];
 	now?: Date;
 	/** Answers whether a cited path exists under the project root; when omitted, sources are not checked. */
-	exists?: (path: string) => boolean;
+	exists?: ((path: string) => boolean) | undefined;
 }): PictureModel {
 	const diags = [...diagnostics];
 	const diag: Report = (level, code, message, source = null, id = null, line = null) => {
