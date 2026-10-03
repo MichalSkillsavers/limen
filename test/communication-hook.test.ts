@@ -124,7 +124,7 @@ test("the system prompt holds shop, register, vision, styleguide, then the NOW/N
 	assert.doesNotMatch(prompt, /Audience for this reply/);
 });
 
-test("the per-turn cue names the audience and the three reply rules and stays under one kilobyte", async (context) => {
+test("the per-turn cue names the audience, the three reply rules, and the plain-English rule and stays under 1.25 kilobytes", async (context) => {
 	const root = await projectRoot(context);
 	await coordinatorFiles(root);
 	const result = start(root);
@@ -137,10 +137,14 @@ test("the per-turn cue names the audience and the three reply rules and stays un
 	assert.match(result.message.content, /Not `F048 is active now\.`/);
 	assert.match(result.message.content, /Never open a reply with a feature number/);
 	assert.match(result.message.content, /Size the reply to the question/);
+	assert.match(
+		result.message.content,
+		/Write in plain technical English \(about 80% of ASD-STE100\)\. Short sentences\. One idea each\. Active voice\. Simple exact words\. One word for one thing\. No slang, idioms, or filler\./,
+	);
 	assert.doesNotMatch(result.message.content, /opened by a job wake/);
 	assert.doesNotMatch(result.message.content, /Vision one\.|Prefer small functions\.|now item/);
 	assert.match(result.message.content, /<\/limen-project-context>$/);
-	assert.ok(Buffer.byteLength(result.message.content) < 1024);
+	assert.ok(Buffer.byteLength(result.message.content) < 1280);
 	assert.deepEqual(extension().events, ["before_agent_start", "message_end", "tool_result"]);
 });
 
@@ -182,6 +186,7 @@ test("the per-turn note carries the overview cue on a human turn and a wake, not
 	stashEnv(context, { LIMEN_JOB: "1", LIMEN_CONTEXT_ROOT: root });
 	const job = start(root, { systemPrompt: "pi-base" });
 	assert.match(job.message?.content ?? "", /Audience for this reply: agent/);
+	assert.match(job.message?.content ?? "", /Write in plain technical English \(about 80% of ASD-STE100\)\./);
 	assert.doesNotMatch(job.message?.content ?? "", overview);
 	assert.doesNotMatch(job.systemPrompt ?? "", overview);
 });
@@ -396,17 +401,17 @@ test("identical leftover copies are named as leftovers, overlays as overlays", a
 	assert.doesNotMatch(content, /## Shop manual/);
 });
 
-test("over fifty simulated turns custom messages stay under fifty kilobytes", async (context) => {
+test("over fifty simulated turns custom messages stay under sixty-four kilobytes", async (context) => {
 	const root = await projectRoot(context);
 	await coordinatorFiles(root);
 	const { handlers } = extension();
 	let total = 0;
 	for (let turn = 0; turn < 50; turn++) {
 		const content = handlers.before_agent_start?.({ systemPrompt: "base" }, { cwd: root })?.message?.content ?? "";
-		assert.ok(Buffer.byteLength(content) < 1024, `turn ${turn} cue was ${Buffer.byteLength(content)} bytes`);
+		assert.ok(Buffer.byteLength(content) < 1280, `turn ${turn} cue was ${Buffer.byteLength(content)} bytes`);
 		total += Buffer.byteLength(content);
 	}
-	assert.ok(total < 50 * 1024, `fifty turns accumulated ${total} bytes`);
+	assert.ok(total < 64 * 1024, `fifty turns accumulated ${total} bytes`);
 });
 
 test("style and vision reminders name the project files and their headings", async (context) => {

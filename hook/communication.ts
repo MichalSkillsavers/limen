@@ -134,6 +134,9 @@ function turnCue(cwd: string, job: boolean, wake: boolean, lastTouch: string | u
 		}
 	}
 	lines.push(REPLY_RULES);
+	lines.push(
+		"Write in plain technical English (about 80% of ASD-STE100). Short sentences. One idea each. Active voice. Simple exact words. One word for one thing. No slang, idioms, or filler.",
+	);
 	if (!job) lines.push(OVERVIEW_CUE);
 	if (lastTouch) lines.push(lastTouch);
 	if (!job) {
