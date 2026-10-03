@@ -33,7 +33,6 @@
 - `F748-map-is-a-local-file` (🔴 PLANNED): map is local, not in Git, not refreshed by a board-only change, not a live feature list; vision picture note follows.
 - `F749-finish-guide-without-open-proof` (🔴 PLANNED): finish guide drops the finished proof procedure and links the F091 record.
 - `F728-hosted-engine-liveness` (🟠 ACTIVE): reproduce the hosted OMP fallback gap first; no recovery change without a reproduction.
-- `F750-maps-light-features-by-touch-lines` (🟠 ACTIVE): Limen features and journeys on the Limen map; Alice feature edges become touch lines. Before any new map feature.
 
 ## PARKED
 
@@ -46,9 +45,10 @@
 
 ## PROVEN
 
+- `F750-maps-light-features-by-touch-lines` (🟢 PROVEN): the Limen map lists 15 features and 5 journeys with explicit touch lines; the Alice map has no feature edges, and its 14 features light only their touched places. Both strict builds are clean; the datasets are local, not in Git.
 - `F741-omp-finish-wakes-herdr-coord` (🟢 PROVEN): a finished job wakes the OMP Herdr coordinator that started it as an observed turn; `limen wait` refuses under `LIMEN_COORDINATOR=1`. Code `39ec81b`; live hosted OMP proof 2026-10-03 woke pane `wYN:p1` in 0.38 s; wake and wait tests 8/8.
 - `F014-github-doorbell` (🟢 PROVEN): an authorized PR mention reaches Alice's registered Herdr coordinator through an isolated App key; one hosted review and one start/finish receipt observed. Adam closed it with one repository on one seat (2026-10-03).
-- `F743-living-architecture-picture` (🟢 PROVEN): Limen ships a reusable local architecture map — contract, offline `picture build`, explicit `touches`/`steps` overlay, and a one-pass `tick` that calls no model without a structural or cited code change. Landed `07a9c6b` / `cf68cd4`; check 531/531; live tick started one refresh, quiet tick spent nothing. Alice dataset still needs `touches`.
+- `F743-living-architecture-picture` (🟢 PROVEN): Limen ships a reusable local architecture map — contract, offline `picture build`, explicit `touches`/`steps` overlay, and a one-pass `tick` that calls no model without a structural or cited code change. Landed `07a9c6b` / `cf68cd4`; check 531/531; live tick started one refresh, quiet tick spent nothing.
 - `F731-seat-bell-once` (🟢 PROVEN): each unheard terminal job or hosted-stall advisory gets one seat bell; exclusive receipt before transport prevents restart/concurrent double-rings, and ambiguous notify failures are not retried. Launchd sweep stays paused (no live notify proof). Landed `5117a92` / `47e0d77` via merge `39a9756`.
 - `F744-role-spaces-match-project-roots` (🟢 PROVEN): Herdr role spaces qualify by canonical project root so same-basename projects stay separate; legacy spaces untouched and recorded tabs still reopen. Landed `78a21a1`.
 - `F730-job-guidance-matches-engines` (🟢 PROVEN): setup docs and job finish labels follow the board's engine choices; OMP jobs log `done: <engine> exited 0` (not hard-coded pi), and launch examples put the outcome first with the ticket last. Landed `f0d1ec4`.
