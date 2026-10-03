@@ -25,6 +25,7 @@
 
 ## NOW
 
+- `F755-herdr-shows-running-and-finished` (🟠 ACTIVE): finished job tabs close with a logged result; running tabs read as running; coordinator title shows running and finished counts.
 - `F754-picture-sees-what-it-cites` (🟠 ACTIVE): tick counts feature and journey sources; dry-run always prints; build warns on missing sources; place panel lists touching features. No dataset edits.
 - `F753-readme-is-scannable` (🟠 ACTIVE): README gets headings, lists, and labels so a reader can scan it; facts and rules unchanged.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
