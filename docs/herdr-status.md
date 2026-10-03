@@ -50,21 +50,42 @@ recorded tabs. If several spaces have the same qualified label, Limen logs an
 Limen adds labels to native `idle` and `done`, without changing Herdr's lifecycle.
 For example, `2 RUNNING · 1 watched · 1 unwatched` means there are two unfinished
 job records visible here even though the coordinator can take input. The job
-names and activity follow; details stop after three jobs, but counts include all
-RUNNING jobs. When none remain, the overlay clears; that is not a merge verdict.
+names and activity follow. Then each finished job of this coordinator follows
+with its state, for example `F012 done F014 failed`. Details stop after three
+jobs in each group, but counts include all RUNNING jobs. The footer status line
+shows the same job line.
+
+A finished job stays on the job line until it lands or closes. It lands when
+its recorded commits are in the checked-out branch, by the same test as
+`limen status`. It closes when its feature folder moves to `done/` or
+`dropped/`, or when `limen prune --retire` removes its record. A job without
+commits cannot land, so it stays until it closes. Limen checks lands and closes
+after each coordinator turn and every 30 seconds. When no running or finished
+job remains, the overlay clears. That is not a merge verdict.
 
 **Watched** means this session is subscribed to the job's wakes. **Unwatched**
 means the job is visible but this session is not subscribed; another session may
 be watching it. Visibility neither claims ownership nor adds a subscription.
-The tab's `· N running` suffix counts jobs spawned from that tab, so it need not
-match the pane's project-wide count or this session's watched count.
+The tab's suffix counts only jobs spawned from that tab, so it need not match the
+pane's project-wide count or this session's watched count. `· 2 running` counts
+live jobs. `· 1 finished` counts finished jobs that have not landed or closed and
+that finished after the owner's last message. A Limen wake message does not
+reset it.
 
-A hosted worker or reviewer keeps its role and adds `job RUNNING · pane ready`
+A job tab's label ends in `· running` while the job runs. Herdr shows a hosted
+pane that waits for input as `idle`; the label still says the job runs. A hosted
+worker or reviewer also keeps its role and adds `job RUNNING · pane ready`
 when the pane settles. Ending a Pi turn or writing a final answer does not end a
 hosted job. The worker must finish/exit and the supervisor must record the
 terminal state. The reporter reads that record, refreshes through silence, and
 releases its overlay on shutdown. Reports are advisory and expire if refresh
 stops; an absent label is not proof that the job ended.
+
+When a job finishes, Limen closes its tab. The job log records the result:
+`herdr tab close <tab>: closed`, `already closed`, or the refusal. Limen retries a
+refused close once. If the retry also fails, the log says
+`failed after one retry`, and the tab label changes to the final state, for
+example `· done`. `limen open <job>` opens a log view again.
 
 ## Activity is evidence, not a human blocker
 
