@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -81,6 +81,34 @@ test("hosted launches omit json mode and keep the profile flags", () => {
 	assert.equal(omp.includes("--approve"), false);
 	assert.equal(omp.includes("--name"), false);
 	assert.equal(pi[pi.indexOf("--extension") + 1], "/hook/hosted.ts");
+});
+
+test("omp pi-claude models load the local bridge under --no-extensions and never add a provider", async (context) => {
+	const home = await mkdtemp(join(tmpdir(), "limen-bridge-home-"));
+	const previous = process.env.HOME;
+	context.after(async () => {
+		if (previous === undefined) delete process.env.HOME;
+		else process.env.HOME = previous;
+		await rm(home, { recursive: true, force: true });
+	});
+	process.env.HOME = home;
+	const model = { ...slots, jsonMode: false, model: "pi-claude/claude-opus-5-5", thinking: "xhigh" };
+	assert.equal(argvFor(ENGINES.omp, model).filter((arg) => arg.includes("pi-claude-bridge")).length, 0, "no bridge installed, nothing invented");
+	const installed = join(home, "bridges/pi-claude-bridge");
+	await mkdir(installed, { recursive: true });
+	await mkdir(join(home, ".omp/local"), { recursive: true });
+	await symlink(installed, join(home, ".omp/local/pi-claude-bridge"));
+	const real = await realpath(installed);
+	const omp = argvFor(ENGINES.omp, model);
+	assert.equal(omp.includes("--no-extensions"), true);
+	assert.deepEqual(
+		omp.flatMap((arg, i) => (arg === "--extension" ? [omp[i + 1]] : [])),
+		[...slots.extensions, real],
+	);
+	assert.equal(omp.includes("--provider"), false);
+	assert.equal(omp[omp.indexOf("--model") + 1], "pi-claude/claude-opus-5-5");
+	assert.equal(argvFor(ENGINES.omp, { ...model, model: "anthropic/claude-opus-5-5" }).includes(real), false);
+	assert.equal(argvFor(ENGINES.pi, model).includes(real), false);
 });
 
 test("OMP launch view exposes legacy skills without shadowing native or changing Pi", async (context) => {

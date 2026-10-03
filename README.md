@@ -133,7 +133,7 @@ Spawn records that creation `@login` (or an unavailable reason) on the job for f
 
 Project choices live in `spec/build.md`, not another policy file and not this README: engine, provider, model, and reasoning level per role, and who reviews. A newer explicit owner instruction outranks the board. Commands below use placeholders; fill them from the board.
 
-Package fallbacks apply only where the board is silent. New jobs run OMP; `--engine pi` or `LIMEN_ENGINE=pi` selects Pi. Model precedence is `--model`, then `LIMEN_WORKER_MODEL` (or `LIMEN_REVIEWER_MODEL` for `--review`), then the built-in `openai-codex/gpt-6-astra:high`. Pass the board's choices explicitly rather than relying on those fallbacks. `pi-claude` is a Pi provider; on OMP use `anthropic`.
+Package fallbacks apply only where the board is silent. New jobs run OMP; `--engine pi` or `LIMEN_ENGINE=pi` selects Pi. Model precedence is `--model`, then `LIMEN_WORKER_MODEL` (or `LIMEN_REVIEWER_MODEL` for `--review`), then the built-in `openai-codex/gpt-6-astra:high`. Pass the board's choices explicitly rather than relying on those fallbacks. On OMP, `--model pi-claude/<model>` (no `--provider`) loads the local bridge at `~/.omp/local/pi-claude-bridge` explicitly, because jobs otherwise start with `--no-extensions`; `--provider pi-claude` is not an OMP provider.
 
 Start a coordinator in an existing Herdr pane at a shell prompt, with the project as its working directory:
 

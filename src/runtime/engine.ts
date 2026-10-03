@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 export type EngineId = "pi" | "omp";
@@ -137,11 +138,19 @@ export function argvFor(profile: EngineProfile, slots: EngineArgv): string[] {
 	if (profile.noTitle) args.push("--no-title");
 	if (profile.id === "omp" && slots.skillConfig) args.push("--config", slots.skillConfig);
 	args.push("--append-system-prompt", slots.preamble);
-	for (const path of slots.extensions) args.push("--extension", path);
+	for (const path of [...slots.extensions, ...bridgeExtensions(profile, slots.model)]) args.push("--extension", path);
 	if (slots.provider) args.push("--provider", slots.provider);
 	if (slots.model) args.push("--model", slots.model);
 	if (slots.thinking) args.push("--thinking", slots.thinking);
 	if (slots.continueValue !== undefined) args.push("--continue", slots.continueValue);
 	else args.push(`@${slots.taskFile}`);
 	return args;
+}
+
+// OMP serves `pi-claude/…` models from a local bridge extension that `--no-extensions`
+// hides. Name it explicitly so the model resolves while other user extensions stay off.
+function bridgeExtensions(profile: EngineProfile, model: string | undefined): string[] {
+	if (profile.id !== "omp" || !model?.startsWith("pi-claude/")) return [];
+	const bridge = join(homedir(), ".omp", "local", "pi-claude-bridge");
+	return existsSync(bridge) ? [realpathSync(bridge)] : [];
 }
