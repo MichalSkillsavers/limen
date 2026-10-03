@@ -91,7 +91,7 @@ export async function runHostedSupervisor(): Promise<void> {
 		}
 		// A moved pane or degraded Herdr must neither stall finalize forever nor kill a live worker.
 		if ((missingStreak > 0 || unknownStreak >= HOSTED_UNKNOWN_SAMPLES) && !sessionEnded) {
-			const located = locateHostedAgent(target, process.env.LIMEN_AGENT_NAME?.trim() ?? "");
+			const located = locateHostedAgent(target, engine, process.env.LIMEN_AGENT_NAME?.trim() ?? "");
 			if (located) {
 				if (located !== target) {
 					await atomicWrite(`${jobDir}/herdr/agent`, `${located}\n`);
@@ -250,7 +250,7 @@ async function startHostedAgent(jobDir: string): Promise<string | undefined> {
 		const requested = await textFile(`${jobDir}/stop-requested`);
 		if (requested) {
 			const stoppedBeforeAgent = typeof error === "object" && error !== null && "code" in error && error.code === "hosted_start_stopped";
-			const live = stoppedBeforeAgent ? undefined : locateHostedAgent(pane);
+			const live = stoppedBeforeAgent ? undefined : locateHostedAgent(pane, profile.id);
 			if (live) {
 				await writeFile(`${jobDir}/herdr/agent`, `${live}\n`);
 				stopHostedAgent(live);

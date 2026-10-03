@@ -1212,6 +1212,30 @@ test("hostedAgentName keeps the hex suffix when the slug is long", () => {
 	assert.notEqual(a, b);
 });
 
+test("startHostedPi recovers an unclassified OMP process after a start warning", async () => {
+	await withFakeHerdr(
+		`const fs = require("node:fs"), args = process.argv.slice(2), started = __filename + ".started";
+const ok = result => console.log(JSON.stringify({result}));
+const fail = code => { console.log(JSON.stringify({error:{code,message:code}})); process.exit(1); };
+if (args[0] === "pane" && args[1] === "process-info") {
+  ok({process_info:{foreground_processes:[{name:fs.existsSync(started) ? "omp" : "zsh",pid:1}]}});
+} else if (args[0] === "tab" && args[1] === "focus") {
+  ok({});
+} else if (args[0] === "agent" && args[1] === "start") {
+  fs.writeFileSync(started, "yes");
+  fail("ready_timeout");
+} else if (args[0] === "agent" && args[1] === "get") {
+  fail("agent_not_found");
+} else if (args[0] === "agent" && args[1] === "list") {
+  ok({agents:[]});
+} else process.exit(1);
+`,
+		() => {
+			assert.equal(startHostedPi({ place: { workspace: "w1", tab: "w1:t1", pane: "w1:p1", mode: "hosted" }, name: "limen-omp", kind: "omp", args: [] }), "w1:p1");
+		},
+	);
+});
+
 test("startHostedPi recovery does not adopt another pane by name", async () => {
 	await withFakeHerdr(
 		`const args = process.argv.slice(2);

@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { ENGINES, type EngineId, engineProfile } from "../runtime/engine.ts";
 
 export type HerdrPlace = { readonly workspace: string; readonly tab: string; readonly pane: string; readonly mode: "watch" | "log" | "hosted" | "diff" };
 export type HostedAgentStatus = "idle" | "working" | "blocked" | "done" | "unknown" | "missing";
@@ -95,7 +96,7 @@ export function startHostedPi(input: {
 				break;
 			}
 		}
-		const live = locateHostedAgent(input.place.pane);
+		const live = locateHostedAgent(input.place.pane, engineProfile(input.kind).id);
 		if (live) {
 			input.log?.(`hosted agent ready after start warning: ${failed instanceof Error ? failed.message : String(failed)}`);
 			return live;
@@ -147,7 +148,7 @@ export function hostedTerminalReason(status: HostedAgentStatus, sessionEnded: bo
 }
 
 /** Live target for a hosted job whose recorded target stopped resolving cleanly: the agent found under a moved pane ID, or an unclassifiable but present process on the recorded pane. Undefined means genuinely gone. */
-export function locateHostedAgent(target: string, agentName = "", concrete = false): string | undefined {
+export function locateHostedAgent(target: string, engine: EngineId, agentName = "", concrete = false): string | undefined {
 	const status = hostedAgentStatus(target, concrete);
 	if (concrete && status === "unknown") return "unknown";
 	if (status !== "missing") return target;
@@ -172,7 +173,7 @@ export function locateHostedAgent(target: string, agentName = "", concrete = fal
 		const info = asRecord(asRecord(call(herdr, ["pane", "process-info", "--pane", target])).process_info);
 		const foreground = Array.isArray(info.foreground_processes) ? info.foreground_processes : [];
 		const names = foreground.map((row) => String(asRecord(row).name ?? "").toLowerCase());
-		if (names.some((n) => n === "pi" || n === "node")) return target;
+		if (names.some((n) => n === ENGINES[engine].binaryDefault || n === "node")) return target;
 		if (!Array.isArray(info.foreground_processes)) uncertain = true;
 	} catch (error) {
 		if (!(typeof error === "object" && error !== null && "code" in error && ["target_not_found", "pane_not_found", "agent_not_found"].includes(String(error.code))))
