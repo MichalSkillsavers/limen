@@ -191,7 +191,7 @@ test("role spaces distinguish two project roots with the same basename and reuse
 	await mkdir(hostedJob);
 	const hosted = await openHostedTab({ jobDir: hostedJob, label: "hosted", cwd: second.root, workspaceCwd: first.root, role: "worker", env: {} });
 	assert.equal(hosted.workspace, firstPlace.workspace);
-	assert.match(await readFile(herdr.calls, "utf8"), new RegExp(`tab create --workspace ${firstPlace.workspace} --label hosted --cwd ${second.root}`));
+	assert.match(await readFile(herdr.calls, "utf8"), new RegExp(`tab create --workspace ${firstPlace.workspace} --label hosted · running --cwd ${second.root}`));
 	const diffJob = join(first.root, "diff");
 	await mkdir(diffJob);
 	await openDiffTab({ jobDir: diffJob, label: "diff", cwd: second.root, workspaceCwd: first.root, hunk: "hunk", args: ["diff"] });
