@@ -2009,6 +2009,7 @@
 		});
 		st.appendChild(dl);
 		sourceList(box, strList(p.sources));
+		overlayLinks(box, null);
 		metaList(box, obj(p.meta));
 		if (M.generatedAt) box.appendChild(el("p", "d-foot", "Generated " + M.generatedAt));
 	}
@@ -2025,6 +2026,37 @@
 			dl.appendChild(el("dd", null, str(meta[k])));
 		});
 		section(box, "Metadata").appendChild(dl);
+	}
+
+	// Features and journeys whose `touches` or `steps` name this place exactly; `n` null is the plant.
+	function overlayLinks(box, n) {
+		if (!M.features.length && !M.journeys.length) return;
+		var list = M.features.concat(M.journeys).filter(function (o) {
+			return o.places.some(function (p) {
+				return p.node === n;
+			});
+		});
+		var s = section(box, "Features and journeys (" + list.length + ")");
+		if (!list.length) {
+			s.appendChild(el("p", "d-empty", "None."));
+			return;
+		}
+		var ul = el("ul", "d-parts ov-links");
+		list.slice(0, LIMIT.list).forEach(function (o) {
+			var li = el("li");
+			var b = button("d-link", null, function () {
+				selectOverlay(o);
+			});
+			b.dataset.key = "overlay:" + o.key;
+			b.appendChild(el("span", "tag ov-tag ov-" + o.kind, o.kind));
+			b.appendChild(el("span", "d-link-title", o.title));
+			if (o.status !== "ready") b.appendChild(badge(o.status));
+			b.title = o.summary || o.id;
+			li.appendChild(b);
+			ul.appendChild(li);
+		});
+		if (list.length > LIMIT.list) ul.appendChild(el("li", "more", list.length - LIMIT.list + " more"));
+		s.appendChild(ul);
 	}
 
 	function renderNodePanel(box, n) {
@@ -2062,6 +2094,7 @@
 			});
 			ps.appendChild(ul);
 		}
+		overlayLinks(box, n);
 		var c = connections(n);
 		connSection(box, "Outgoing", c.out, true, n);
 		connSection(box, "Incoming", c.inc, false, n);
