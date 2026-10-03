@@ -28,7 +28,6 @@
 
 ## NEXT
 
-- `F749-finish-guide-without-open-proof` (🔴 PLANNED): finish guide drops the finished proof procedure and links the F091 record.
 - `F728-hosted-engine-liveness` (🟠 ACTIVE): reproduce the hosted OMP fallback gap first; no recovery change without a reproduction.
 
 ## PARKED
@@ -42,6 +41,7 @@
 
 ## PROVEN
 
+- `F749-finish-guide-without-open-proof` (🟢 PROVEN): the finish guide drops the finished proof steps and links the F091 record.
 - `F748-map-is-a-local-file` (🟢 PROVEN): the map is described as a local file, not in Git, not a live feature list, and not refreshed by a board-only change; the vision note matches.
 - `F747-setup-guides-match-the-seat` (🟢 PROVEN): seat guides say the seat owns the project copy and job files; new jobs use OMP; Linux identity is current; the old VPS walkthrough is an old record.
 - `F746-status-guide-uses-command-names` (🟢 PROVEN): guides use `status` and `Candidates to inspect`; the README command reference lists every command, split into coordinator and operator actions.

@@ -536,7 +536,7 @@ The aggregate sender receipt remains unchanged and may still say `owner wake
 unobserved`: it records what the sender knew then, not later receiver completion.
 Legacy `finish-webhook-bot-turn` and local source-selection flags remain ignored.
 
-## VPS-first Johnny-only receiver-owned proof (outstanding)
+## Finish event identity
 
 Automatic payloads retain `job` (the label) and `branch`, map a completed job
 to `status: "waiting"` plus `jobState: "done"`, and add `finishEvent`:
@@ -547,189 +547,13 @@ the same identity. Continuations have new job IDs and therefore new events.
 Manual sends omit correlation unless `LIMEN_FINISH_EVENT` is supplied in this
 format; the job-based retry example above preserves it.
 
-The operational proof uses **this VPS with Johnny alone**. A Mac sender is an
-optional adaptation, not a prerequisite; no Tony coordination is needed. Johnny
-actively operates the receiver hold/release and follows the named job through
-an operator channel, independently of webhook wakes. Adam reviews. These steps
-are for the authorized operator, not the documentation worker: that worker must
-not send, inspect private config, or operate the receiver. Limen adds no receiver
-API, queue, polling or finalizer wait for this proof.
+## Finished receiver-owned proof
 
-1. **Before any spawn**, obtain authorization for one new automatic-only hosted
-   proof job. Johnny privately verifies a config selecting exactly his route as
-   target 1 (the single URL/auth pair with no `TARGETS` override, or a one-entry
-   target list). Use the dedicated path below, not an unverified project default;
-   prepare it privately with mode 600 and Git exclusion as described above. Do
-   not run either manual setup-check. The route must preserve `finishEvent` in
-   Johnny's actual completed turn.
-
-   Johnny chooses and records one **receiver-owned control** before spawn:
-   a supported processing hold, or a hold on exporting the genuine completed
-   turn into Limen's inspected source. Both keep ingress accepting HTTP 2xx.
-   Processing hold prevents the actual turn until release; export hold lets
-   Johnny complete the turn but stage its authorized export outside the source.
-   The latter needs no processing-control API: Johnny controls the file release.
-   Confirm real history access and an authorized v1 export channel before sending;
-   stop if either is unavailable, rather than inventing an API. A paused endpoint
-   returning 4xx fails the control. Export hold proves unobserved inspection,
-   **not absence of a completed turn**, and must be labelled accordingly.
-2. Use Node 24+ and the reviewed checkout on this VPS. Run these commands in the
-   operator's shell, retaining the variables through step 5. Tracked package
-   source must be clean; existing untracked evidence is not a package change.
-   Record the revision before starting the hosted job.
-
-   ```sh
-   PROJECT=/home/overment/limen
-   LIMEN_ROOT=/home/overment/limen
-   CONFIG="$PROJECT/.limen/finish-webhook-johnny.env"
-   cd "$PROJECT" || exit 1
-   LIMEN="$LIMEN_ROOT/bin/limen"
-   unset LIMEN_FINISH_WEBHOOK_ENV LIMEN_FINISH_EVIDENCE_DIR
-   test -z "$(git -C "$LIMEN_ROOT" status --porcelain --untracked-files=no)" || { echo 'Dirty tracked source; stop'; exit 1; }
-   test -r "$CONFIG" || { echo 'Selected config unavailable; stop'; exit 1; }
-   PROOF="$HOME/limen-evidence/johnny-finish-$(date -u +%Y%m%dT%H%M%SZ)"
-   (umask 077; mkdir -p "$PROOF/receiver-source" "$PROOF/receiver-held")
-   git -C "$LIMEN_ROOT" rev-parse HEAD > "$PROOF/source-revision.txt"
-   printf '%s\n' "$PROJECT" "$LIMEN_ROOT" > "$PROOF/source-paths.txt"
-   node --version > "$PROOF/node-version.txt"
-   printf '%s\n' '{"version":1,"targets":[{"target":1,"receiver":"johnny"}]}' \
-     > "$PROOF/receiver-source/receivers.json"
-   ```
-
-   Designate this source only after verifying Johnny's mapping. Protect it and
-   its parents from unrelated writers, outside the job/worktree; mode 700 alone
-   does not isolate processes sharing the operator's account. Use the authorized
-   operator/export trust boundary described above, never a worker-authored turn.
-   Retain Johnny's sanitized mapping/hold-method attestation in `$PROOF`; no
-   private env file, URL or credential belongs in the bundle.
-
-   Optional Mac adaptation: replace **only the first two assignments** above
-   with the following, entering existing absolute primary-checkout and reviewed
-   Limen-checkout paths at the prompts; run all remaining commands unchanged.
-   A working hosted Herdr/Pi seat and the same Johnny hold/history are required.
-
-   ```sh
-   printf 'Absolute primary project checkout: '; IFS= read -r PROJECT
-   printf 'Absolute reviewed Limen checkout: '; IFS= read -r LIMEN_ROOT
-   case "$PROJECT" in /*) ;; *) echo 'Absolute path required'; exit 1;; esac
-   case "$LIMEN_ROOT" in /*) ;; *) echo 'Absolute path required'; exit 1;; esac
-   ```
-
-   With Johnny's chosen hold confirmed, start exactly one hosted job:
-
-   ```sh
-   LIMEN_FINISH_WEBHOOK_ENV="$CONFIG" "$LIMEN" spawn --tab --engine pi \
-     --label johnny-finish-receiver-proof \
-     --provider openai-codex --model gpt-6-astra --thinking high \
-     'Authorized finish receipt proof only. Make no product edits, inspect no private config, and send no manual ping. Report that this no-change job ended, then call finish with that handoff. Automatic finalization owns delivery; Johnny operates the receiver outside this worker.'
-   ```
-
-   Copy the returned job ID at the prompt:
-
-   ```sh
-   printf 'Returned job ID: '; IFS= read -r id
-   job="$PROJECT/.limen/jobs/$id"
-   test -s "$job/finish-webhook-env" || { echo 'No automatic selection; stop'; exit 1; }
-   ```
-
-   Johnny follows this **named job** through terminal state and settled finalizer
-   using `"$LIMEN" jobs "$id"` and its durable job files. From a Pi coordinator,
-   that coordinator runs `"$LIMEN" watch "$id"` through its own Bash tool; outside
-   Pi, inspect records directly rather than inventing a `PI_SESSION_ID`. Do not
-   use `watch --running`. The selection check reads no private env values.
-   Do not send manually, clear a claim, retry, or spawn a replacement to turn a
-   failed proof into success without fresh authorization.
-3. After finalization, **while the chosen control remains held**, capture safe
-   records and both views against the source, still without a turn export.
-   For export hold, Johnny may already have completed the actual turn; retain
-   its authorized export in `$PROOF/receiver-held`, not `receiver-source`.
-
-   ```sh
-   for name in state finished-at finish-webhook-attempt finish-webhook finish-webhook-targets; do
-     if [ -f "$job/$name" ]; then cp "$job/$name" "$PROOF/$name"; fi
-   done
-   printf '%s\n' "$id" > "$PROOF/job-id.txt"
-   date -u +%Y-%m-%dT%H:%M:%SZ > "$PROOF/control-captured-at.txt"
-   LIMEN_FINISH_EVIDENCE_DIR="$PROOF/receiver-source" LIMEN_VIEW=compact \
-     "$LIMEN" jobs "$id" > "$PROOF/control-compact.txt"
-   LIMEN_FINISH_EVIDENCE_DIR="$PROOF/receiver-source" NO_COLOR=1 LIMEN_VIEW=human \
-     "$LIMEN" jobs "$id" > "$PROOF/control-human.txt"
-   grep 'event:' "$PROOF/control-compact.txt"
-   ```
-
-   Match that exact event to Johnny's accepted incoming event. Read both views:
-   exactly target 1 must show `transport accepted` and `bot-turn unobserved`.
-   Johnny retains sanitized receiver history/control evidence in
-   `control-owner.txt`: mode (`processing` or `export`), event, target 1, identity,
-   acceptance and capture times, and how he held the control. For processing
-   hold, attest **no completed turn at capture time** with accessible history.
-   For export hold, attest **no released export at capture time** and state
-   separately whether the real turn already completed; retain its actual history.
-   An absent file alone is not receiver evidence. Stop if HTTP is not accepted,
-   an extra target appears, processing completed despite a processing hold, or
-   the event/history cannot be verified. Do not blindly retry.
-4. Only after retaining that control evidence, Johnny releases the same accepted
-   event through the supported processing workflow, or releases its genuine held
-   export using the file step below. Record the mode, release time and reference
-   as `release-owner.txt`. No second HTTP send occurs. Johnny follows his actual
-   turn to completion and supplies the unchanged v1 `<finishEvent>.1.json` export,
-   with sanitized history excerpts preserving the exact incoming `finishEvent`.
-   Johnny/Adam follow the session/turn references; aliases require a durable
-   private lookup. Stop without a completed-turn claim if processing fails,
-   history is inaccessible, or correlation cannot be verified. Never import
-   queued, running or failed history as completed, or fabricate a template turn.
-   Transfer the authorized export through the trusted channel. For export hold,
-   use the staging directory created above; it must contain a genuine authorized
-   completed-turn export, never a locally invented template. After the control
-   capture, this is the entire release operation (the directories share a filesystem):
-
-   ```sh
-   printf 'Exact event from the control view: '; IFS= read -r event
-   printf '%s\n' "$event" | grep -Eq '^limen-finish-[0-9a-f]{64}$' || exit 1
-   test -f "$PROOF/receiver-held/$event.1.json" || exit 1
-   test ! -e "$PROOF/receiver-source/$event.1.json" || exit 1
-   mv "$PROOF/receiver-held/$event.1.json" "$PROOF/receiver-source/$event.1.json"
-   date -u +%Y-%m-%dT%H:%M:%SZ > "$PROOF/export-released-at.txt"
-   ```
-
-   Processing-hold exports also enter the source through an atomic rename after
-   the actual turn completes. Neither release sends another webhook.
-5. Inspect the same designated source and retain both views:
-
-   ```sh
-   LIMEN_FINISH_EVIDENCE_DIR="$PROOF/receiver-source" LIMEN_VIEW=compact \
-     "$LIMEN" jobs "$id" > "$PROOF/observed-compact.txt"
-   LIMEN_FINISH_EVIDENCE_DIR="$PROOF/receiver-source" NO_COLOR=1 LIMEN_VIEW=human \
-     "$LIMEN" jobs "$id" > "$PROOF/observed-human.txt"
-   diff -u "$PROOF/control-compact.txt" "$PROOF/observed-compact.txt" \
-     > "$PROOF/inspection.diff"
-   result=$?
-   printf 'inspection diff exit=%s (expected 1)\n' "$result"
-   cmp "$PROOF/finish-webhook-attempt" "$job/finish-webhook-attempt"
-   cmp "$PROOF/finish-webhook" "$job/finish-webhook"
-   cmp "$PROOF/finish-webhook-targets" "$job/finish-webhook-targets"
-   ```
-
-   Expected diff exit is 1: target 1 changes from unobserved to observed with
-   Johnny's receiver/session/turn/time; HTTP receipts do not change. All three
-   `cmp` commands must exit 0. Read both views and the diff, not just exit codes.
-   Retain receiver ingress history showing one delivery of this event; unchanged
-   local claims alone cannot exclude a separate manual send. Keep the source
-   revision, mapping attestation, held control, release record, authorized export
-   and sanitized history together. Report transport and completed turn separately.
-
-Outstanding: one authorized VPS automatic delivery to Johnny, verified
-accepted/unobserved control with same-event processing or genuine-export release,
-actual completed-turn evidence and Adam's review. Export hold satisfies the
-inspection control, not a no-actual-turn claim. Synthetic records do not satisfy
-live proof. The documentation correction itself earns no PROVEN claim.
-
-The current VPS handoff is `spec/research/limen-1.0-ship/ASK-JOHNNY.md`.
-Its `johnny-export-proof.sh capture|release JOB_ID` helper retains the two CLI
-views and atomically releases Johnny's supplied export; it never sends, retries,
-creates a completed-turn export or authenticates history. Johnny still owns the
-single-route mapping, genuine history and capture/release attestations. Missing
-prerequisites leave the protected proof directory prepared, not proven.
+The receiver-owned proof is finished. On the VPS, one automatic delivery to
+Johnny showed HTTP accepted with the bot turn unobserved while his export was
+held, then observed for target 1 after release, with no second send. The record
+is the [bot-turn receipt outcome](../spec/features/done/2026-09/F091-finish-job-shows-bot-turn-receipt/outcome.md).
+Do not repeat that proof for ordinary setup.
 
 ## Offline positive/negative harness
 
