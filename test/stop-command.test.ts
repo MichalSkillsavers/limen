@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { containEscapedDescendants, processInfo, recordCleanup } from "../src/runtime/contain.ts";
 import { limen, limenWithEnv, limenWithSession, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
@@ -216,13 +217,21 @@ test("sleeping descendant discovery delays stop only through its short bound", a
 	await chmod(join(scratch.fakeBin, "ps"), 0o755);
 	limen(scratch, "init");
 	const id = onlyJobId(limen(scratch, "spawn", "wait").stdout);
+	// Cold CLI startup is outside the process-query deadline. Make that distinction observable.
+	const bootstrap = join(scratch.fakeBin, "slow-cli-start.mjs");
+	await writeFile(bootstrap, "await new Promise(resolve => setTimeout(resolve, 1200));\n");
 	const started = Date.now();
-	const stopped = limen(scratch, "stop", id, "ps sleeping");
+	const stopped = limenWithEnv(scratch, { NODE_OPTIONS: `--import=${pathToFileURL(bootstrap).href}` }, "stop", id, "ps sleeping");
 	assert.equal(stopped.status, 0, stopped.stderr);
 	await waitForState(scratch.root, id, "stopped", 2_000);
-	const elapsed = Date.now() - started;
-	assert.ok(elapsed >= 900 && elapsed < 2_000, `stop must wait only for the bounded ps query, took ${elapsed}ms`);
-	assert.match(await readFile(join(scratch.root, `.limen/jobs/${id}/cleanup`), "utf8"), /escaped descendant discovery failed during stop/);
+	const jobDir = join(scratch.root, ".limen/jobs", id);
+	const log = await readFile(join(jobDir, "log"), "utf8");
+	const requestedAt = Date.parse(/\[limen ([^\]]+)\] stop requested: ps sleeping/.exec(log)?.[1] ?? "");
+	const finishedAt = Date.parse((await readFile(join(jobDir, "finished-at"), "utf8")).trim());
+	const elapsed = finishedAt - requestedAt;
+	assert.ok(Date.now() - started >= 2_100, "the fixture must expose startup time outside the stop deadline");
+	assert.ok(elapsed >= 900 && elapsed < 2_000, `dispatched stop must wait only for the bounded ps query, took ${elapsed}ms`);
+	assert.match(await readFile(join(jobDir, "cleanup"), "utf8"), /escaped descendant discovery failed during stop/);
 });
 
 test("sleeping descendant discovery delays timeout only through its short bound", async (context) => {

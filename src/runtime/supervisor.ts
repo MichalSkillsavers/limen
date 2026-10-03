@@ -13,6 +13,8 @@ import {
 	startHostedPi,
 	stopHostedAgent,
 } from "../integrations/herdr.ts";
+import { jobMembership, ownsLiveChildren } from "../job/group-cabinet.ts";
+import { syncLifecycle } from "../job/group-events.ts";
 import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, recordCommits, requestedTerminal, textFile, writeHandshake } from "../job/record.ts";
 import { cleanWorktree } from "../project/git.ts";
 import { containEscapedDescendants } from "./contain.ts";
@@ -79,6 +81,15 @@ export async function runHostedSupervisor(): Promise<void> {
 	const engine = (await jobProfile(jobDir)).id;
 	while (!interrupted) {
 		if ((await textFile(`${jobDir}/state`)) !== "running") return;
+		const membership = await jobMembership(jobDir);
+		if (membership && (membership.run.stopped || Date.now() >= (membership.member?.deadline ?? membership.run.deadline))) {
+			stopHostedAgent(target);
+			await atomicWrite(`${jobDir}/stop-requested`, "group deadline or stop\n");
+			await writeHostedResult(jobDir);
+			await finalizeJob(jobDir, "failed", "group deadline or stop");
+			return;
+		}
+		if (membership) await syncLifecycle(membership.run, "skip");
 		const status = hostedAgentStatus(target);
 		const sessionEnded = Boolean(await textFile(`${jobDir}/session-ended`));
 		// Herdr idle/done = unseen background tab, not job completion.
@@ -221,13 +232,18 @@ async function startHostedAgent(jobDir: string): Promise<string | undefined> {
 	const profile = await jobProfile(jobDir);
 	const worktree = requiredEnvironment("LIMEN_WORKTREE");
 	const skillConfig = profile.id === "omp" ? await prepareSkillConfig(worktree, jobDir) : undefined;
+	const membership = await jobMembership(jobDir);
+	if (membership && (membership.run.stopped || Date.now() >= (membership.member?.deadline ?? membership.run.deadline))) {
+		await finalizeJob(jobDir, "failed", "group deadline or stop before hosted engine launch");
+		return;
+	}
 	const args = argvFor(profile, {
 		jsonMode: false,
 		jobDir,
 		...(skillConfig ? { skillConfig } : {}),
 		label: requiredEnvironment("LIMEN_LABEL"),
 		preamble: requiredEnvironment("LIMEN_PREAMBLE"),
-		extensions: ["hosted", "steering", "communication"].map((name) => `${PACKAGE_ROOT}/hook/${name}.ts`),
+		extensions: ["hosted", "steering", "communication", ...((await jobMembership(jobDir)) ? ["group-peer"] : [])].map((name) => `${PACKAGE_ROOT}/hook/${name}.ts`),
 		...(process.env.LIMEN_PROVIDER ? { provider: process.env.LIMEN_PROVIDER } : {}),
 		...(process.env.LIMEN_MODEL ? { model: process.env.LIMEN_MODEL } : {}),
 		...(process.env.LIMEN_THINKING ? { thinking: process.env.LIMEN_THINKING } : {}),
@@ -287,6 +303,7 @@ export async function noteHostedIdle(jobDir: string, status: HostedAgentStatus, 
 	const { text, stop } = await lastHostedAssistant(jobDir);
 	const errored = stop === "error" || stop.startsWith("error: ");
 	const tree = await textFile(`${jobDir}/worktree`);
+	if (await ownsLiveChildren(jobDir)) return;
 	if (!errored && status !== "blocked" && text && tree && cleanWorktree(tree)) return "closed a clean idle session";
 	const tools = Number(await textFile(`${jobDir}/tool-calls`));
 	const count = Number.isSafeInteger(tools) && tools > 0 ? tools : 0;

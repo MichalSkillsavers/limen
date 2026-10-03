@@ -19,7 +19,7 @@ export function finishWebhookEnv(root: string, cwd: string, explicit = process.e
 }
 export function captureFinishAuthor(cwd: string, task: string, workspace = false): string {
 	if (workspace) return "unavailable\nnon-Git workspace ticket";
-	const tickets = [...task.matchAll(/\bTicket: (spec\/\S+)/g)].flatMap((match) => (match[1] ? [match[1]] : []));
+	const tickets = [...task.matchAll(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g)].flatMap((match) => (match[1] ? [match[1]] : []));
 	const ticket = tickets.length === 1 ? tickets[0] : undefined;
 	if (!ticket) return `unavailable\n${tickets.length ? "ambiguous Ticket: pointer" : "missing Ticket: pointer"}`;
 	try {

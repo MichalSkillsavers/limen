@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { herdrAvailable, openWatchTab } from "../integrations/herdr.ts";
+import { claimMember, commandRoot, groupIdentity, groupLock, groupPath, jobMembership, teamRoute } from "../job/group-cabinet.ts";
+import { syncLifecycle } from "../job/group-events.ts";
 import { resolveJob } from "../job/lookup.ts";
 import { atomicWrite, finalizeJob } from "../job/record.ts";
-import { addBranchWorktree, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
+import { addBranchWorktree, branchExists, headCommit, workspaceRepository } from "../project/git.ts";
 import { engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { launchWrapper } from "../runtime/wrapper.ts";
 import {
@@ -21,6 +23,9 @@ import {
 
 /** Resume a finished job's own engine session; restore a pruned checkout from its branch. */
 export async function continueCommand(args: readonly string[], cwd: string): Promise<void> {
+	await continueJob(args, cwd);
+}
+async function continueJob(args: readonly string[], cwd: string, locked = false): Promise<void> {
 	let review = false;
 	let tab = false;
 	let detached = false;
@@ -54,12 +59,32 @@ export async function continueCommand(args: readonly string[], cwd: string): Pro
 	if (tab && !herdr) throw new Error("hosted continue requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
 	const chosenModel = model ?? (process.env[review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
 
-	const root = workspaceRoot(cwd) ?? repoRoot(cwd);
+	const root = await commandRoot(cwd);
 	const { id: parentId, jobDir: parentDir } = await resolveJob(cwd, query);
+	const membership = await jobMembership(parentDir);
+	if (membership) {
+		if (membership.member?.role === "coordinator") throw new Error("group coordinator continuation is not supported; inspect and stop before --new-run");
+		const caller = await groupIdentity(cwd, membership.run.id);
+		if (!caller || (caller.member && (caller.member.role !== "coordinator" || caller.member.team !== membership.member?.team)))
+			throw new Error("only this team's coordinator or the recorded lead may continue its worker");
+		const route = teamRoute(membership.run, membership.member?.team ?? "");
+		if (engine !== membership.run.engine || model !== route.model || provider !== route.provider || thinking !== membership.run.workerThinking)
+			throw new Error("group continuation requires recorded engine/provider/model/reasoning explicitly");
+		if (!locked) {
+			await groupLock(`${groupPath(membership.run)}/launch`, () => continueJob(args, cwd, true), "wait");
+			return;
+		}
+	}
 	const parentState = await text(`${parentDir}/state`);
 	if (!["done", "failed", "stopped"].includes(parentState)) throw new Error(`job ${parentId} is ${parentState || "stateless"}; continue needs a finished job`);
 	const worktree = await text(`${parentDir}/worktree`);
 	if (!worktree) throw new Error(`parent record ${parentId} has no worktree path`);
+	if (membership)
+		for (const existing of await readdir(`${root}/.limen/jobs`)) {
+			if (existing === parentId) continue;
+			const dir = `${root}/.limen/jobs/${existing}`;
+			if ((await text(`${dir}/state`)) === "running" && (await text(`${dir}/worktree`)) === worktree) throw new Error("group worker worktree already has a live continuation");
+		}
 	const branch = await text(`${parentDir}/branch`);
 	if (!branch) throw new Error(`parent record ${parentId} has no branch`);
 	const repo = await text(`${parentDir}/repo`);
@@ -79,6 +104,7 @@ export async function continueCommand(args: readonly string[], cwd: string): Pro
 	const jobDir = `${root}/.limen/jobs/${id}`;
 	const role = review ? "reviewer" : (await text(`${parentDir}/role`)) || "worker";
 	const preamble = resolvePreamble(root, role);
+	const member = membership?.member ? await claimMember(membership.run, membership.member.team, "worker", id, parentId) : undefined;
 	if (!existsSync(worktree)) {
 		const repository = repo ? workspaceRepository(root, repo) : root;
 		if (!branchExists(repository, branch))
@@ -113,7 +139,7 @@ export async function continueCommand(args: readonly string[], cwd: string): Pro
 					writeFile(`${jobDir}/continue`, `${instruction}\n`, { flag: "wx", flush: true }),
 				]
 			: []),
-		...(notificationSession
+		...(!membership && notificationSession
 			? [
 					writeFile(`${jobDir}/origin-session`, `${notificationSession}\n`, { flag: "wx", flush: true }),
 					writeFile(`${jobDir}/notify/subscribers/${notificationSession}`, `${new Date().toISOString()}\n`, { flag: "wx", flush: true }),
@@ -122,6 +148,11 @@ export async function continueCommand(args: readonly string[], cwd: string): Pro
 		...(coordinatorTab ? [writeFile(`${jobDir}/origin-tab`, `${coordinatorTab}\n`, { flag: "wx", flush: true })] : []),
 		...(coordinatorPane ? [writeFile(`${jobDir}/origin-pane`, `${coordinatorPane}\n`, { flag: "wx", flush: true })] : []),
 	]);
+	if (membership && member) {
+		await writeFile(`${jobDir}/group`, `${membership.run.id}\n`, { flag: "wx", flush: true });
+		await writeFile(`${jobDir}/team`, `${member.team}\n`, { flag: "wx", flush: true });
+		await writeFile(`${jobDir}/deadline`, `${member.deadline}\n`, { flag: "wx", flush: true });
+	}
 	// Resume the parent's opt-in (or absence), not the current shell's destination.
 	const finishConfig = await text(`${parentDir}/finish-webhook-env`);
 	if (finishConfig) await writeFile(`${jobDir}/finish-webhook-env`, `${finishConfig}\n`, { flag: "wx", mode: 0o600, flush: true });
@@ -134,6 +165,7 @@ export async function continueCommand(args: readonly string[], cwd: string): Pro
 	await mkdir(`${jobDir}/session`, { recursive: true });
 	await copyFile(`${parentDir}/session/${inheritedSession}`, `${jobDir}/session/${inheritedSession}`);
 	await atomicWrite(`${jobDir}/state`, "running\n");
+	if (membership) await syncLifecycle(membership.run, "skip");
 	if (hosted) {
 		try {
 			await startHosted({
@@ -176,6 +208,11 @@ export async function continueCommand(args: readonly string[], cwd: string): Pro
 		LIMEN_PROVIDER: provider ?? "",
 		LIMEN_THINKING: thinking ?? "",
 	};
+	if (membership && member) {
+		environment.LIMEN_GROUP_ID = membership.run.id;
+		environment.LIMEN_TEAM_ID = member.team;
+		environment.LIMEN_TIMEOUT_MS = String(Math.max(1, member.deadline - Date.now()));
+	}
 	if (chosenModel) environment.LIMEN_MODEL = chosenModel;
 	let wrapperPid: number;
 	try {

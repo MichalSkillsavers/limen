@@ -6,7 +6,7 @@ This repository uses plain specifications, Git, and `limen` to coordinate one hu
 
 The coordinator is a hosted session in Herdr for this plant (`LIMEN_COORDINATOR=1`), preferably OMP; use Pi only when the task needs it. It owns tickets and `spec/build.md`, and it decides spawn and merge. It is not a limen job. A hosted limen job (`LIMEN_JOB=1`) is never the plant owner or a group lead, even when labeled "lead".
 
-Workers and reviewers exist only through `limen spawn`. There is no `--role coordinator`. Never spawn a coordinator or "group lead" job — collaborative feature groups start only from this interactive Herdr coordinator pane with the group hook loaded (see `docs/groups.md` when that surface is available), never from a spawned job.
+Ordinary workers and reviewers exist only through `limen spawn`. Never spawn a coordinator or "group lead" job — collaborative feature groups start only from this interactive Herdr coordinator pane with the group hook loaded (see `docs/groups.md`), never from a spawned job. Never use `spawn --role coordinator`: managed team coordinators exist only through explicitly authorized `limen group start`, described below. They do not become plant owners.
 
 `LIMEN_COORDINATOR=1` on a spawn shell does not change the job's role.
 
@@ -16,6 +16,21 @@ Workers and reviewers exist only through `limen spawn`. There is no `--role coor
 |---|---|
 | Tony spawns a coordinator | Start a hosted OMP tab in the plant's Herdr space (`LIMEN_COORDINATOR=1`), or Pi when required. Never `limen spawn` a "lead" or coordinator job for that role. |
 | The coordinator manages workers | That session runs `limen spawn`. |
+| Start a collaborative group | Same coordinator pane runs `limen group start` after `group-peer` is loaded. A hosted job cannot. |
+
+## Opt-in feature groups
+
+Only activate a group when the owner explicitly asks for teams pursuing one feature through different approaches.
+
+**Lead recipe (before any `group start`).** The owner-facing lead is this plant's interactive Herdr coordinator pane (`LIMEN_COORDINATOR=1`) with `hook/group-peer.ts` loaded — the same session that owns tickets and spawn. Reload that pane after updating the package so the hook registers under `.limen/group-leads`. A hosted limen job (`LIMEN_JOB=1`), including one labeled "lead" or spawned with `--role coordinator`, cannot register as lead and `limen group start` refuses it. Do not spawn a substitute lead job; use the coordinator tab. Details: `docs/groups.md`.
+
+Commit the shared ticket, `group/brief.md`, and `group/teams/team-1.md`, `team-2.md`, and so on. From that coordinator pane (not a job tab), run `limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T`, with `--detached` or `--tab` when explicitly selected. The recorded roster and total launch allowances are fixed. A folder alone starts nothing, repeated start launches nothing, and coordinator continuation is unsupported.
+
+The lead remains the sole landing owner. Every member's first tool action publishes its initial hypothesis before reading peer findings or using other tools. Members receive informational, attributed peer data through tool results and bounded `limen group wait` calls, not owner steering. Team coordinators launch only their own workers with the recorded machine settings explicitly; continuations and authorized reviews consume additional slots. Workers and built-in helper agents cannot bypass that allowance. Separate worktrees use one canonical cabinet; no group member lands, pushes, edits the board or takes over another team's jobs.
+
+Require publication when evidence changes an assumption, disproves an approach, needs help or makes a checked candidate ready. Keep coordinators available while children are live, re-entering `group wait` after its normal, at-most-20-second timeout. Group and role deadlines still apply. Stop prevents new launches and preserves recovery work. Every unclosed group's worktrees and records remain protected from pruning; deliberate close refuses live/uncertain members and dirty worktrees. Do not force-delete recovery work or silently repair a roster; inspect and stop before explicitly authorizing `group start … --new-run`.
+
+`group publish` writes the cabinet only. The lead files selected findings and team summaries into the feature packet and writes synthesis. Queued, transport-accepted and observed/processed receipts are separate evidence; only actual finding/response exchanges in recipient turns and lead synthesis prove collaboration. Native mechanics or a clean agent exit do not. Resume the original lead session for recovery. Commands, receipt/retry limits and a reproducible no-launch fixture: `docs/groups.md`.
 
 ## Seat and window
 

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { appendFile, readFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { jobMembership } from "../job/group-cabinet.ts";
 import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, writeHandshake } from "../job/record.ts";
 import { containEscapedDescendants, discoverEscapedDescendants, type JobProcess, processInfo, signalProcessGroup } from "./contain.ts";
 import { argvFor, engineBinary, jobProfile, prepareSkillConfig } from "./engine.ts";
@@ -41,7 +42,13 @@ export async function runInternalJob(): Promise<void> {
 	const preambleFile = requiredEnvironment("LIMEN_PREAMBLE");
 	const jobId = requiredEnvironment("LIMEN_JOB_ID");
 	const label = process.env.LIMEN_LABEL || jobId;
-	const timeoutMs = process.env.LIMEN_TIMEOUT_MS ? Number(process.env.LIMEN_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
+	const membership = await jobMembership(jobDir);
+	if (membership && (membership.run.stopped || Date.now() >= (membership.member?.deadline ?? membership.run.deadline))) {
+		await finalizeJob(jobDir, "failed", "group deadline or stop before engine launch");
+		return;
+	}
+	const configuredTimeout = process.env.LIMEN_TIMEOUT_MS ? Number(process.env.LIMEN_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
+	const timeoutMs = membership ? Math.max(1, Math.min(configuredTimeout, (membership.member?.deadline ?? membership.run.deadline) - Date.now())) : configuredTimeout;
 	const preamble = await readFile(preambleFile, "utf8");
 	let confirmedToolStall = false;
 	let stopRequested = false;
@@ -83,7 +90,7 @@ export async function runInternalJob(): Promise<void> {
 		...(skillConfig ? { skillConfig } : {}),
 		label,
 		preamble,
-		extensions: [`${HOOK}/steering.ts`, `${HOOK}/communication.ts`],
+		extensions: [`${HOOK}/steering.ts`, `${HOOK}/communication.ts`, ...((await jobMembership(jobDir)) ? [`${HOOK}/group-peer.ts`] : [])],
 		...(process.env.LIMEN_PROVIDER ? { provider: process.env.LIMEN_PROVIDER } : {}),
 		...(process.env.LIMEN_MODEL ? { model: process.env.LIMEN_MODEL } : {}),
 		...(process.env.LIMEN_THINKING ? { thinking: process.env.LIMEN_THINKING } : {}),

@@ -53,7 +53,11 @@ test("steer reaches a running worker and leaves durable evidence", async (contex
 	assert.equal(second.status, 0, second.stderr);
 	assert.match(second.stdout, /0002/);
 	const job = join(scratch.root, ".limen/jobs", id);
-	await waitUntil(async () => (await readFile(join(job, "acted"), "utf8").catch(() => "")).includes("then write the failing test"));
+	await waitUntil(async () => {
+		const delivered = await readFile(join(job, "steer/delivered/0002/text"), "utf8").catch(() => "");
+		const log = await readFile(join(job, "log"), "utf8").catch(() => "");
+		return delivered === "then write the failing test\n" && log.includes("steered: then write the failing test");
+	});
 	assert.equal(await readFile(join(job, "acted"), "utf8"), "stay on the session test\nthen write the failing test\n");
 	assert.deepEqual(JSON.parse(await readFile(join(job, "steers.json"), "utf8")), [
 		{ content: "stay on the session test", deliverAs: "steer" },
@@ -156,7 +160,9 @@ async function steeredText(job: string): Promise<string> {
 async function snapshot(job: string): Promise<string[]> {
 	const { readdir } = await import("node:fs/promises");
 	const names = await readdir(job);
-	return names.filter((name) => name !== "log" && name !== "activity" && name !== "last-tool" && name !== "tool-calls" && name !== "born" && !name.endsWith(".tmp")).sort();
+	return names
+		.filter((name) => name !== "log" && name !== "activity" && name !== "last-tool" && name !== "tool-calls" && name !== "pid" && name !== "born" && !name.endsWith(".tmp"))
+		.sort();
 }
 
 async function waitUntil(predicate: () => Promise<boolean>): Promise<void> {
