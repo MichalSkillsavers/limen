@@ -4,24 +4,20 @@
    drill-down block map. One level shows the children of the focused block. Edges are
    lifted to the visible level. Edges that leave the focus end at "outside" ghost blocks.
    Kind, relation and status names come from the data; the lists below only pick default
-   styles, and every other value gets a generic fallback style. */
+   styles, and every other value gets a generic fallback style. Features and journeys are
+   an overlay list above the map: they light only the places they list, never draw a
+   block or a link. */
 (function () {
 	"use strict";
 
 	var SVG_NS = "http://www.w3.org/2000/svg";
 	var REL_STYLES = ["depends-on", "hosts", "calls", "implements", "generates", "reads", "writes", "composes"];
-	var NODE_STYLES = ["module", "feature"];
+	var NODE_STYLES = ["module"];
 	var STATUS_STYLES = ["ready", "partial", "stub"];
-	// Kinds that cut across the code structure (schema: a feature spans many modules).
-	// When a level also has other kinds, these blocks move to a band under the main graph
-	// and their links show only on hover, keyboard focus, selection, or the legend switch.
-	// Any other kind stays in the main graph.
-	var SIDE_KINDS = ["feature"];
 	var FALLBACK_SLOTS = 6;
 	var GEO = {
 		blockW: 176,
 		blockH: 78,
-		sideH: 64,
 		ghostH: 60,
 		gapX: 34,
 		dummyW: 8,
@@ -29,8 +25,6 @@
 		pad: 24,
 		frameTop: 36,
 		framePad: 18,
-		bandTop: 34,
-		sideDip: 26,
 		arrow: 9,
 		lane: 4,
 		minScale: 0.6,
@@ -47,11 +41,14 @@
 		unknown: "",
 		hideRel: new Set(),
 		hideKind: new Set(),
-		showSide: false,
 		level: null,
 		hoverId: null,
 		kbdId: null,
 		hoverBundle: null,
+		overlay: null, // selected feature or journey
+		ovHover: null,
+		ovKbd: null,
+		step: -1, // current journey step in the panel
 		drawerBuilt: false,
 		results: [],
 		active: -1,
@@ -314,6 +311,43 @@
 			b.inc.push(e);
 		});
 
+		// Overlays: features and journeys are not places. They only name places to light.
+		var rootId = str(obj(raw.project).rootId);
+		m.overlayByKey = new Map();
+		function overlays(list, kind, field) {
+			var out = [];
+			arr(list).forEach(function (r) {
+				if (!r || typeof r !== "object" || typeof r.id !== "string" || !r.id) return;
+				var key = kind + ":" + r.id;
+				if (m.overlayByKey.has(key)) return;
+				var o = {
+					key: key,
+					id: r.id,
+					kind: kind,
+					title: str(r.title) || r.id,
+					status: str(r.status),
+					summary: str(r.summary),
+					sources: strList(r.sources),
+					bodyHtml: str(r.bodyHtml),
+					source: str(r.source),
+					meta: obj(r.meta),
+					places: [],
+					missing: [],
+				};
+				strList(r[field]).forEach(function (pid) {
+					var n = m.byId.get(pid);
+					if (n) o.places.push({ id: pid, node: n });
+					else if (rootId && pid === rootId) o.places.push({ id: pid, node: null });
+					else o.missing.push(pid);
+				});
+				out.push(o);
+				m.overlayByKey.set(key, o);
+			});
+			return out;
+		}
+		m.features = overlays(raw.features, "feature", "touches");
+		m.journeys = overlays(raw.journeys, "journey", "steps");
+
 		m.diagnostics = arr(raw.diagnostics)
 			.filter(function (d) {
 				return d && typeof d === "object";
@@ -349,6 +383,9 @@
 				.concat(
 					m.edges.map(function (e) {
 						return e.status;
+					}),
+					m.features.concat(m.journeys).map(function (o) {
+						return o.status;
 					}),
 					[str(m.project.status)],
 				)
@@ -390,16 +427,9 @@
 		return { node: i < c.length ? c[i] : n, ghost: true };
 	}
 
-	function isSide(n) {
-		return SIDE_KINDS.indexOf(n.kind) >= 0;
-	}
-
 	function lift(focus) {
 		var fchain = focus ? focus.chain : [];
 		var visible = shownKids(focus);
-		var sideOn = visible.some(function (n) {
-			return !isSide(n);
-		});
 		var bundles = new Map(),
 			ghosts = new Map(),
 			own = 0;
@@ -438,25 +468,9 @@
 			return x.node.index - y.node.index;
 		});
 		g.forEach(function (x) {
-			x.band = sideOn && isSide(x.node) ? "sghost" : x.inc ? "bottom" : "top";
+			x.band = x.inc ? "bottom" : "top";
 		});
-		var sideCount = 0;
-		list.forEach(function (bu) {
-			bu.side = sideOn && (isSide(bu.from) || isSide(bu.to));
-			if (bu.side) sideCount += bu.edges.length;
-		});
-		var sideKinds = SIDE_KINDS.filter(function (k) {
-			return (
-				sideOn &&
-				(visible.some(function (n) {
-					return n.kind === k;
-				}) ||
-					g.some(function (x) {
-						return x.node.kind === k;
-					}))
-			);
-		});
-		return { focus: focus, visible: visible, ghosts: g, bundles: list, own: own, sideCount: sideCount, sideKinds: sideKinds };
+		return { focus: focus, visible: visible, ghosts: g, bundles: list, own: own };
 	}
 	function ghostOf(map, node) {
 		var g = map.get(node.id);
@@ -469,10 +483,8 @@
 
 	// ------------------------------------------------------------------ layout
 	// Layered layout: top ghosts | focus children (width-bounded longest-path layers) |
-	// side-kind children (grid band) | bottom ghosts | side-kind ghosts (grid band).
-	// Long edges get dummy points, rows are ordered by barycenter sweeps, x positions come
-	// from order-preserving least squares (pool adjacent violators). Side links get no
-	// dummies, so they never move the main graph.
+	// bottom ghosts. Long edges get dummy points, rows are ordered by barycenter sweeps,
+	// x positions come from order-preserving least squares (pool adjacent violators).
 
 	function layout(level, perRow) {
 		var W = Math.max(2, perRow);
@@ -485,7 +497,7 @@
 				band: band,
 				dummy: false,
 				w: GEO.blockW,
-				h: band === "mid" || (band === "side" && shownKids(node).length) ? GEO.blockH : band === "side" ? GEO.sideH : GEO.ghostH,
+				h: band === "mid" ? GEO.blockH : GEO.ghostH,
 				i: items.length,
 				layer: -1,
 				pos: 0,
@@ -502,13 +514,10 @@
 			if (g.band === "top") add(g.node, "top");
 		});
 		level.visible.forEach(function (n) {
-			add(n, level.sideKinds.length && isSide(n) ? "side" : "mid");
+			add(n, "mid");
 		});
 		level.ghosts.forEach(function (g) {
 			if (g.band === "bottom") add(g.node, "bottom");
-		});
-		level.ghosts.forEach(function (g) {
-			if (g.band === "sghost") add(g.node, "sghost");
 		});
 
 		var pairMap = new Map(),
@@ -521,7 +530,7 @@
 				key = a.id + "\n" + b.id;
 			var p = pairMap.get(key);
 			if (!p) {
-				p = { a: a, b: b, bundles: [], upper: null, lower: null, chain: null, side: bu.side };
+				p = { a: a, b: b, bundles: [], upper: null, lower: null, chain: null };
 				pairMap.set(key, p);
 				pairs.push(p);
 			}
@@ -602,10 +611,8 @@
 		}
 		var linked = new Set();
 		pairs.forEach(function (p) {
-			if (!p.side) {
-				linked.add(p.a);
-				linked.add(p.b);
-			}
+			linked.add(p.a);
+			linked.add(p.b);
 		});
 		var indeg = new Map();
 		mids.forEach(function (it) {
@@ -636,21 +643,10 @@
 		mids.forEach(function (it) {
 			if (it.layer > maxMid) maxMid = it.layer;
 		});
-		// Grid bands: side children close the focus frame; side ghosts go last.
-		function grid(band, start) {
-			var list = items.filter(function (it) {
-				return it.band === band;
-			});
-			list.forEach(function (it, k) {
-				it.layer = start + Math.floor(k / W);
-			});
-			return list.length ? { band: band, first: start, last: start + Math.ceil(list.length / W) - 1, items: list } : null;
-		}
-		var sideBand = grid("side", maxMid + 1);
-		if (sideBand) maxMid = sideBand.last;
-		var botBand = grid("bottom", maxMid + 1);
-		var ghostBand = grid("sghost", botBand ? botBand.last + 1 : maxMid + 1);
-		var bands = [sideBand, ghostBand].filter(Boolean);
+		// Bottom ghosts fill rows under the focus frame.
+		bots.forEach(function (it, k) {
+			it.layer = maxMid + 1 + Math.floor(k / W);
+		});
 		var nL = 0;
 		items.forEach(function (it) {
 			if (it.layer + 1 > nL) nL = it.layer + 1;
@@ -665,12 +661,6 @@
 		pairs.forEach(function (p) {
 			var up = p.a.layer <= p.b.layer ? p.a : p.b,
 				lo = up === p.a ? p.b : p.a;
-			if (p.side) {
-				p.upper = up;
-				p.lower = lo;
-				p.chain = [up, lo];
-				return;
-			}
 			p.upper = up;
 			p.lower = lo;
 			var chain = [up];
@@ -699,26 +689,6 @@
 		});
 		orderRows(layers);
 		placeX(layers);
-		// Grid bands have no laid-out links: center each band row under the main graph.
-		var m0 = Infinity,
-			m1 = -Infinity;
-		mids.forEach(function (it) {
-			if (it.cx - it.w / 2 < m0) m0 = it.cx - it.w / 2;
-			if (it.cx + it.w / 2 > m1) m1 = it.cx + it.w / 2;
-		});
-		if (m0 < Infinity) {
-			bands.forEach(function (bd) {
-				for (var r = bd.first; r <= bd.last; r++) {
-					var row = layers[r],
-						head = row[0],
-						tail = row[row.length - 1];
-					var dx = (m0 + m1) / 2 - (head.cx - head.w / 2 + tail.cx + tail.w / 2) / 2;
-					row.forEach(function (it) {
-						it.cx += dx;
-					});
-				}
-			});
-		}
 
 		// Rows (y). The focus frame gets a header above its first row.
 		var hasFrame = !!level.focus;
@@ -727,9 +697,6 @@
 			rowH = [];
 		for (L = 0; L < nL; L++) {
 			if (hasFrame && L === t) y += GEO.frameTop;
-			bands.forEach(function (bd) {
-				if (L === bd.first) y += GEO.bandTop;
-			});
 			rowTop[L] = y;
 			var h = 0;
 			layers[L].forEach(function (it) {
@@ -743,10 +710,7 @@
 				layers[L].forEach(function (it) {
 					segs += it.down.length;
 				});
-				var inBand = bands.some(function (bd) {
-					return L >= bd.first && L < bd.last;
-				});
-				y += inBand && !segs ? GEO.gapX / 2 : 48 + Math.min(40, segs * 3);
+				y += 48 + Math.min(40, segs * 3);
 			}
 		}
 		layers.forEach(function (row, k) {
@@ -792,24 +756,12 @@
 			var fy0 = rowTop[t] - GEO.frameTop;
 			frame = { x: fx0 + shift, y: fy0, w: fx1 - fx0, h: rowTop[maxMid] + rowH[maxMid] + GEO.framePad - fy0 };
 		}
-		bands.forEach(function (bd) {
-			var x0 = Infinity,
-				x1 = -Infinity;
-			bd.items.forEach(function (it) {
-				if (it.cx - it.w / 2 < x0) x0 = it.cx - it.w / 2;
-				if (it.cx + it.w / 2 > x1) x1 = it.cx + it.w / 2;
-			});
-			bd.x = x0;
-			bd.w = x1 - x0;
-			bd.y = rowTop[bd.first] - GEO.bandTop + 6;
-		});
 		return {
 			items: items,
 			byId: byId,
 			pairs: pairs,
 			layers: layers,
 			frame: frame,
-			bands: bands,
 			width: maxX - minX + 2 * GEO.pad,
 			height: y + GEO.pad,
 		};
@@ -990,12 +942,11 @@
 		});
 	}
 
-	// Main lanes: upper bottom → dummy chain → lower top. Side lanes use their own ports
-	// (so hidden links never shift visible ones) and run direct; in one row they dip below.
+	// Lanes run upper bottom → dummy chain → lower top.
 	function route(level) {
 		var Lo = level.layout;
 		Lo.items.forEach(function (it) {
-			it.ports = { top: [], bot: [], sideTop: [], sideBot: [] };
+			it.ports = { top: [], bot: [] };
 		});
 		Lo.pairs.forEach(function (p) {
 			var lanes = [];
@@ -1007,9 +958,8 @@
 			p.vis = lanes;
 			var below = p.chain[1],
 				above = p.chain[p.chain.length - 2];
-			var same = p.upper.layer === p.lower.layer;
-			var upList = p.side ? p.upper.ports.sideBot : p.upper.ports.bot;
-			var loList = !p.side ? p.lower.ports.top : same ? p.lower.ports.sideBot : p.lower.ports.sideTop;
+			var upList = p.upper.ports.bot,
+				loList = p.lower.ports.top;
 			lanes.forEach(function (lane, k) {
 				lane.k = k;
 				lane.n = lanes.length;
@@ -1029,15 +979,11 @@
 			p.vis.forEach(function (lane) {
 				var off = (lane.k - (lane.n - 1) / 2) * GEO.lane;
 				var pts = [{ x: lane.bx, y: y0 }];
-				if (p.side && up.layer === lo.layer) {
-					pts.push({ x: (lane.bx + lane.tx) / 2, y: y0 + GEO.sideDip }, { x: lane.tx, y: lo.y + lo.h });
-				} else {
-					for (var c = 1; c < p.chain.length - 1; c++) {
-						var d = p.chain[c];
-						pts.push({ x: d.cx + off, y: d.y, d: d }, { x: d.cx + off, y: d.y + d.h, d: d });
-					}
-					pts.push({ x: lane.tx, y: lo.y });
+				for (var c = 1; c < p.chain.length - 1; c++) {
+					var d = p.chain[c];
+					pts.push({ x: d.cx + off, y: d.y, d: d }, { x: d.cx + off, y: d.y + d.h, d: d });
 				}
+				pts.push({ x: lane.tx, y: lo.y });
 				lane.pts = lane.bundle.from === up.node ? pts : pts.reverse();
 			});
 		});
@@ -1199,12 +1145,6 @@
 			pills.appendChild(pill);
 		});
 		g.appendChild(pills);
-		// Side links stay in the DOM but show only when lit (CSS); pills are placed first.
-		level.bundles.forEach(function (bu) {
-			if (!bu.el || !bu.side) return;
-			bu.el.classList.add("side");
-			if (bu.pill) bu.pill.classList.add("side");
-		});
 		muteGhosts();
 	}
 
@@ -1221,21 +1161,8 @@
 			lab.style.maxWidth = f(Lo.frame.w - 24) + "px";
 			D.blocks.appendChild(lab);
 		}
-		Lo.bands.forEach(function (bd) {
-			var kinds = [];
-			bd.items.forEach(function (it) {
-				if (kinds.indexOf(it.node.kind) < 0) kinds.push(it.node.kind);
-			});
-			var lab = el("div", "band-label", (bd.band === "sghost" ? "Outside: " : "") + kinds.join(", ") + " blocks");
-			var hint = "links show on hover or selection";
-			if (bd.w > 2 * GEO.blockW) lab.appendChild(el("span", "band-hint", " · " + hint));
-			lab.style.left = f(bd.x) + "px";
-			lab.style.top = f(bd.y) + "px";
-			lab.style.width = f(bd.w) + "px";
-			D.blocks.appendChild(lab);
-		});
-		// DOM (and Tab) order: focus children row by row, side band, then outside ghosts.
-		var rank = { mid: 0, side: 1, top: 2, bottom: 3, sghost: 4 };
+		// DOM (and Tab) order: focus children row by row, then outside ghosts.
+		var rank = { mid: 0, top: 1, bottom: 2 };
 		Lo.items
 			.slice()
 			.sort(function (a, b) {
@@ -1251,7 +1178,7 @@
 
 	function blockEl(it) {
 		var n = it.node,
-			ghost = it.band !== "mid" && it.band !== "side";
+			ghost = it.band !== "mid";
 		var b = button("block " + kindClass(n.kind) + " " + statusClass(n.status) + (ghost ? " ghost" : ""));
 		b.dataset.id = n.id;
 		b.style.left = f(it.cx - it.w / 2) + "px";
@@ -1333,18 +1260,29 @@
 	}
 
 	// Hover, keyboard focus, or selection lights one block (or one bundle) and its
-	// neighbours; everything else dims.
+	// neighbours; everything else dims. A feature or journey lights only the places it
+	// lists: a passing overlay (hover, keyboard focus) wins; a mouse over the graph wins
+	// over a selected overlay, whose places keep their ring.
 	function highlight() {
 		var level = S.level;
 		if (!level || !level.els) return;
 		var on = new Set(),
 			lit = new Set(),
 			mode = false;
-		var bu = S.hoverBundle || S.edgeSel;
-		var id = S.hoverId || S.kbdId;
-		if (!id && !bu && S.selected && S.selected !== S.focus && level.els.has(S.selected.id)) id = S.selected.id;
+		var passing = S.ovHover || S.ovKbd,
+			ov = passing || S.overlay;
+		var at = ov ? overlayMarks(level, ov) : null;
+		var held = passing || (S.overlay && !S.hoverId && !S.hoverBundle) ? ov : null;
+		var bu = held ? null : S.hoverBundle || S.edgeSel;
+		var id = held ? null : S.hoverId || S.kbdId;
+		if (!held && !id && !bu && S.selected && S.selected !== S.focus && level.els.has(S.selected.id)) id = S.selected.id;
 		if (S.hoverBundle) id = null;
-		if (id) {
+		if (held) {
+			mode = true;
+			at.marks.forEach(function (steps, key) {
+				on.add(key);
+			});
+		} else if (id) {
 			mode = true;
 			on.add(id);
 			level.bundles.forEach(function (b) {
@@ -1361,8 +1299,14 @@
 			on.add(bu.to.id);
 		}
 		D.canvas.classList.toggle("hl-mode", mode);
+		D.canvas.classList.toggle("ov-journey", !!ov && ov.kind === "journey");
+		var cur = ov && ov === S.overlay && S.step >= 0 ? S.step + 1 : 0;
 		level.els.forEach(function (b, key) {
+			var steps = at ? at.marks.get(key) : null;
 			b.classList.toggle("hl", on.has(key));
+			b.classList.toggle("ov", !!steps);
+			b.classList.toggle("ov-cur", !!steps && steps.indexOf(cur) >= 0);
+			stepTag(b, steps && ov.kind === "journey" ? steps.join(" · ") : "");
 		});
 		level.bundles.forEach(function (b) {
 			if (b.el) {
@@ -1374,6 +1318,260 @@
 				}
 			}
 		});
+		overlayNote(ov, at);
+	}
+
+	function stepTag(b, text) {
+		var tag = b.querySelector(".b-steps");
+		if (!text) {
+			if (tag) b.removeChild(tag);
+			return;
+		}
+		if (!tag) {
+			tag = el("span", "b-steps");
+			b.appendChild(tag);
+		}
+		if (tag.textContent !== text) tag.textContent = text;
+	}
+
+	// ----------------------------------------------------------------- overlays
+
+	// Where each listed place shows at this level: its own block, the block of a
+	// collapsed ancestor, the open block (or a block above it), or nowhere. Never a
+	// neighbour: overlays draw no links. `marks` maps a block id to 1-based list positions.
+	function overlayMarks(level, o) {
+		var fchain = level.focus ? level.focus.chain : [];
+		var r = { marks: new Map(), lit: 0, around: 0, off: 0, root: 0 };
+		o.places.forEach(function (p, i) {
+			if (!p.node) r.root++;
+			else if (!shown(p.node)) r.off++;
+			else {
+				var at = rep(p.node, fchain);
+				if (!at || (level.focus && within(level.focus, p.node))) r.around++;
+				else if (!level.els.has(at.node.id)) r.off++;
+				else {
+					if (!r.marks.has(at.node.id)) r.marks.set(at.node.id, []);
+					r.marks.get(at.node.id).push(i + 1);
+					r.lit++;
+				}
+			}
+		});
+		return r;
+	}
+
+	function overlayCount(o) {
+		return o.kind === "journey" ? plural(o.places.length, "step") : plural(o.places.length, "place");
+	}
+
+	function overlayNote(o, at) {
+		var box = D.ovNote;
+		if (!box) return;
+		var text = "Hover or select one to light the places it lists. Nothing else lights.";
+		if (o) {
+			var bits = [];
+			if (!o.places.length) bits.push("lists no place on this map");
+			else bits.push(at.lit + " of " + overlayCount(o) + " lit at this level");
+			if (at && at.around) bits.push(at.around + " at the open block or above it");
+			if (at && at.off) bits.push(at.off + " not shown at this level");
+			if (at && at.root) bits.push(at.root + " the whole project");
+			if (o.missing.length) bits.push(plural(o.missing.length, "unknown id"));
+			text = (o.kind === "journey" ? "Journey " : "Feature ") + o.title + ": " + bits.join(" · ");
+		}
+		if (box.textContent !== text) box.textContent = text;
+	}
+
+	function renderOverlays() {
+		var box = D.overlays;
+		clear(box);
+		D.ovItems = new Map();
+		D.ovNote = null;
+		box.hidden = !M.features.length && !M.journeys.length;
+		if (box.hidden) return;
+		[
+			["Features", M.features],
+			["Journeys", M.journeys],
+		].forEach(function (g) {
+			var grp = el("div", "lg-group ov-group");
+			grp.setAttribute("role", "group");
+			grp.setAttribute("aria-label", g[0]);
+			grp.appendChild(el("span", "lg-label", g[0]));
+			if (!g[1].length) grp.appendChild(el("span", "ov-none", "none on this map"));
+			g[1].forEach(function (o) {
+				var b = overlayItem(o);
+				D.ovItems.set(o.key, b);
+				grp.appendChild(b);
+			});
+			box.appendChild(grp);
+		});
+		D.ovNote = el("p", "ov-note");
+		D.ovNote.setAttribute("aria-live", "polite");
+		box.appendChild(D.ovNote);
+		updateOverlays();
+	}
+
+	function overlayItem(o) {
+		var b = button("ov-item ov-" + o.kind + " " + statusClass(o.status) + (o.places.length ? "" : " zero"), null, function () {
+			selectOverlay(S.overlay === o ? null : o);
+		});
+		b.dataset.key = o.key;
+		b.appendChild(el("span", "ov-name", o.title));
+		b.appendChild(el("span", "lg-count", overlayCount(o)));
+		if (o.status !== "ready") b.appendChild(badge(o.status));
+		b.title = o.summary || o.title;
+		b.setAttribute("aria-label", o.kind + " " + o.title + ", " + overlayCount(o) + ", " + (o.status || "no status"));
+		b.addEventListener("mouseenter", function () {
+			S.ovHover = o;
+			highlight();
+		});
+		b.addEventListener("mouseleave", function () {
+			if (S.ovHover === o) {
+				S.ovHover = null;
+				highlight();
+			}
+		});
+		// Keyboard focus lights like hover; a mouse click focuses without lighting.
+		b.addEventListener("focus", function () {
+			if (!b.matches(":focus-visible")) return;
+			S.ovKbd = o;
+			highlight();
+		});
+		b.addEventListener("blur", function () {
+			if (S.ovKbd === o) {
+				S.ovKbd = null;
+				highlight();
+			}
+		});
+		return b;
+	}
+
+	function updateOverlays() {
+		D.ovItems.forEach(function (b, key) {
+			b.setAttribute("aria-pressed", String(!!S.overlay && S.overlay.key === key));
+		});
+	}
+
+	function selectOverlay(o) {
+		S.overlay = o;
+		S.step = -1;
+		S.edgeSel = null;
+		hideTip();
+		updateOverlays();
+		renderPanel();
+		highlight();
+		if (o && D.main.classList.contains("panel-closed")) setPanel(true);
+	}
+
+	// Ordinary navigation to one place ends the overlay; drilling keeps it.
+	function dropOverlay() {
+		if (!S.overlay) return false;
+		S.overlay = null;
+		S.step = -1;
+		updateOverlays();
+		return true;
+	}
+
+	function goPlace(p) {
+		if (p.node) navigate(p.node.parent, p.node);
+		else navigate(null, null);
+	}
+
+	function goStep(i) {
+		var o = S.overlay;
+		if (!o || i < 0 || i >= o.places.length) return;
+		S.step = i;
+		goPlace(o.places[i]);
+	}
+
+	function renderOverlayPanel(box, o) {
+		var journey = o.kind === "journey";
+		var tags = el("div", "d-tags");
+		tags.appendChild(el("span", "tag ov-tag ov-" + o.kind, o.kind));
+		tags.appendChild(badge(o.status));
+		box.appendChild(tags);
+		box.appendChild(el("h2", "d-title", o.title));
+		box.appendChild(codeLine("d-id", o.id));
+		if (o.summary && !repeats(o.bodyHtml, o.summary)) box.appendChild(el("p", "d-sum", o.summary));
+		var acts = el("div", "d-actions");
+		if (journey && o.places.length) {
+			var prev = button("d-action", "Previous step", function () {
+				goStep(S.step - 1);
+			});
+			prev.dataset.key = "step-prev";
+			prev.disabled = S.step <= 0;
+			var next = button("d-action", S.step < 0 ? "First step" : "Next step", function () {
+				goStep(S.step + 1);
+			});
+			next.dataset.key = "step-next";
+			next.disabled = S.step >= o.places.length - 1;
+			acts.appendChild(prev);
+			acts.appendChild(next);
+		}
+		var close = button("d-action quiet", "Clear " + o.kind, function () {
+			selectOverlay(null);
+		});
+		close.dataset.key = "clear";
+		acts.appendChild(close);
+		box.appendChild(acts);
+		if (o.bodyHtml) box.appendChild(prose(o.bodyHtml));
+		else if (!o.summary) box.appendChild(el("p", "d-empty", "No description."));
+
+		var level = S.level,
+			at = level && level.els ? overlayMarks(level, o) : null;
+		var s = section(box, (journey ? "Steps" : "Touches") + " (" + o.places.length + ")");
+		if (!o.places.length) s.appendChild(el("p", "d-empty", journey ? "Lists no step on this map." : "Lists no place on this map."));
+		var list = el(journey ? "ol" : "ul", "d-parts ov-places");
+		o.places.slice(0, LIMIT.list).forEach(function (p, i) {
+			var li = el("li");
+			var b = button("d-link", null, function () {
+				if (journey) goStep(i);
+				else goPlace(p);
+			});
+			b.dataset.key = "place:" + i;
+			if (journey) b.appendChild(el("span", "ov-num", String(i + 1)));
+			if (p.node) {
+				b.appendChild(el("span", "kind-chip " + kindClass(p.node.kind)));
+				b.appendChild(el("span", "d-link-title", p.node.title));
+				b.appendChild(badge(p.node.status));
+			} else {
+				b.appendChild(el("span", "d-link-title", projectTitle()));
+				b.appendChild(el("span", "tag", "project"));
+			}
+			b.title = p.id;
+			if (journey && i === S.step) {
+				li.className = "current";
+				b.setAttribute("aria-current", "step");
+			}
+			li.appendChild(b);
+			var where = placeWhere(level, at, p, i);
+			if (where) li.appendChild(el("p", "ov-where", where));
+			list.appendChild(li);
+		});
+		if (o.places.length > LIMIT.list) list.appendChild(el("li", "more", o.places.length - LIMIT.list + " more"));
+		if (o.places.length) s.appendChild(list);
+		if (o.missing.length) {
+			var g = section(box, "Gaps (" + o.missing.length + ")");
+			g.appendChild(el("p", "d-note", "Listed ids with no place on this map. Nothing lights for them."));
+			sourceList(g, o.missing);
+		}
+		sourceList(box, o.sources);
+		if (o.source) box.appendChild(codeLine("d-foot", o.source));
+		metaList(box, o.meta);
+	}
+
+	// One plain line on where a listed place shows at the current level.
+	function placeWhere(level, at, p, i) {
+		if (!p.node) return "The whole project. No block lights for it.";
+		if (!level || !at) return "";
+		if (!shown(p.node)) return "Hidden by the legend.";
+		var key = "";
+		at.marks.forEach(function (steps, k) {
+			if (steps.indexOf(i + 1) >= 0) key = k;
+		});
+		if (key === p.node.id) return "";
+		if (key) return "Lit as " + M.byId.get(key).title + ", which holds it.";
+		if (level.focus === p.node) return "The open block.";
+		if (level.focus && within(level.focus, p.node)) return "Holds the open block.";
+		return "Not shown at this level.";
 	}
 
 	// ------------------------------------------------------------------ tooltip
@@ -1459,9 +1657,6 @@
 		if (level.ghosts.length) bits.push(level.ghosts.length + " outside");
 		var stats = el("p", "lh-stats", bits.join(" · "));
 		if (level.own) stats.appendChild(el("span", "lh-own", " · " + plural(level.own, "connection") + " of this block itself: see Details"));
-		if (level.sideCount && !S.showSide) {
-			stats.appendChild(el("span", "lh-side", " · " + plural(level.sideCount, level.sideKinds.join(", ") + " link") + " show on hover"));
-		}
 		box.appendChild(stats);
 	}
 
@@ -1525,16 +1720,6 @@
 				if (!kindCount.get(k)) b.classList.add("zero");
 				gk.appendChild(b);
 			});
-			if (level && level.sideCount) {
-				var names = level.sideKinds.join(", ");
-				var sb = button("lg-item lg-side", null, toggleSide);
-				sb.dataset.key = "side";
-				sb.setAttribute("aria-pressed", String(S.showSide));
-				sb.title = S.showSide ? "Show " + names + " links only on hover" : "Show all " + names + " links";
-				sb.appendChild(el("span", "lg-name", names + " links: " + (S.showSide ? "all" : "on hover")));
-				sb.appendChild(el("span", "lg-count", String(level.sideCount)));
-				gk.appendChild(sb);
-			}
 			box.appendChild(gk);
 		}
 		if (M.statuses.length) {
@@ -1552,14 +1737,6 @@
 			})[0];
 			if (again) again.focus();
 		}
-	}
-
-	function toggleSide() {
-		S.showSide = !S.showSide;
-		D.canvas.classList.toggle("show-side", S.showSide);
-		renderHead(S.level);
-		renderLegend();
-		highlight();
 	}
 
 	function toggleRel(k) {
@@ -1701,10 +1878,16 @@
 		);
 	}
 
+	// Opening a block keeps a selected overlay; picking one place ends it.
 	function activate(n, ghost) {
-		if (ghost) navigate(n.parent, n);
-		else if (shownKids(n).length) navigate(n, n);
-		else navigate(S.focus, n);
+		if (ghost) {
+			dropOverlay();
+			navigate(n.parent, n);
+		} else if (shownKids(n).length) navigate(n, n);
+		else {
+			dropOverlay();
+			navigate(S.focus, n);
+		}
 	}
 
 	function up() {
@@ -1714,11 +1897,17 @@
 			highlight();
 			return;
 		}
+		if (dropOverlay()) {
+			renderPanel();
+			highlight();
+			return;
+		}
 		if (S.focus) navigate(S.focus.parent, S.focus);
 		else if (S.selected) navigate(null, null);
 	}
 
 	function selectBundle(bu) {
+		dropOverlay();
 		S.edgeSel = bu;
 		hideTip();
 		renderPanel();
@@ -1756,12 +1945,25 @@
 	// -------------------------------------------------------------------- panel
 
 	function renderPanel() {
-		var box = D.panelBody;
+		var box = D.panelBody,
+			active = document.activeElement,
+			keep = active && box.contains(active) ? active.dataset.key : "";
 		clear(box);
 		D.panel.scrollTop = 0;
 		if (S.edgeSel) renderBundlePanel(box, S.edgeSel);
+		else if (S.overlay) renderOverlayPanel(box, S.overlay);
 		else if (S.selected) renderNodePanel(box, S.selected);
 		else renderProjectPanel(box);
+		if (keep) {
+			// A step button that just disabled hands focus to the current step.
+			var find = function (key) {
+				return Array.prototype.filter.call(box.querySelectorAll("button"), function (x) {
+					return x.dataset.key === key && !x.disabled;
+				})[0];
+			};
+			var again = find(keep) || find("place:" + S.step);
+			if (again) again.focus();
+		}
 	}
 
 	function renderProjectPanel(box) {
@@ -1783,6 +1985,8 @@
 		row("Top-level blocks", String(M.roots.length));
 		row("All blocks", String(M.nodes.length));
 		row("Connections", String(M.edges.length));
+		row("Features", String(M.features.length));
+		row("Journeys", String(M.journeys.length));
 		M.nodeKinds.forEach(function (k) {
 			row(
 				"Kind " + k,
@@ -2069,6 +2273,7 @@
 		var n = S.results[i];
 		if (!n) return;
 		closeSearch();
+		dropOverlay();
 		navigate(n.parent, n);
 		var b = S.level && S.level.els ? S.level.els.get(n.id) : null;
 		if (b) b.focus({ preventScroll: true });
@@ -2204,7 +2409,17 @@
 						meta.appendChild(
 							button("d-link small", "Show " + target.title, function () {
 								setDrawer(false);
+								dropOverlay();
 								navigate(target.parent, target);
+							}),
+						);
+					}
+					var ov = d.id && !target ? M.overlayByKey.get("feature:" + d.id) || M.overlayByKey.get("journey:" + d.id) : null;
+					if (ov) {
+						meta.appendChild(
+							button("d-link small", "Show " + ov.title, function () {
+								setDrawer(false);
+								selectOverlay(ov);
 							}),
 						);
 					}
@@ -2293,6 +2508,7 @@
 			panelBody: $("panel-body"),
 			drawer: $("drawer"),
 			tip: $("tip"),
+			overlays: $("overlays"),
 		};
 		var tag = $("archmap-data"),
 			raw = null;
@@ -2338,6 +2554,7 @@
 		else window.addEventListener("resize", scheduleRelayout);
 
 		renderDiagButton();
+		renderOverlays();
 		onHash();
 	}
 

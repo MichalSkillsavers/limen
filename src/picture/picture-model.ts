@@ -28,6 +28,8 @@ interface RecordNode {
 	from: string;
 	to: string;
 	relation: string;
+	touches: string[];
+	steps: string[];
 	complete: boolean;
 	children: string[];
 	depth: number;
@@ -59,6 +61,30 @@ export interface PictureEdge {
 	source: string;
 	meta: Record<string, unknown>;
 }
+export interface PictureFeature {
+	id: string;
+	title: string;
+	kind: "feature";
+	status: string;
+	summary: string;
+	sources: string[];
+	bodyHtml: string;
+	source: string;
+	meta: Record<string, unknown>;
+	touches: string[];
+}
+export interface PictureJourney {
+	id: string;
+	title: string;
+	kind: "journey";
+	status: string;
+	summary: string;
+	sources: string[];
+	bodyHtml: string;
+	source: string;
+	meta: Record<string, unknown>;
+	steps: string[];
+}
 export interface PictureModel {
 	schema: string;
 	generatedAt: string;
@@ -75,6 +101,8 @@ export interface PictureModel {
 	};
 	nodes: PictureNode[];
 	edges: PictureEdge[];
+	features: PictureFeature[];
+	journeys: PictureJourney[];
 	diagnostics: Diagnostic[];
 }
 
@@ -90,7 +118,7 @@ import { inlineText, proseBlocks, renderMarkdown } from "./markdown.ts";
 
 export const INPUT_SCHEMA = "architecture-map/1";
 export const MODEL_SCHEMA = "architecture-map-model/2";
-export const KINDS = ["plant", "module", "edge"];
+export const KINDS = ["plant", "module", "edge", "feature", "journey"];
 export const RELATIONS = ["depends-on", "hosts", "calls", "implements", "generates", "reads", "writes", "composes"];
 export const STATUSES = ["ready", "partial", "stub"];
 export const ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)*$/;
@@ -98,6 +126,8 @@ export const ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)*$/;
 const COMMON_KEYS: Record<string, true> = { schema: true, kind: true, id: true, project: true, title: true, status: true, sources: true };
 const NODE_KEYS: Record<string, true> = { ...COMMON_KEYS, parent: true, revision: true };
 const EDGE_KEYS: Record<string, true> = { ...COMMON_KEYS, from: true, to: true, relation: true };
+const FEATURE_KEYS: Record<string, true> = { ...COMMON_KEYS, touches: true };
+const JOURNEY_KEYS: Record<string, true> = { ...COMMON_KEYS, steps: true };
 const OWNER_LINE = /^owner:[ \t]*(\S.*?)[ \t]*$/;
 const SUMMARY_MAX = 200;
 const LEVEL_RANK = { error: 0, warn: 1, info: 2 };
@@ -140,15 +170,45 @@ export function buildModel({ files, diagnostics = [], now = new Date() }: { file
 		}
 	}
 
-	const nodes = new Map(records.filter((r) => r.kind !== "plant" && r.kind !== "edge").map((r) => [r.id, r]));
+	const features = records.filter((r) => r.kind === "feature");
+	const journeys = records.filter((r) => r.kind === "journey");
+	const nodes = new Map(records.filter((r) => !["plant", "edge", "feature", "journey"].includes(r.kind)).map((r) => [r.id, r]));
 	resolveParents(nodes, plantIds, diag);
 	const ordered = orderNodes(nodes);
 	const edges = buildEdges(
 		records.filter((r) => r.kind === "edge"),
 		nodes,
 		plantIds,
+		new Set(features.map((r) => r.id)),
+		new Set(journeys.map((r) => r.id)),
 		diag,
 	);
+	const modules = new Set(records.filter((r) => r.kind === "module").map((r) => r.id));
+	const places = new Set([...modules, ...plantIds]);
+	const featureModels: PictureFeature[] = features.map((r) => ({
+		id: r.id,
+		title: r.title,
+		kind: "feature",
+		status: r.status,
+		summary: r.summary,
+		sources: r.sources,
+		bodyHtml: r.bodyHtml,
+		source: r.source,
+		meta: r.meta,
+		touches: resolveOverlayList(r, "touches", modules, diag),
+	}));
+	const journeyModels: PictureJourney[] = journeys.map((r) => ({
+		id: r.id,
+		title: r.title,
+		kind: "journey",
+		status: r.status,
+		summary: r.summary,
+		sources: r.sources,
+		bodyHtml: r.bodyHtml,
+		source: r.source,
+		meta: r.meta,
+		steps: resolveOverlayList(r, "steps", places, diag),
+	}));
 
 	diags.sort(diagCmp);
 	return {
@@ -182,6 +242,8 @@ export function buildModel({ files, diagnostics = [], now = new Date() }: { file
 			meta: n.meta,
 		})),
 		edges,
+		features: featureModels,
+		journeys: journeyModels,
 		diagnostics: diags,
 	};
 }
@@ -189,7 +251,7 @@ export function buildModel({ files, diagnostics = [], now = new Date() }: { file
 /** One file → record, or null when the file cannot be used (unparseable, no id, duplicate id). */
 function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNode>): RecordNode | null {
 	const { source } = file;
-	if (!/^(nodes|edges)\/[^/]+\.md$/.test(source)) return null;
+	if (!/^(nodes|edges|features|journeys)\/[^/]+\.md$/.test(source)) return null;
 	const fm = parseFrontmatter(file.text);
 	const d = fm.data;
 	const guessId = typeof d.id === "string" ? d.id : null;
@@ -210,10 +272,23 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 
 	const kind = text("kind");
 	const isEdge = kind === "edge";
-	if (kind === "feature" || kind === "journey") return null;
-	if ((isEdge && !source.startsWith("edges/")) || (!isEdge && !source.startsWith("nodes/"))) return null;
-	const missing = (key: string, tail = "") =>
-		diag("error", isEdge ? "edge.missing-field" : "node.missing-field", `missing required field "${key}"${tail}`, source, guessId, at(key));
+	const isOverlay = kind === "feature" || kind === "journey";
+	const directory = isEdge ? "edges" : kind === "feature" ? "features" : kind === "journey" ? "journeys" : "nodes";
+	if (!source.startsWith(`${directory}/`)) {
+		const graph = source.slice(0, source.indexOf("/"));
+		const prefix = graph === "features" ? "feature" : graph === "journeys" ? "journey" : graph === "edges" ? "edge" : "node";
+		diag(
+			"error",
+			kind ? "node.kind-directory" : `${prefix}.missing-field`,
+			kind ? `kind "${kind}" does not belong in ${graph}; file skipped` : 'missing required field "kind"; file skipped',
+			source,
+			guessId,
+			at("kind"),
+		);
+		return null;
+	}
+	const prefix = isEdge || isOverlay ? kind : "node";
+	const missing = (key: string, tail = "") => diag("error", `${prefix}.missing-field`, `missing required field "${key}"${tail}`, source, guessId, at(key));
 
 	const id = text("id");
 	if (!id) {
@@ -251,6 +326,8 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 		from: "",
 		to: "",
 		relation: "",
+		touches: [],
+		steps: [],
 		complete: false,
 		children: [],
 		depth: 0,
@@ -267,7 +344,7 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 		diag("warn", "node.unknown-kind", `kind "${rec.kind}" is not one of ${KINDS.join(", ")}; kept as a node`, source, id, at("kind"));
 	}
 
-	const known = isEdge ? EDGE_KEYS : NODE_KEYS;
+	const known = isEdge ? EDGE_KEYS : kind === "feature" ? FEATURE_KEYS : kind === "journey" ? JOURNEY_KEYS : NODE_KEYS;
 	for (const [k, v] of Object.entries(d)) if (!Object.hasOwn(known, k)) rec.meta[k] = v;
 	const body = splitOwner(fm.body);
 	if (body.owner !== null) rec.meta.owner = body.owner;
@@ -279,12 +356,16 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 		const absent = (["from", "to", "relation"] as const).filter((k) => !rec[k]);
 		for (const key of absent) missing(key, "; edge dropped");
 		rec.complete = absent.length === 0;
+	} else if (isOverlay) {
+		const key = kind === "feature" ? "touches" : "steps";
+		if (!Object.hasOwn(d, key)) missing(key);
+		else rec[key] = readOverlayList(d[key], kind === "feature" ? 1 : 2, (message) => diag("error", `${kind}.bad-field`, `"${key}" ${message}`, source, id, at(key)));
 	} else if (rec.kind === "plant") {
 		rec.parent = null;
 		if (!Object.hasOwn(d, "parent")) missing("parent");
 		else if (d.parent !== null) diag("error", "node.bad-field", '"parent" of a plant must be null', source, id, at("parent"));
 		if (Object.hasOwn(d, "revision")) {
-			if (typeof d.revision === "string" && /^[0-9a-fA-F]{40}$/.test(d.revision)) rec.revision = d.revision;
+			if (typeof d.revision === "string" && /^[0-9a-fA-F]{40}$/.test(d.revision)) rec.revision = d.revision.toLowerCase();
 			else diag("error", "plant.bad-revision", '"revision" must be a full 40-character hexadecimal commit SHA; ignored', source, id, at("revision"));
 		}
 	} else {
@@ -333,6 +414,29 @@ function readSources(v: unknown, warn: (message: string) => void): string[] {
 		else if (scalar(p)) out.push(scalar(p));
 	}
 	return out;
+}
+
+function readOverlayList(value: unknown, minimum: number, error: (message: string) => void): string[] {
+	if (!Array.isArray(value)) {
+		error("must be a list of ids");
+		return [];
+	}
+	const ids: string[] = [];
+	for (const item of value) {
+		if (typeof item !== "string" || !ID_PATTERN.test(item)) error("items must be valid ids; item ignored");
+		else ids.push(item);
+	}
+	if (ids.length < minimum) error(`must contain at least ${minimum} ${minimum === 1 ? "id" : "ids"}`);
+	return ids;
+}
+
+function resolveOverlayList(record: RecordNode, key: "touches" | "steps", allowed: Set<string>, diag: Report): string[] {
+	return record[key].filter((id) => {
+		if (allowed.has(id)) return true;
+		const code = key === "touches" ? "feature.unknown-touch" : "journey.unknown-step";
+		diag("warn", code, `"${id}" is not a ${key === "touches" ? "module" : "place"}; entry ignored`, record.source, record.id, record.lines[key] ?? null);
+		return false;
+	});
 }
 
 function resolveParents(nodes: Map<string, RecordNode>, plantIds: Set<string>, diag: Report): void {
@@ -392,11 +496,17 @@ function orderNodes(nodes: Map<string, RecordNode>): RecordNode[] {
 	return ordered;
 }
 
-function buildEdges(records: RecordNode[], nodes: Map<string, RecordNode>, plantIds: Set<string>, diag: Report): PictureEdge[] {
+function buildEdges(records: RecordNode[], nodes: Map<string, RecordNode>, plantIds: Set<string>, featureIds: Set<string>, journeyIds: Set<string>, diag: Report): PictureEdge[] {
 	const edges: PictureEdge[] = [];
 	for (const e of records) {
 		if (!e.complete) continue;
 		const at = (key: string) => e.lines[key] ?? null;
+		const overlayEnd = (["from", "to"] as const).find((key) => featureIds.has(e[key]) || journeyIds.has(e[key]));
+		if (overlayEnd) {
+			const kind = featureIds.has(e[overlayEnd]) ? "feature" : "journey";
+			diag("warn", `edge.${kind}`, `edge touches the ${kind} "${e[overlayEnd]}"; edge dropped`, e.source, e.id, at(overlayEnd));
+			continue;
+		}
 		if (e.relation === "contains") {
 			diag("warn", "edge.contains", 'containment comes from "parent", not from edges; edge dropped', e.source, e.id, at("relation"));
 			continue;

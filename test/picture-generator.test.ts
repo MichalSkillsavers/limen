@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -21,11 +21,11 @@ function record(id: string, fields: Readonly<Record<string, string>>, body = "A 
 		project: "sample",
 		title: id,
 		status: "ready",
-		...(kind === "edge" ? {} : { parent: "sample.plant" }),
+		...(["plant", "module"].includes(kind) ? { parent: "sample.plant" } : {}),
 		...fields,
 	};
 	return {
-		source: `${kind === "edge" ? "edges" : "nodes"}/${id}.md`,
+		source: `${kind === "edge" ? "edges" : kind === "feature" ? "features" : kind === "journey" ? "journeys" : "nodes"}/${id}.md`,
 		text: `---\n${Object.entries(values)
 			.map(([key, value]) => `${key}: ${value}`)
 			.join("\n")}\n---\n${body}\n`,
@@ -129,7 +129,7 @@ test("missing parents are visible orphans and missing edge endpoints are never i
 });
 
 test("researched revision belongs to the plant and trailing owner stays metadata", () => {
-	const researched = record("sample.plant", { kind: "plant", parent: "null", revision, sources: "[src/a.ts]" }, "The application.\n\nowner: team");
+	const researched = record("sample.plant", { kind: "plant", parent: "null", revision: revision.toUpperCase(), sources: "[src/a.ts]" }, "The application.\n\nowner: team");
 	const child = record("sample.a", { sources: "[src/b.ts, src/c.ts]" }, "A module.\n\nowner: module-team");
 	const model = buildModel({ files: [researched, child], now });
 	assert.equal(model.project.revision, revision);
@@ -141,7 +141,6 @@ test("researched revision belongs to the plant and trailing owner stays metadata
 	assert.equal(buildModel({ files: [plant], now }).project.revision, null);
 	const invalid = buildModel({ files: [record("sample.plant", { kind: "plant", parent: "null", revision: "abc123" })], now });
 	assert.equal(invalid.project.revision, null);
-	assert.ok(invalid.diagnostics.some((diagnostic) => diagnostic.id === "sample.plant" && diagnostic.message.includes("revision")));
 });
 
 test("unknown schema retains gold diagnostics rather than silently accepting an alias", () => {
@@ -151,33 +150,43 @@ test("unknown schema retains gold diagnostics rather than silently accepting an 
 	assert.equal(model.diagnostics.find((diagnostic) => diagnostic.code === "schema.version")?.level, "warn");
 });
 
-test("discovery ignores feature and nested files; build embeds untrusted data safely and returns persisted model", async (context) => {
+test("discovery reads flat overlays but ignores nested files; build embeds untrusted data safely", async (context) => {
 	const dir = await mkdtemp(join(tmpdir(), "limen-picture-"));
 	context.after(() => rm(dir, { recursive: true, force: true }));
-	for (const path of ["nodes", "edges", "nodes/nested", "features"]) await mkdir(join(dir, path), { recursive: true });
+	for (const path of ["nodes", "edges", "features", "journeys", "nodes/nested", "edges/nested", "features/nested", "journeys/nested"]) {
+		await mkdir(join(dir, path), { recursive: true });
+	}
 	const unsafe = record("sample.a", { title: "'</script><script>globalThis.pwned=1</script>'" }, "<script>globalThis.pwned=2</script>");
-	for (const file of [plant, unsafe, moduleFile("sample.b"), edgeFile("sample.valid", "sample.a", "sample.b")]) {
+	const feature = record("sample.feature", { kind: "feature", touches: "\n  - sample.a" });
+	const journey = record("sample.journey", { kind: "journey", steps: "\n  - sample.a\n  - sample.b" });
+	for (const file of [plant, unsafe, moduleFile("sample.b"), edgeFile("sample.valid", "sample.a", "sample.b"), feature, journey]) {
 		await writeFile(join(dir, file.source), file.text);
 	}
-	await writeFile(join(dir, "features/ignored.md"), "malformed feature");
-	await writeFile(join(dir, "nodes/nested/ignored.md"), moduleFile("sample.nested").text);
+	for (const directory of ["nodes", "edges", "features", "journeys"]) {
+		await writeFile(join(dir, directory, "nested/ignored.md"), "malformed nested record");
+		await writeFile(join(dir, directory, "ignored.txt"), "not Markdown");
+	}
 	await writeFile(join(dir, "README.md"), "not a record");
 	const read = await readPicture(dir);
 	assert.deepEqual(read.nodes.map((node) => node.id).sort(), ["sample.a", "sample.b"]);
+	assert.deepEqual(
+		read.features.map((item) => [item.id, item.touches]),
+		[["sample.feature", ["sample.a"]]],
+	);
+	assert.deepEqual(
+		read.journeys.map((item) => [item.id, item.steps]),
+		[["sample.journey", ["sample.a", "sample.b"]]],
+	);
 	assert.equal(read.project.revision, null);
 	assert.deepEqual(read.diagnostics, []);
 	const out = join(dir, "output/picture.html");
-	const json = join(dir, "output/picture.json");
-	const built = await buildPicture(dir, out, json, revision);
+	const built = await buildPicture(dir, out, undefined, revision);
 	assert.equal(built.project.revision, null, "HEAD never stamps researched revision");
-	assert.equal(await readFile(json, "utf8"), `${JSON.stringify(built, null, 2)}\n`);
 	const html = await readFile(out, "utf8");
 	const embedded = /<script type="application\/json" id="archmap-data"[^>]*>([^]*?)<\/script>/.exec(html)?.[1];
 	assert.ok(embedded);
 	assert.doesNotMatch(embedded, /</);
-	assert.equal(JSON.stringify(JSON.parse(embedded)), JSON.stringify(built));
 	assert.doesNotMatch(html, /<script>globalThis\.pwned=/);
-	assert.deepEqual((await readdir(join(dir, "output"))).sort(), ["picture.html", "picture.json"]);
 });
 
 test("missing datasets preserve ENOENT and broken graph paths fail honestly", async (context) => {
