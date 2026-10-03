@@ -45,7 +45,7 @@ export async function inspectFinishWebhook(jobDir: string): Promise<string> {
 	const configured = Boolean(await textFile(`${jobDir}/finish-webhook-env`));
 	const lines = [`configured: ${configured ? "yes (selection recorded; validity not checked)" : "no"}`, `event: ${finishEvent(jobDir)}`];
 	const state = await textFile(`${jobDir}/state`);
-	if (state === "done") lines.push("handoff: Waiting on landing owner; merge not ready (worker ended, branch not landed)");
+	if (state === "done") lines.push("handoff: Job done. Next step: land it, or name the check that still blocks landing.");
 	else if (state === "failed" || state === "stopped") lines.push(`handoff: ${state}; inspect failure before proceeding`);
 	const [first, second, third] = (await textFile(`${jobDir}/finish-webhook-author`)).split("\n");
 	const commit = second && /^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(second) ? second : third && /^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(third) ? third : "";

@@ -188,9 +188,9 @@ export default function limenWake(pi: PiApi): void {
 		herdrCall([
 			"notification",
 			"show",
-			state === "done" ? `limen: ${label} waiting on landing owner` : `limen: ${label} is ${state}`,
+			state === "done" ? `limen: ${label} done; next step: land it` : `limen: ${label} is ${state}`,
 			"--body",
-			state === "done" ? `job ${id} · branch ${branch} · merge not ready` : `job ${id} · branch ${branch}`,
+			state === "done" ? `job ${id} · branch ${branch} · land it, or name the check that blocks landing` : `job ${id} · branch ${branch}`,
 			"--sound",
 			state === "done" ? "done" : "request",
 		]);
@@ -262,7 +262,7 @@ export default function limenWake(pi: PiApi): void {
 				// Toast always — steers alone are easy to miss on a busy coordinator, and workers' steer inbox is not this session.
 				try {
 					session?.ui.notify(
-						state === "done" ? `limen: ${label} waiting on landing owner; merge not ready (${id})` : `limen: ${label} is ${state}; inspect failure (${id})`,
+						state === "done" ? `limen: ${label} done; next step: land it, or name the check that blocks landing (${id})` : `limen: ${label} is ${state}; inspect failure (${id})`,
 						"info",
 					);
 				} catch {
@@ -578,14 +578,14 @@ function completionWake(job: string, label: string, state: string, id: string, b
 	const facts = empty ? "It produced nothing (0 tool calls, no commits)." : "";
 	const handoff =
 		state === "done"
-			? "Waiting on landing owner; merge not ready. Done means the worker ended, not that review passed, the branch landed, or another release lane is ready."
+			? "Job done. Next step: land it, or name the check that still blocks landing. Done does not mean that review passed."
 			: "The job failed or stopped; inspect the failure before deciding whether to resume work.";
 	const instruction = fallback
 		? "The subscribed coordinator is busy. Do not spawn, stop, steer, or land on behalf of another coordinator unless the human asks."
 		: empty
 			? "Inspect the job record and log/session to understand why, then resume focused work if the ticket remains open. Keep the user informed; ask only when genuine product ambiguity, a scope or risk tradeoff, or an irreversible action needs a human decision."
 			: state === "done"
-				? "Inspect the job record, branch diff and commits, log/session, and relevant checks. Review and land acceptable work at the verified commit, or resume focused fixes and re-review. Do not start the next release lane from this completion alone. Keep the user informed; ask only when genuine product ambiguity, a scope or risk tradeoff, or an irreversible action needs a human decision."
+				? "Inspect the job record, branch diff and commits, log/session, and relevant checks. Then land the work at the verified commit. If a check blocks landing, name that check and resume a focused fix. After it lands, continue with the next item on the board. Keep the user informed; ask only when genuine product ambiguity, a scope or risk tradeoff, or an irreversible action needs a human decision."
 				: "Inspect the job record, failure and log/session. Resume focused fixes and re-review if appropriate; do not treat this failure as a new-spawn or release signal. Keep the user informed; ask only when genuine product ambiguity, a scope or risk tradeoff, or an irreversible action needs a human decision.";
 	return joinWake(lead, handoffExcerpt(job), [facts, handoff].filter(Boolean).join("\n\n"), instruction);
 }

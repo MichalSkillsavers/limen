@@ -19,6 +19,7 @@
 - **Ergonomics boundary:** preserve the vision and owner review policy; no global Pi/OMP/Herdr configuration changes, external-service operations, or unrelated plant edits; context deduplication is explanation only.
 - **Feature identity:** the parked application field-guide proposal is F743 (formerly misfiled as F050; see its former-address.md); F050 is the landed diff viewer.
 - **Scope lock (Adam 2026-10-03), in this order; land each slice on `main` when green:** status names (F746); setup text (F747); map wording (F748); finish guide (F749); OMP wake proof (F741) and a reproduction of the hosted OMP fallback gap before any recovery change (F728); Limen and Alice map touch lines (F750). Then release collaborative groups (F740) without shrinking the trial.
+- **Finish wording (Adam 2026-10-03):** a done job says it is done and names the next step; never "merge not ready" when landing is the only step left. Landed before groups.
 - **Scope lock boundary:** no second-seat GitHub proof, no new Sol model policy, no Changes-list highlight on the map.
 
 ## NOW
@@ -40,6 +41,7 @@
 
 ## PROVEN
 
+- `F751-done-job-names-the-next-step` (🟢 PROVEN): a done job's finish message says the job is done and names the next step: land it, or name the check that blocks landing. No surface says "merge not ready".
 - `F728-hosted-engine-liveness` (🟢 PROVEN): a hosted OMP job stays running when Herdr loses its agent row but `omp` is still on the pane; reproduced on `main` first. Merged `a1f9e4f`. The long-labels hosted test is unstable before and after.
 - `F749-finish-guide-without-open-proof` (🟢 PROVEN): the finish guide drops the finished proof steps and links the F091 record.
 - `F748-map-is-a-local-file` (🟢 PROVEN): the map is described as a local file, not in Git, not a live feature list, and not refreshed by a board-only change; the vision note matches.
