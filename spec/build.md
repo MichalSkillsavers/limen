@@ -33,8 +33,8 @@
 - `F747-setup-guides-match-the-seat` (🔴 PLANNED): seat owns the project copy and job files; new jobs use OMP; Linux identity is current; old VPS walkthrough is evidence only.
 - `F748-map-is-a-local-file` (🔴 PLANNED): map is local, not in Git, not refreshed by a board-only change, not a live feature list; vision picture note follows.
 - `F749-finish-guide-without-open-proof` (🔴 PLANNED): finish guide drops the finished proof procedure and links the F091 record.
-- `F728-hosted-engine-liveness` (🔴 PLANNED): reproduce the hosted OMP fallback gap first; no recovery change without a reproduction.
-- `F750-maps-light-features-by-touch-lines` (🔴 PLANNED): Limen features and journeys on the Limen map; Alice feature edges become touch lines. Before any new map feature.
+- `F728-hosted-engine-liveness` (🟠 ACTIVE): reproduce the hosted OMP fallback gap first; no recovery change without a reproduction.
+- `F750-maps-light-features-by-touch-lines` (🟠 ACTIVE): Limen features and journeys on the Limen map; Alice feature edges become touch lines. Before any new map feature.
 
 ## PARKED
 
