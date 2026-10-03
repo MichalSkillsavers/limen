@@ -25,7 +25,6 @@
 
 ## NOW
 
-- `F755-herdr-shows-running-and-finished` (🟠 ACTIVE): finished job tabs close with a logged result; running tabs read as running; coordinator title shows running and finished counts.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
 ## NEXT
@@ -42,6 +41,7 @@
 
 ## PROVEN
 
+- `F755-herdr-shows-running-and-finished` (🟢 PROVEN): finished job tabs close with a logged result; running tabs read `· running`; coordinator title shows running and finished counts. Full check 568/568; live tab closed 1.8 s after finish.
 - `F754-picture-sees-what-it-cites` (🟢 PROVEN): tick counts feature and journey sources; dry-run always prints; build warns `source.missing`; place panel lists touching features and journeys. Load-only timing failures passed alone on main and merge.
 - `F753-readme-is-scannable` (🟢 PROVEN): README has a contents list, headings, tables, steps, and a grouped command reference; facts and commands unchanged.
 - `F752-first-map-starts-interactive` (🟢 PROVEN): the first map job starts with `--tab`; `--detached` only when the interactive start fails. Tick refreshes stay detached.
