@@ -23,7 +23,6 @@
 
 ## NOW
 
-- `F746-status-guide-uses-command-names` (🟠 ACTIVE): guides use `status` and `Candidates to inspect`; command reference lists every command and splits coordinator from operator actions.
 - `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. Release of the group command waits until F746–F750, F741, and F728 are on `main`; the candidate branch needs a rebase onto the new `src/` layout and keeps the full trial and native proof.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
@@ -45,6 +44,7 @@
 
 ## PROVEN
 
+- `F746-status-guide-uses-command-names` (🟢 PROVEN): guides use `status` and `Candidates to inspect`; the README command reference lists every command, split into coordinator and operator actions.
 - `F750-maps-light-features-by-touch-lines` (🟢 PROVEN): the Limen map lists 15 features and 5 journeys with explicit touch lines; the Alice map has no feature edges, and its 14 features light only their touched places. Both strict builds are clean; the datasets are local, not in Git.
 - `F741-omp-finish-wakes-herdr-coord` (🟢 PROVEN): a finished job wakes the OMP Herdr coordinator that started it as an observed turn; `limen wait` refuses under `LIMEN_COORDINATOR=1`. Code `39ec81b`; live hosted OMP proof 2026-10-03 woke pane `wYN:p1` in 0.38 s; wake and wait tests 8/8.
 - `F014-github-doorbell` (🟢 PROVEN): an authorized PR mention reaches Alice's registered Herdr coordinator through an isolated App key; one hosted review and one start/finish receipt observed. Adam closed it with one repository on one seat (2026-10-03).

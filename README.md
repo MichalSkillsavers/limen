@@ -12,9 +12,9 @@ You talk to one coordinator in Herdr. It starts OMP or [Pi](https://pi.dev) work
 
 > **Experimental.** Commands, prompts, and project files may still change.
 
-Requires macOS or Linux, Node.js 24+, Git, and the selected engine (`omp` or `pi`) on `PATH`. Windows is unsupported. Last known-good: pi 0.84.2, Herdr 0.8.0 — recorded on each job, not a runtime gate.
+Requires macOS or Linux, Node.js 24+, Git, and the selected engine (`omp` or `pi`) on `PATH`. Windows is unsupported. Last known-good: omp 18.4.4, Herdr 0.9.1 — recorded on each job, not a runtime gate.
 
-Jobs can live on an always-on **seat** (a VPS on Tailscale) while your laptop is only a window. See [docs/remote.md](docs/remote.md). The walkthrough we actually ran is [docs/vps.md](docs/vps.md).
+Jobs can live on an always-on **seat** (a VPS on Tailscale). The seat owns the project copy and the job files; your laptop is only a window. See [docs/remote.md](docs/remote.md) and the current [seat checklist](docs/seat/README.md). [docs/vps.md](docs/vps.md) is an old record of one setup pass.
 
 ## Finish webhooks (opt-in)
 
@@ -61,7 +61,7 @@ limen init
 LIMEN_COORDINATOR=1 omp --provider <provider> --model <model> --thinking <level>
 ```
 
-Take the engine, provider, model, and reasoning level from the project's choices in `spec/build.md` (see [Models](#models)). A fresh plant has none until you record them; the coordinator then runs on OMP, and you start `pi` instead only when the project needs Pi.
+Take the engine, provider, model, and reasoning level from the project's choices in `spec/build.md` (see [Models](#models)). A fresh plant has none until you record them. The coordinator and new jobs run on OMP.
 
 `limen init` plants what the project owns (vision, board, feature lanes, styleguide) and package-hook stubs in `.pi/extensions/` and `.omp/extensions/`. Herdr OMP coordinators need the `.omp` stub for communication, wake, and steering; rerun `limen init` in existing projects before starting one. Init never overwrites existing project files and deletes leftover `limen-*.ts` hook copies in both extension directories so they cannot load beside the stubs. `limen init --drop-leftovers` deletes only prompt copies that still match the package.
 
@@ -117,9 +117,11 @@ A detached job is bounded by 90 minutes (`--timeout 20m`) and 900 tool-start eve
 
 ## Architecture picture
 
-`limen picture build` renders a project's architecture map from a gitignored Markdown dataset (default `.limen/picture/`) into one offline `map.html` beside it. Places and the edges between them form the map; features and journeys sit in a list beside it, and selecting one lights exactly the places it names in `touches` or `steps` — never anything inferred from Git history. Build never calls a model, and the map is never committed or landed. The dataset rules live in [templates/picture/CONTRACT.md](templates/picture/CONTRACT.md).
+The architecture map is a local file. `limen picture build` renders it from a gitignored Markdown dataset (default `.limen/picture/`) into one offline `map.html` beside it. The dataset and the map are not in Git: they are never committed or landed, and a fresh clone has no map. Build never calls a model. The dataset rules live in [templates/picture/CONTRACT.md](templates/picture/CONTRACT.md).
 
-The first map is a detached `--role picture` job the coordinator starts by hand. After that, `limen picture tick --engine E --provider P --model M --thinking T` is one quiet pass: it compares the map's recorded commit with `HEAD` and starts a refresh job only when files were added, deleted, or renamed, or a source the map cites changed. Spec, docs, and map-only changes print nothing and spend nothing. One tip is attempted once; `--dry-run` prints the decision.
+Places and the edges between them form the map. Features and journeys sit in a list beside it. Selecting one lights exactly the places it names in `touches` or `steps`, never anything inferred from Git history. That list shows where a feature touches the code; it is not a live feature list. It does not show whether a feature is planned, active, or done. The board (`spec/build.md`) owns feature state.
+
+The first map is a detached `--role picture` job the coordinator starts by hand. After that, `limen picture tick --engine E --provider P --model M --thinking T` is one quiet pass: it compares the map's recorded commit with `HEAD` and starts a refresh job only when files were added, deleted, or renamed, or a source the map cites changed. Spec, docs, and map-only changes print nothing and spend nothing. A board-only change (`spec/build.md`) therefore never refreshes the map. One tip is attempted once; `--dry-run` prints the decision.
 
 The tick runs by itself only in a project that turns its watch on. **Off by default.** From the primary checkout, `limen picture watch on --engine E --provider P --model M --thinking T` installs one Git `reference-transaction` hook. Each time the top branch moves (a land, a merge, a pull), it starts one background tick. Worker branches and other refs start nothing. The hook never delays a merge or a spawn, and the refresh job wakes no conversation. `--branch` names the top branch when it is not the one checked out. `limen picture watch` prints the state, `limen picture watch off` removes the hook, and `.limen/picture-watch.log` records each move.
 
@@ -193,10 +195,9 @@ The coordinator does this. You only need it if you are looking at a stuck tab yo
 
 ## Command reference
 
+Coordinator actions. The coordinator runs these from its Herdr pane during ordinary work:
+
 ```text
-limen init
-limen init --drop-leftovers
-limen workspace init
 limen spawn "instruction" [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD]
 limen spawn --repo R "instruction" [--label L] [--model M]
 limen spawn --review --branch B --label L "instruction"
@@ -204,22 +205,38 @@ limen continue <id|suffix|label> "follow-up instruction" [--review] [--label L] 
 limen status [--all]
 limen jobs [--running|--active|--all|--label PREFIX|<id|suffix|label>]
 limen diff <id|suffix|label>
-limen prune [--retire [--dry-run]]
 limen steer <id|suffix|label> | --running "correction"
 limen stop <id|suffix|label> [reason]
 limen land <id|suffix|label> [--onto BRANCH] [--yes]
-limen wait <id|suffix|label>
 limen watch <id|suffix|label> | --running
 limen unwatch <id|suffix|label> | --all
 limen open <id|suffix|label>
 limen close <FNNN>
+limen prune [--retire [--dry-run]]
 limen ticket-author <ticket-path>
 limen picture build [--dir D] [--out F] [--json F] [--strict]
 limen picture tick --engine E --provider P --model M --thinking T [--dir D] [--branch B] [--dry-run]
-limen picture watch [off | on --engine E --provider P --model M --thinking T [--branch B] [--dir D]]
+limen github review <root> <comment-id> --engine E --provider P --model M --thinking T
+limen github work <root> <comment-id> --engine E --provider P --model M --thinking T --task "instruction"
+limen github resolve <root> <comment-id> <handoff-nonce> "no-job answer"
 ```
 
-IDs, unique suffixes, and unique labels are interchangeable where shown. `status` is the plant inbox: running jobs, finished candidates not yet landed, recent jobs that need a decision, and coordinator tabs. `continue` keeps the parent's engine. `land` merges a `done` job; a clean exit is not approval, so inspect the diff and checks first.
+Operator actions. You run these once per project or seat, or a scheduler runs them:
+
+```text
+limen init
+limen init --drop-leftovers
+limen workspace init
+limen sweep [--install|--uninstall]
+limen linear [on [--team T --project P]|off|status]
+limen github connect|disconnect|status|doctor
+limen github ensure [registered-root]
+limen github poll
+limen picture watch [off | on --engine E --provider P --model M --thinking T [--branch B] [--dir D]]
+limen wait <id|suffix|label>
+```
+
+IDs, unique suffixes, and unique labels are interchangeable where shown. `status` is the plant inbox. It has four parts: `Running`, `Candidates to inspect` (finished jobs with commits not yet landed), `Needs a decision` (failed or stopped jobs with unlanded commits), and coordinator tabs. `continue` keeps the parent's engine. `land` merges a `done` job; a clean exit is not approval, so inspect the diff and checks first. `wait` blocks, so it refuses under `LIMEN_COORDINATOR=1` and belongs to scripts. `sweep` sends one seat bell per unheard terminal job. `linear` turns the Linear mirror on or off. `github poll` runs as the isolated App user, never as the worker account.
 
 At a terminal, `jobs` renders an aligned table for eyes; piped, it prints the compact format tools parse. `LIMEN_VIEW=human|compact` forces a view; `NO_COLOR` drops the paint.
 
