@@ -19,3 +19,5 @@
 ## Open
 
 - Live hosted check on the plant (tab closes within 10 s of finish) needs the merged code installed. A real-Herdr smoke of `finalizeJob` on a scratch tab closed it 1.5 s after the done line.
+- `templates/.history/agents.md` hashes `templates/agents.md` from this clone's Git history. After a rebase or squash, run `LIMEN_WRITE_HISTORY=1 node --test test/inherit.test.ts` and commit the result.
+- The finished scan reads every job record after each coordinator turn and every 30 s, and runs `unlandedBranches` (four Git processes) when a finished job has commits. Warm sweeps still read no settled record (`test/wake-sweep.test.ts`).
