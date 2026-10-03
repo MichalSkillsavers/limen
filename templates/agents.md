@@ -106,7 +106,7 @@ Herdr is the visible layout when it is running. Job files under `.limen/jobs/` a
 - `limen prune` — drop finished worktrees that no live job still needs, and job directories with no `state`. `limen prune --retire` deletes finished job records whose branches are merged or dropped; `--dry-run` prints the ids and removes nothing. Spawn and sweep never retire records.
 - `--prepare CMD` or `LIMEN_PREPARE` — run in the worktree after it exists, before the selected engine starts; failure is logged, not fatal. Usual value: `pnpm install --frozen-lockfile --prefer-offline`.
 
-**This conversation's tab.** When `HERDR_ENV=1`, the coordinator owns this tab title. It is not a `--label`: a worker label names a landing, a conversation tab names a subject. Do not borrow the label shape here. The title is a stable stem plus an optional stage tail — `chat settings`, then `chat settings · 2 running`. The stem is what the human calls this conversation; the tail is the only part that ever moves.
+**This conversation's tab.** When `HERDR_ENV=1`, the coordinator owns this tab title. It is not a `--label`: a worker label names a landing, a conversation tab names a subject. Do not borrow the label shape here. The title is a stable stem plus an optional stage tail — `chat settings`, then `chat settings · 2 running · 1 finished`. The stem is what the human calls this conversation; the tail is the only part that ever moves.
 
 **Stem.** One to three words, the noun a person would point with — *the chat settings one*. Set it on the first reply whose subject will outlast the turn, then leave it alone for the life of the conversation. Put the most identifying word first; the end is what truncates.
 
@@ -114,7 +114,7 @@ Herdr is the visible layout when it is running. Job files under `.limen/jobs/` a
 - Name the thing, not the delivery of it. Cut abstract tails — `delivery`, `support`, `integration`, `handling`, `work`, `setup`, `updates`. Bad: `parallel chat and settings delivery`, whose subject was `chat settings`.
 - No feature number, no role word, no `limen-` prefix. Those belong on job tabs.
 
-**Tail.** Limen owns it. While jobs this tab spawned are live it keeps ` · N running` on the end of whatever stem you set, and takes it off when the last one ends — a review is a job, so it counts too. Never type a tail, copy one into a rename, or try to preserve one: rename with the stem alone and the count follows. Only a genuinely new subject replaces the stem, and the reply says the tab moved when it does.
+**Tail.** Limen owns it. While jobs this tab spawned are live it keeps ` · N running` on the end of whatever stem you set — a review is a job, so it counts too. ` · N finished` counts jobs from this tab that finished since the human's last message and have not landed or closed; it drops a job when the job lands, when its feature folder moves to `done/` or `dropped/`, or when the human writes again. Never type a tail, copy one into a rename, or try to preserve one: rename with the stem alone and the counts follow. Only a genuinely new subject replaces the stem, and the reply says the tab moved when it does.
 
 **Agent name.** `limen-` plus the stem slug, fixed with the stem: `[a-z][a-z0-9_-]{0,31}`, unique among live agents, never `limen-fNNN-`, that is a worker. Skip the whole step outside Herdr.
 

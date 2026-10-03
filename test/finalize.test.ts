@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { finalizeJob } from "../src/job/record.ts";
 import { limen, limenWithEnv, onlyJobId, type Scratch, scratchRepo, waitForState } from "./scratch.ts";
 
@@ -93,6 +94,66 @@ if (process.argv[2] === "tab" && process.argv[3] === "rename") Atomics.wait(new 
 	assert.match(log, /done: pi exited 0; 1 steer\(s\) never delivered/);
 	assert.doesNotMatch(log, /failed: second writer/);
 	assert.equal((log.match(/\] (?:done|failed|stopped):/g) ?? []).length, 1);
+});
+
+async function finishWithTab(context: TestContext, refusals: number): Promise<{ readonly log: string; readonly closes: number }> {
+	const scratch = await scratchRepo();
+	context.after(() => wipeScratch(scratch));
+	limen(scratch, "init");
+	const job = join(scratch.root, ".limen/jobs/closing");
+	await mkdir(join(job, "herdr"), { recursive: true });
+	await writeFile(join(job, "state"), "running\n");
+	await writeFile(join(job, "label"), "closing\n");
+	await writeFile(join(job, "log"), "");
+	await Promise.all(Object.entries({ workspace: "w1", tab: "w1:t1", pane: "w1:p1", mode: "hosted" }).map(([name, value]) => writeFile(join(job, "herdr", name), `${value}\n`)));
+	const calls = join(scratch.root, "herdr-calls");
+	const herdr = join(scratch.fakeBin, "herdr");
+	await writeFile(
+		herdr,
+		`#!/usr/bin/env node
+const { appendFileSync, readFileSync } = require("node:fs");
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(calls)}, args.join(" ") + "\\n");
+const closes = readFileSync(${JSON.stringify(calls)}, "utf8").split("\\n").filter((line) => line.startsWith("tab close ")).length;
+if (args[0] === "tab" && args[1] === "close" && closes <= ${refusals}) {
+  console.log(JSON.stringify({ error: { code: "tab_busy", message: "tab is busy" } }));
+  process.exit(1);
+}
+console.log(JSON.stringify({ result: {} }));
+`,
+	);
+	await chmod(herdr, 0o755);
+	const previous = process.env.LIMEN_HERDR;
+	process.env.LIMEN_HERDR = herdr;
+	context.after(() => {
+		if (previous === undefined) delete process.env.LIMEN_HERDR;
+		else process.env.LIMEN_HERDR = previous;
+	});
+	await finalizeJob(job, "done", "pi exited 0");
+	const deadline = Date.now() + 8_000;
+	let log = "";
+	while (Date.now() < deadline) {
+		log = await readFile(join(job, "log"), "utf8");
+		if (/herdr tab close w1:t1: (?:closed|failed)/.test(log)) break;
+		// The closer is a detached process; its only signal is the job log.
+		await delay(25);
+	}
+	return { log, closes: (await readFile(calls, "utf8")).split("\n").filter((line) => line === "tab close w1:t1").length };
+}
+
+test("a finished job closes its tab and the log records the close", async (context) => {
+	const { log, closes } = await finishWithTab(context, 0);
+	assert.match(log, /herdr tab close w1:t1: closed\n/);
+	assert.equal(closes, 1);
+});
+
+test("a refused tab close is retried once and both attempts are logged", async (context) => {
+	const retried = await finishWithTab(context, 1);
+	assert.match(retried.log, /herdr tab close w1:t1: refused \(tab is busy\); retrying once\n.*herdr tab close w1:t1: closed on retry\n/s);
+	assert.equal(retried.closes, 2);
+	const refused = await finishWithTab(context, 2);
+	assert.match(refused.log, /herdr tab close w1:t1: failed after one retry \(tab is busy\)\n/);
+	assert.equal(refused.closes, 2, "one retry, not more");
 });
 
 test("a provider-error stream fails with its stop reason and preserves prior commits", async (context) => {

@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { ENGINES, type EngineId, engineProfile } from "../runtime/engine.ts";
 
 export type HerdrPlace = { readonly workspace: string; readonly tab: string; readonly pane: string; readonly mode: "watch" | "log" | "hosted" | "diff" };
@@ -19,7 +20,7 @@ export async function openWatchTab(input: {
 	readonly role: string;
 }): Promise<HerdrPlace | undefined> {
 	if (process.env.HERDR_ENV !== "1") return;
-	return createTab({ ...input, mode: "watch", follow: true, focus: false });
+	return createTab({ ...input, label: `${input.label} · running`, mode: "watch", follow: true, focus: false });
 }
 
 export async function openHostedTab(input: {
@@ -33,7 +34,8 @@ export async function openHostedTab(input: {
 	if (!herdrAvailable()) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use an ordinary job instead");
 	const place = await createTab({
 		jobDir: input.jobDir,
-		label: input.label,
+		// Herdr reports a pane waiting for input as idle; the label carries the job state.
+		label: `${input.label} · running`,
 		cwd: input.cwd,
 		workspaceCwd: input.workspaceCwd ?? input.cwd,
 		logPath: `${input.jobDir}/log`,
@@ -308,18 +310,43 @@ export function restoreHostedPane(pane: string, role: string): void {
 	advisoryCall(herdr, ["pane", "report-metadata", pane, "--source", "limen", "--display-agent", `limen ${role}`, "--clear-state-labels"]);
 }
 
-/** Terminal jobs leave no open tabs: close the recorded place. Job files and `limen open` remain the record. */
+/** Terminal jobs leave no open tabs. A detached closer does the close so finalize never waits on Herdr; the closer records the result in the job log. */
 export async function settleJobTab(jobDir: string): Promise<void> {
 	const place = await readPlace(jobDir);
 	if (!place) return;
 	const herdr = herdrBinary();
 	if (!herdr) return skip(jobDir, "herdr is not available");
+	const closer = `import { closeJobTab } from ${JSON.stringify(import.meta.url)}; await closeJobTab(${JSON.stringify(herdr)}, ${JSON.stringify(jobDir)}, ${JSON.stringify(place.tab)});`;
 	try {
-		const child = spawn(herdr, ["tab", "close", place.tab], { detached: true, stdio: "ignore" });
+		const child = spawn(process.execPath, ["--no-warnings", "--input-type=module", "--eval", closer], { detached: true, stdio: "ignore" });
+		child.once("error", (error) => void skip(jobDir, `tab close could not start: ${error.message}`).catch(() => {}));
 		child.unref();
 	} catch (error) {
 		await skip(jobDir, error instanceof Error ? error.message : String(error));
 	}
+}
+
+/** The detached closer: close the tab, retry a refusal once, and record the result in the job log. */
+export async function closeJobTab(herdr: string, jobDir: string, tab: string): Promise<void> {
+	const note = (message: string) => appendFile(`${jobDir}/log`, `[limen ${new Date().toISOString()}] herdr tab close ${tab}: ${message}\n`).catch(() => {});
+	let refusal = "";
+	for (const attempt of [1, 2]) {
+		try {
+			call(herdr, ["tab", "close", tab], 10_000);
+			return note(attempt === 1 ? "closed" : "closed on retry");
+		} catch (error) {
+			if (typeof error === "object" && error !== null && "code" in error && error.code === "tab_not_found") return note("already closed");
+			refusal = error instanceof Error ? error.message : String(error);
+			if (attempt === 1) {
+				await note(`refused (${refusal}); retrying once`);
+				await delay(1_000);
+			}
+		}
+	}
+	await note(`failed after one retry (${refusal})`);
+	// The tab stays open; its label must stop saying running.
+	const [label, state] = await Promise.all([text(`${jobDir}/label`), text(`${jobDir}/state`)]);
+	advisoryCall(herdr, ["tab", "rename", tab, `${label || basename(jobDir)} · ${state || "finished"}`]);
 }
 
 export async function openDiffTab(input: {
@@ -373,7 +400,7 @@ export async function openJobPlace(input: { readonly jobDir: string; readonly cw
 	const watch = input.running && !hosted;
 	const place = await createTab({
 		jobDir: input.jobDir,
-		label: input.running ? label : `${label} · ${state}`,
+		label: `${label} · ${state}`,
 		cwd: input.cwd,
 		logPath: `${input.jobDir}/log`,
 		mode: watch ? "watch" : "log",
