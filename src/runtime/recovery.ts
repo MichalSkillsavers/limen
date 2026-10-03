@@ -5,6 +5,7 @@ import { hostedAgentName } from "../commands/spawn.ts";
 import { hostedAgentStatus, locateHostedAgent } from "../integrations/herdr.ts";
 import { atomicWrite, textFile } from "../job/record.ts";
 import { processAlive, processInfo } from "./contain.ts";
+import { jobProfile } from "./engine.ts";
 import { ownerAlive } from "./reap.ts";
 import { launchHostedSupervisor } from "./wrapper.ts";
 
@@ -55,11 +56,8 @@ export async function recoveryTarget(jobDir: string): Promise<string | "missing"
 	const status = hostedAgentStatus(target, true);
 	if (status === "unknown") return "unknown";
 	if (status !== "missing") return target;
-	const located = locateHostedAgent(target, name, true);
-	if (!located) return "missing";
-	if (located === "unknown") return "unknown";
-	const found = hostedAgentStatus(located, true);
-	return found === "unknown" || found === "missing" ? "unknown" : located;
+	const located = locateHostedAgent(target, (await jobProfile(jobDir)).id, name, true);
+	return located ?? "missing";
 }
 
 export async function recoverHostedOwner(jobDir: string): Promise<void> {

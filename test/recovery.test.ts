@@ -7,6 +7,7 @@ import { hostedAgentStatus } from "../src/integrations/herdr.ts";
 import { textFile } from "../src/job/record.ts";
 import { processAlive } from "../src/runtime/contain.ts";
 import { ownerAlive, reapDeadJobs, STARTUP_GRACE_MS } from "../src/runtime/reap.ts";
+import { recoveryTarget } from "../src/runtime/recovery.ts";
 import { launchHostedSupervisor } from "../src/runtime/wrapper.ts";
 import { scratchRepo, waitForState } from "./scratch.ts";
 
@@ -40,20 +41,20 @@ const fail = code => { console.log(JSON.stringify({error:{code,message:code}}));
 let alive = false; try { process.kill(c.pid, 0); alive = true; } catch {}
 if (c.outage) fail("temporarily_unavailable");
 if (args[0] === "agent" && args[1] === "get") {
- if (!alive || args[2] !== c.target) fail("agent_not_found");
+ if (!alive || !c.classified || args[2] !== c.target) fail("agent_not_found");
  ok({agent: {agent_status: c.status, pane_id: c.target}});
 }
 if (args[0] === "agent" && args[1] === "list") {
  if (c.listOutage) fail("temporarily_unavailable");
- ok({agents: alive ? [{pane_id:c.target, name:c.name}] : []});
+ ok({agents: alive && c.classified ? [{pane_id:c.target, name:c.name}] : []});
 }
-if (args[0] === "pane" && args[1] === "process-info") ok({process_info:{foreground_processes:[]}});
+if (args[0] === "pane" && args[1] === "process-info") ok({process_info:{foreground_processes:alive && args[args.indexOf("--pane")+1] === c.target ? c.foreground.map(name => ({name, pid:c.pid})) : []}});
 if (args[0] === "agent" && args[1] === "start") fail("unexpected_agent_start");
 ok({});
 `,
 	);
 	await chmod(herdr, 0o755);
-	const truth = { pid: agent.pid, target: "w1:p1", name: "limen-f049-aaaaaaaa", status: "working", outage: false, listOutage: false };
+	const truth = { pid: agent.pid, target: "w1:p1", name: "limen-f049-aaaaaaaa", status: "working", outage: false, listOutage: false, classified: true, foreground: [] as string[] };
 	const set = async (changes: Partial<typeof truth>) => {
 		Object.assign(truth, changes);
 		await writeFile(control, JSON.stringify(truth));
@@ -142,6 +143,46 @@ async function until(check: () => boolean | Promise<boolean>, timeout = 10_000) 
 }
 
 const starts = async (job: string) => (await textFile(join(job, "log"))).match(/hosted supervisor started/g)?.length ?? 0;
+
+test("hosted OMP recovery stays running without an agent row while omp remains on the recorded pane", async (context) => {
+	const f = await fixture(context, "omp-unclassified");
+	await writeFile(join(f.job, "engine"), "omp\n");
+	await f.set({ classified: false, foreground: ["omp"] });
+	await f.sweep();
+	assert.equal(await textFile(join(f.job, "state")), "running", "the live OMP process must prevent terminal recovery");
+	await f.owner();
+	await until(async () => (await starts(f.job)) === 1);
+	assert.doesNotMatch(await textFile(f.calls), /"agent","start"/);
+	await until(async () => ((await textFile(f.calls)).match(/"pane","process-info"/g)?.length ?? 0) >= 5);
+	assert.equal(await textFile(join(f.job, "state")), "running", "supervision must keep the unclassified OMP job alive beyond the missing-agent window");
+	await f.stop(f.agent.pid as number);
+	await waitForState(f.root, f.id, "done");
+	assert.match(await textFile(join(f.job, "log")), /hosted agent ended/);
+	context.diagnostic(JSON.stringify({ engine: "omp", classified: false, foreground: "omp", survivedMissingWindow: true, absentState: "done", supervisorStarts: 1 }));
+});
+
+test("hosted recovery matches only the recorded engine or node on its recorded pane", async (context) => {
+	const f = await fixture(context, "engine-process-evidence");
+	await f.set({ classified: false });
+	for (const [engine, foreground, expected] of [
+		["pi", ["pi"], f.truth.target],
+		["pi", ["node"], f.truth.target],
+		["omp", ["node"], f.truth.target],
+		["omp", ["pi"], "missing"],
+		["pi", ["omp"], "missing"],
+		["omp", ["zsh"], "missing"],
+		["omp", [], "missing"],
+	] as const) {
+		await writeFile(join(f.job, "engine"), `${engine}\n`);
+		await f.set({ foreground: [...foreground] });
+		assert.equal(await recoveryTarget(f.job), expected, `${engine} with foreground ${foreground.join(",") || "absent"}`);
+	}
+	await f.set({ target: "other:p0", name: "unrelated", classified: true, foreground: ["omp"] });
+	assert.equal(await recoveryTarget(f.job), "missing", "another pane's OMP process and unrelated agent must not be adopted");
+	await f.sweep();
+	assert.equal(await textFile(join(f.job, "state")), "failed");
+	assert.equal(await starts(f.job), 0);
+});
 
 test("competing real sweeps replace a killed young supervisor exactly once, then can replace it again and finish", async (context) => {
 	const f = await fixture(context, "competing");
