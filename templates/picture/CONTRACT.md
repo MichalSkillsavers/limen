@@ -2,7 +2,7 @@
 
 The picture is a map a cold reader takes in at one sitting: the places a project is made of, how they connect, and later which features and journeys cross them. This file is the reusable contract between three parties: the picture worker that writes the dataset, `limen picture build` that renders it, and `limen picture tick` that decides when a refresh is worth a model call.
 
-The dataset and the rendered map are local, gitignored artifacts. They are never committed, merged, or landed onto a tip, and nothing in this contract gates spawn or land.
+The dataset and the rendered map are local, gitignored artifacts. They are never committed, merged, or landed onto a tip, and nothing in this contract gates spawn or land. The map is not a live feature list: a feature or journey says which places it crosses, never whether it is planned, active, or done. The board owns feature state.
 
 Schema: `architecture-map/1`. It is the schema of the first dataset (Alice, 2026-10-02) plus the fields marked **new**.
 
@@ -84,7 +84,7 @@ One pass, started by the project's watch when its top branch moves, or by a coor
 1. No plant file or no `revision`: print one line saying the first picture starts by hand. Never spawn. The initial map is a coordinator decision.
 2. `revision` equals `HEAD`: silent.
 3. Diff `revision..HEAD` by path and status. Drop the dataset directory, `spec/`, `docs/`, `.agents/`, and root-level `*.md` first; dropped paths never count, even when cited. A remaining path is relevant when it was added, deleted, or renamed, or when it was modified and some node or edge `sources` entry names it exactly or as a directory prefix.
-4. Nothing relevant: silent. No model call. Spec-only, docs-only, and picture-only changes end here.
+4. Nothing relevant: silent. No model call. Spec-only, docs-only, and picture-only changes end here; a change to the board (`spec/build.md`) or a feature folder never starts a refresh.
 5. Another live pass holds `tick.lock`: one line, no spawn. A lock whose process is gone is taken over.
 6. `job` names a live job, or a job whose recorded base is `HEAD`: one line, no spawn. One tip is attempted once.
 7. Engine, provider, model, or reasoning flag missing: one line naming the relevant paths, no spawn. There is no package fallback model for the watcher.
