@@ -40,20 +40,20 @@ const fail = code => { console.log(JSON.stringify({error:{code,message:code}}));
 let alive = false; try { process.kill(c.pid, 0); alive = true; } catch {}
 if (c.outage) fail("temporarily_unavailable");
 if (args[0] === "agent" && args[1] === "get") {
- if (!alive || args[2] !== c.target) fail("agent_not_found");
+ if (!alive || !c.classified || args[2] !== c.target) fail("agent_not_found");
  ok({agent: {agent_status: c.status, pane_id: c.target}});
 }
 if (args[0] === "agent" && args[1] === "list") {
  if (c.listOutage) fail("temporarily_unavailable");
- ok({agents: alive ? [{pane_id:c.target, name:c.name}] : []});
+ ok({agents: alive && c.classified ? [{pane_id:c.target, name:c.name}] : []});
 }
-if (args[0] === "pane" && args[1] === "process-info") ok({process_info:{foreground_processes:[]}});
+if (args[0] === "pane" && args[1] === "process-info") ok({process_info:{foreground_processes:alive && args[args.indexOf("--pane")+1] === c.target ? c.foreground.map(name => ({name, pid:c.pid})) : []}});
 if (args[0] === "agent" && args[1] === "start") fail("unexpected_agent_start");
 ok({});
 `,
 	);
 	await chmod(herdr, 0o755);
-	const truth = { pid: agent.pid, target: "w1:p1", name: "limen-f049-aaaaaaaa", status: "working", outage: false, listOutage: false };
+	const truth = { pid: agent.pid, target: "w1:p1", name: "limen-f049-aaaaaaaa", status: "working", outage: false, listOutage: false, classified: true, foreground: [] as string[] };
 	const set = async (changes: Partial<typeof truth>) => {
 		Object.assign(truth, changes);
 		await writeFile(control, JSON.stringify(truth));
@@ -142,6 +142,18 @@ async function until(check: () => boolean | Promise<boolean>, timeout = 10_000) 
 }
 
 const starts = async (job: string) => (await textFile(join(job, "log"))).match(/hosted supervisor started/g)?.length ?? 0;
+
+test("hosted OMP recovery stays running without an agent row while omp remains on the recorded pane", async (context) => {
+	const f = await fixture(context, "omp-unclassified");
+	await writeFile(join(f.job, "engine"), "omp\n");
+	await f.set({ classified: false, foreground: ["omp"] });
+	await f.sweep();
+	assert.equal(await textFile(join(f.job, "state")), "running", "the live OMP process must prevent terminal recovery");
+	await f.owner();
+	await until(async () => (await starts(f.job)) === 1);
+	assert.doesNotMatch(await textFile(f.calls), /"agent","start"/);
+	context.diagnostic(JSON.stringify({ engine: "omp", classified: false, foreground: "omp", state: "running", supervisorStarts: 1 }));
+});
 
 test("competing real sweeps replace a killed young supervisor exactly once, then can replace it again and finish", async (context) => {
 	const f = await fixture(context, "competing");
