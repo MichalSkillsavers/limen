@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { ENGINES, type EngineId, engineProfile } from "../runtime/engine.ts";
 
 export type HerdrPlace = { readonly workspace: string; readonly tab: string; readonly pane: string; readonly mode: "watch" | "log" | "hosted" | "diff" };
@@ -308,18 +309,40 @@ export function restoreHostedPane(pane: string, role: string): void {
 	advisoryCall(herdr, ["pane", "report-metadata", pane, "--source", "limen", "--display-agent", `limen ${role}`, "--clear-state-labels"]);
 }
 
-/** Terminal jobs leave no open tabs: close the recorded place. Job files and `limen open` remain the record. */
+/** Terminal jobs leave no open tabs. A detached closer does the close so finalize never waits on Herdr; the closer records the result in the job log. */
 export async function settleJobTab(jobDir: string): Promise<void> {
 	const place = await readPlace(jobDir);
 	if (!place) return;
 	const herdr = herdrBinary();
 	if (!herdr) return skip(jobDir, "herdr is not available");
+	const closer = `import { closeJobTab } from ${JSON.stringify(import.meta.url)}; await closeJobTab(${JSON.stringify(herdr)}, ${JSON.stringify(jobDir)}, ${JSON.stringify(place.tab)});`;
 	try {
-		const child = spawn(herdr, ["tab", "close", place.tab], { detached: true, stdio: "ignore" });
+		const child = spawn(process.execPath, ["--no-warnings", "--input-type=module", "--eval", closer], { detached: true, stdio: "ignore" });
+		child.once("error", (error) => void skip(jobDir, `tab close could not start: ${error.message}`).catch(() => {}));
 		child.unref();
 	} catch (error) {
 		await skip(jobDir, error instanceof Error ? error.message : String(error));
 	}
+}
+
+/** The detached closer: close the tab, retry a refusal once, and record the result in the job log. */
+export async function closeJobTab(herdr: string, jobDir: string, tab: string): Promise<void> {
+	const note = (message: string) => appendFile(`${jobDir}/log`, `[limen ${new Date().toISOString()}] herdr tab close ${tab}: ${message}\n`).catch(() => {});
+	let refusal = "";
+	for (const attempt of [1, 2]) {
+		try {
+			call(herdr, ["tab", "close", tab], 10_000);
+			return note(attempt === 1 ? "closed" : "closed on retry");
+		} catch (error) {
+			if (typeof error === "object" && error !== null && "code" in error && error.code === "tab_not_found") return note("already closed");
+			refusal = error instanceof Error ? error.message : String(error);
+			if (attempt === 1) {
+				await note(`refused (${refusal}); retrying once`);
+				await delay(1_000);
+			}
+		}
+	}
+	await note(`failed after one retry (${refusal})`);
 }
 
 export async function openDiffTab(input: {
