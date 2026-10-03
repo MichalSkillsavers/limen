@@ -1,8 +1,6 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { jobMembership, ownsLiveChildren } from "../job/group-cabinet.ts";
-import { syncLifecycle } from "../job/group-events.ts";
 import {
 	type HerdrPlace,
 	type HostedAgentStatus,
@@ -15,6 +13,8 @@ import {
 	startHostedPi,
 	stopHostedAgent,
 } from "../integrations/herdr.ts";
+import { jobMembership, ownsLiveChildren } from "../job/group-cabinet.ts";
+import { syncLifecycle } from "../job/group-events.ts";
 import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, recordCommits, requestedTerminal, textFile, writeHandshake } from "../job/record.ts";
 import { cleanWorktree } from "../project/git.ts";
 import { containEscapedDescendants } from "./contain.ts";

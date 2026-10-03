@@ -3,14 +3,14 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { processAlive } from "../runtime/contain.ts";
-import { preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
-import { cleanWorktree, commitHasFile, headCommit, repoRoot } from "../project/git.ts";
+import { herdrAvailable } from "../integrations/herdr.ts";
 import type { GroupIdentity, GroupRun } from "../job/group-cabinet.ts";
 import { groupIdentity, groupLock, groupPath, leadSession, memberLive, readRun, runs, saveJson, teamRoute } from "../job/group-cabinet.ts";
 import { acceptBatch, acceptTransport, groupEvents, publishEvent, syncLifecycle } from "../job/group-events.ts";
-import { herdrAvailable } from "../integrations/herdr.ts";
 import { parseDuration } from "../job/job.ts";
+import { cleanWorktree, commitHasFile, headCommit, repoRoot } from "../project/git.ts";
+import { processAlive } from "../runtime/contain.ts";
+import { preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { spawnCommand } from "./spawn.ts";
 import { stopCommand } from "./stop.ts";
 

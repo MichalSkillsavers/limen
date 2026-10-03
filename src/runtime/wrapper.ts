@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import { appendFile, readFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { jobMembership } from "../job/group-cabinet.ts";
 import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, writeHandshake } from "../job/record.ts";
 import { containEscapedDescendants, discoverEscapedDescendants, type JobProcess, processInfo, signalProcessGroup } from "./contain.ts";
 import { argvFor, engineBinary, jobProfile, prepareSkillConfig } from "./engine.ts";
-import { jobMembership } from "../job/group-cabinet.ts";
 import { observeToolStall, ownedToolDescendants, type ToolStallWatch, toolStallMs } from "./stalled-tool.ts";
 import { createStreamParser, type StreamEvent } from "./stream.ts";
 

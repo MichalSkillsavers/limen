@@ -1,8 +1,8 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { repoRoot } from "../src/project/git.ts";
 import type { GroupIdentity } from "../src/job/group-cabinet.ts";
 import { groupIdentity, runs } from "../src/job/group-cabinet.ts";
 import { acceptBatch, acceptTransport, observeBatch, releaseBatch } from "../src/job/group-events.ts";
+import { repoRoot } from "../src/project/git.ts";
 
 type Content = { readonly type: string; readonly text?: string };
 type Context = {

@@ -10,8 +10,8 @@ import { waitGroup } from "../src/commands/group.ts";
 import type { GroupIdentity, GroupRun } from "../src/job/group-cabinet.ts";
 import { claimMember, groupLock, groupPath, readRun, saveJson } from "../src/job/group-cabinet.ts";
 import { acceptBatch, acceptTransport, groupEvents, observeBatch, publishEvent, releaseBatch, syncLifecycle } from "../src/job/group-events.ts";
-import { noteHostedIdle } from "../src/runtime/supervisor.ts";
 import { finalizeJob } from "../src/job/record.ts";
+import { noteHostedIdle } from "../src/runtime/supervisor.ts";
 import type { Scratch } from "./scratch.ts";
 import { git, LIMEN, limen, limenWithEnv, onlyJobId, scratchRepo, waitForState, writeFakePi } from "./scratch.ts";
 
