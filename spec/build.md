@@ -25,7 +25,6 @@
 
 - `F746-status-guide-uses-command-names` (🟠 ACTIVE): guides use `status` and `Candidates to inspect`; command reference lists every command and splits coordinator from operator actions.
 - `F740-collaborative-groups` (🟠 ACTIVE): a live two-team hosted trial in Herdr (the sssnark game) produced two checked candidates, observed exchanges, and a landed synthesis. Release of the group command waits until F746–F750, F741, and F728 are on `main`; the candidate branch needs a rebase onto the new `src/` layout and keeps the full trial and native proof.
-- `F741-omp-finish-wakes-herdr-coord` (🟠 ACTIVE, Adam priority): wake/wait implementation is on main at `39ec81b` and a live OMP job recorded a Herdr turn; finish retained-evidence and native checks with hosted OMP `anthropic/claude-opus-5-5` at `high`, Adam reviews, no independent reviewer, webhook remains opt-in.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
 ## NEXT
@@ -47,6 +46,7 @@
 
 ## PROVEN
 
+- `F741-omp-finish-wakes-herdr-coord` (🟢 PROVEN): a finished job wakes the OMP Herdr coordinator that started it as an observed turn; `limen wait` refuses under `LIMEN_COORDINATOR=1`. Code `39ec81b`; live hosted OMP proof 2026-10-03 woke pane `wYN:p1` in 0.38 s; wake and wait tests 8/8.
 - `F014-github-doorbell` (🟢 PROVEN): an authorized PR mention reaches Alice's registered Herdr coordinator through an isolated App key; one hosted review and one start/finish receipt observed. Adam closed it with one repository on one seat (2026-10-03).
 - `F743-living-architecture-picture` (🟢 PROVEN): Limen ships a reusable local architecture map — contract, offline `picture build`, explicit `touches`/`steps` overlay, and a one-pass `tick` that calls no model without a structural or cited code change. Landed `07a9c6b` / `cf68cd4`; check 531/531; live tick started one refresh, quiet tick spent nothing. Alice dataset still needs `touches`.
 - `F731-seat-bell-once` (🟢 PROVEN): each unheard terminal job or hosted-stall advisory gets one seat bell; exclusive receipt before transport prevents restart/concurrent double-rings, and ambiguous notify failures are not retried. Launchd sweep stays paused (no live notify proof). Landed `5117a92` / `47e0d77` via merge `39a9756`.
