@@ -117,7 +117,7 @@ A detached job is bounded by 90 minutes (`--timeout 20m`) and 900 tool-start eve
 
 ## Architecture picture
 
-`limen picture build` renders a project's architecture map — places, the edges between them, and later the features and journeys that cross them — from a gitignored Markdown dataset (default `.limen/picture/`) into one offline `map.html` beside it. It never calls a model, and the map is never committed or landed. The dataset rules live in [templates/picture/CONTRACT.md](templates/picture/CONTRACT.md).
+`limen picture build` renders a project's architecture map from a gitignored Markdown dataset (default `.limen/picture/`) into one offline `map.html` beside it. Places and the edges between them form the map; features and journeys sit in a list beside it, and selecting one lights exactly the places it names in `touches` or `steps` — never anything inferred from Git history. Build never calls a model, and the map is never committed or landed. The dataset rules live in [templates/picture/CONTRACT.md](templates/picture/CONTRACT.md).
 
 The first map is a detached `--role picture` job the coordinator starts by hand. After that, `limen picture tick --engine E --provider P --model M --thinking T` is one quiet pass: it compares the map's recorded commit with `HEAD` and starts a refresh job only when files were added, deleted, or renamed, or a source the map cites changed. Spec, docs, and map-only changes print nothing and spend nothing. One tip is attempted once; `--dry-run` prints the decision. Run it from an operator timer ([seat units](docs/seat/limen-picture.service)) or by hand.
 
