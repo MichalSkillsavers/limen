@@ -25,7 +25,6 @@
 
 ## NOW
 
-- `F762-private-planning-reads-clearly` (🟠 ACTIVE): clarity, spacing, styleguide, and vision pass over the PR #4 private planning code; same behavior; only PR #4 tests may go.
 - `F759-graph-shows-what-to-decide` (🟠 ACTIVE): four-team group keeps the graph, mixes in time, removes side panels, and shows only what the owner must decide under 200+ changes; no landing, no live map edits.
 - `F757-feature-timeline` (🟠 ACTIVE): two-team group cuts the F756 panel to a timeline graph with detail one click away; screenshots justify each cut; no live map edits, no code landing.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
@@ -44,6 +43,7 @@
 
 ## PROVEN
 
+- `F762-private-planning-reads-clearly` (🟢 PROVEN): PR #4 private planning code reads top-down with plain docs; same behavior (smoke diff empty); no pre-PR test changed. Landed `130cf0c`; focused tests 110/110.
 - `F761-issue-body-rings-doorbell` (🟢 PROVEN): `@limen` in an open issue body rings the doorbell once per issue with its own cursor and `issue-<n>` claim; title, closed issues, and PR bodies never count. Landed `211efee`; live Alice bot needs `/opt/limen` upgraded.
 - `F760-issue-comment-rings-doorbell` (🟢 PROVEN): an authorized issue conversation comment rings the doorbell like a PR comment; review refuses an issue claim; PR behavior unchanged. Landed `086aeb9`; live Alice bot needs `/opt/limen` upgraded.
 - `F758-lead-group-step-rings-finish` (🟢 PROVEN): a lead turn that writes group synthesis or closes a group sends the finish webhook once; no "land it" for a no-land feature. 166/166 focused tests; live send not yet observed.
