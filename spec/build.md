@@ -25,6 +25,7 @@
 
 ## NOW
 
+- `F760-issue-comment-rings-doorbell` (🟠 ACTIVE): an authorized `@limen`/`/limen` issue conversation comment wakes the registered coordinator like a PR comment; issue body never counts; PR behavior unchanged; no /opt/limen change.
 - `F759-graph-shows-what-to-decide` (🟠 ACTIVE): four-team group keeps the graph, mixes in time, removes side panels, and shows only what the owner must decide under 200+ changes; no landing, no live map edits.
 - `F757-feature-timeline` (🟠 ACTIVE): two-team group cuts the F756 panel to a timeline graph with detail one click away; screenshots justify each cut; no live map edits, no code landing.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
