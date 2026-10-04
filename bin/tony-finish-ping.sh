@@ -138,8 +138,9 @@ function send(target, index) {
         job: args[0], status: args[1] === 'done' ? 'waiting' : args[1], branch: args[2],
         ...(args[1] === 'done' ? { jobState: 'done' } : {}),
         ...(event ? { finishEvent: event } : {}),
+        // A lead group step names its own next step; a job never sets this override.
         handoff: args[1] === 'done'
-          ? 'Job done. Next step: land it, or name the check that still blocks landing.'
+          ? process.env.LIMEN_FINISH_HANDOFF?.trim() || 'Job done. Next step: land it, or name the check that still blocks landing.'
           : ['failed', 'stopped'].includes(args[1])
             ? 'Job failed or stopped; inspect the job record before proceeding'
             : 'Unrecognized job status; inspect the job record before proceeding',

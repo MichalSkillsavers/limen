@@ -165,6 +165,31 @@ Installing the helper alone does not opt in a project: inspect a newly spawned
 job's `finish-webhook-env` before expecting automatic delivery. A legacy home
 config is not a project opt-in, and historical jobs are not retrofitted.
 
+## Lead group steps
+
+The interactive coordinator that leads a group (`LIMEN_COORDINATOR=1`, not
+`LIMEN_JOB=1`) sends one finish webhook when a lead turn finishes a group step.
+A step is a turn that created or changed `group/synthesis.md` in the feature
+folder of a group this session leads, or a turn that closed that group. The
+hook compares the files and the run's `closed` flag at each turn end; a
+synthesis older than the run's start is not a step. Mid-turn tool messages and
+failed or aborted turns send nothing.
+
+The notice uses the same sender, project opt-in, and payload fields as a `done`
+job. `job` names the feature and the step, for example `F757 lead synthesis` or
+`F757 lead close`. `branch` is the lead checkout's branch. `handoff` reads
+`Lead step done: <job>. Next step: owner decision on group/synthesis.md, or
+close the group.` (or `owner decision` after close). It never says "land it";
+when the ticket or `group/brief.md` says not to land, it adds
+`The feature says do not land.` The sender reads this text from
+`LIMEN_FINISH_HANDOFF`, which only the lead path sets.
+
+Each step is claimed once under
+`.limen/groups/GROUP-ID/lead-steps/<step>/finish-webhook-attempt`, with the
+result in `finish-webhook` beside it. A second idle turn, a pane reload, or the
+same synthesis content again sends nothing. A project without a selected config
+sends nothing and records no receipt.
+
 ## Private env format
 
 The env file is dotenv **data**, not a sourced shell script. Use assignments,

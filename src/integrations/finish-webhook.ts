@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
-import { delimiter, dirname, isAbsolute, resolve } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { basename, delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendLimenLog, atomicWrite, textFile } from "../job/record.ts";
-import { listWorktrees, ticketAuthor, workspaceRoot } from "../project/git.ts";
+import { currentBranch, listWorktrees, ticketAuthor, workspaceRoot } from "../project/git.ts";
 import { finishEvent, parseFinishReceipt, parseFinishSelection } from "./finish-receipt.ts";
 
 const SENDER = fileURLToPath(new URL("../../bin/tony-finish-ping.sh", import.meta.url));
@@ -104,7 +104,36 @@ export async function deliverFinishWebhook(jobDir: string, shutdownDeadline = Nu
 	);
 	await appendLimenLog(jobDir, `finish webhook: ${result}${result.startsWith("skipped:") ? "" : "; inspect finish-webhook for manual finish-ping retry"}`);
 }
-function send(jobDir: string, config: string, label: string, state: string, branch: string, timeoutMs: number, author: string): Promise<string> {
+/** A finished lead group step sends through the job sender once; its directory under the group cabinet is the receipt. */
+export async function deliverLeadStepWebhook(stepDir: string, root: string, feature: string, step: "synthesis" | "close"): Promise<void> {
+	const config = finishWebhookEnv(root, root);
+	if (!config) return;
+	await mkdir(stepDir, { recursive: true });
+	try {
+		await writeFile(`${stepDir}/finish-webhook-attempt`, `done ${new Date().toISOString()}\n`, { flag: "wx", mode: 0o600, flush: true });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") return;
+		throw error;
+	}
+	const name = basename(feature);
+	const label = `${/^F\d+/.exec(name)?.[0] ?? name} lead ${step}`;
+	// Group packets say "Do not land" in the brief as often as in the ticket; the lead handoff never suggests landing.
+	const packet = await Promise.all([`${feature}/ticket.md`, `${feature}/group/brief.md`].map((path) => readFile(`${root}/${path}`, "utf8").catch(() => "")));
+	const next = step === "close" ? "owner decision" : "owner decision on group/synthesis.md, or close the group";
+	const handoff = `Lead step done: ${label}. Next step: ${next}.${/\b(?:do not|don't|never|not to) land\b/i.test(packet.join("\n")) ? " The feature says do not land." : ""}`;
+	const login = captureFinishAuthor(root, `Ticket: ${feature}/ticket.md`).split("\n")[0] ?? "";
+	let branch = "HEAD";
+	try {
+		branch = currentBranch(root);
+	} catch {
+		// A detached plant root has no branch name; the payload still names HEAD.
+	}
+	const result = isAbsolute(config)
+		? await send(stepDir, config, label, "done", branch, SEND_MS, login.startsWith("@") ? login : "", handoff)
+		: "failed: config path is not absolute";
+	await atomicWrite(`${stepDir}/finish-webhook`, `${result} ${new Date().toISOString()}\n`);
+}
+function send(jobDir: string, config: string, label: string, state: string, branch: string, timeoutMs: number, author: string, handoff?: string): Promise<string> {
 	return new Promise((resolve) => {
 		const child = spawn(SENDER, [label, state, branch], {
 			env: {
@@ -113,6 +142,8 @@ function send(jobDir: string, config: string, label: string, state: string, bran
 				LIMEN_FINISH_WEBHOOK_ENV: config,
 				LIMEN_FINISH_EVENT: finishEvent(jobDir),
 				LIMEN_FINISH_WEBHOOK_AUTHOR: author,
+				// Undefined drops any inherited override, so a job always sends the job handoff.
+				LIMEN_FINISH_HANDOFF: handoff,
 			},
 			stdio: ["ignore", "ignore", "ignore", "pipe"],
 			detached: true,
