@@ -17,3 +17,4 @@
 ## Open
 
 - `limen github status` still lists only numeric (comment) claims when it picks the latest local handoff. A body claim is not shown there.
+- `npm run check` at `17a8e1d`: 597 of 598 tests pass. The one failure, `independent jobs can run concurrently and are merely announced` (`test/spawn-command.test.ts`), fails the same way on the base commit `037b08c`: the 400 ms fake agent ends before the second spawn looks, so no "already running" note prints. It is not in the GitHub code.
