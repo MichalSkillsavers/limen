@@ -3,7 +3,7 @@ import { createHash, createSign, randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claimPath, type GithubBinding, githubDir, originRepository, readBinding } from "../commands/github.ts";
+import { claimId, claimPath, type GithubBinding, githubDir, originRepository, readBinding } from "../commands/github.ts";
 import { type GithubClaim, githubSubject, matchedGithubJob } from "./github-review.ts";
 
 const API = "https://api.github.com";
@@ -17,7 +17,19 @@ type Pull = {
 	base: { sha: string; ref: string; repo: { full_name: string } };
 	head: { sha: string };
 };
-type Issue = { number: number; state: string; title?: string; body?: string | null; repository_url: string; pull_request?: object };
+type Issue = {
+	number: number;
+	state: string;
+	title?: string;
+	body?: string | null;
+	repository_url: string;
+	pull_request?: object;
+	created_at: string;
+	html_url: string;
+	user: { login: string } | null;
+};
+// The comment ID, or `issue-<number>` for an issue body. `command` is absent when the body itself is the request.
+type Trigger = { id: number | string; pr: number; actor: string; url: string; command?: string };
 
 function mentionsLimen(body: string): boolean {
 	let fence: string | undefined;
@@ -135,7 +147,7 @@ async function reply(root: string, state: string, claim: GithubClaim, token: str
 }
 
 // The test seam also reads authority from the private store; a checkout claim is never an input.
-export async function reconcileGithubClaim(root: string, state: string, id: number, token: string): Promise<void> {
+export async function reconcileGithubClaim(root: string, state: string, id: number | string, token: string): Promise<void> {
 	let claim: GithubClaim;
 	try {
 		claim = JSON.parse(await readFile(join(state, "claims", `${id}.json`), "utf8")) as GithubClaim;
@@ -258,13 +270,17 @@ async function reconcile(root: string, state: string, claim: GithubClaim, token:
 
 export { accept as acceptGithubComment };
 
+async function authorized(binding: GithubBinding, login: string, token: string): Promise<boolean> {
+	const permission = await found<{ permission: string }>(`/repos/${binding.repo}/collaborators/${encodeURIComponent(login)}/permission`, token);
+	return Boolean(permission && ["admin", "write", "maintain"].includes(permission.permission));
+}
+
 async function accept(root: string, state: string, binding: GithubBinding, comment: Comment, token: string): Promise<void> {
 	if (!comment.body || !mentionsLimen(comment.body) || !comment.user || Date.parse(comment.created_at) < Date.parse(binding.connectedAt)) return;
 	if (!Number.isSafeInteger(comment.id) || comment.id < 1) throw new Error("GitHub comment has an invalid ID");
 	const pr = Number(/\/issues\/(\d+)$/.exec(comment.issue_url)?.[1]);
 	if (!Number.isSafeInteger(pr) || pr < 1) return;
-	const permission = await found<{ permission: string }>(`/repos/${binding.repo}/collaborators/${encodeURIComponent(comment.user.login)}/permission`, token);
-	if (!permission || !["admin", "write", "maintain"].includes(permission.permission)) return;
+	if (!(await authorized(binding, comment.user.login, token))) return;
 	// GitHub answers 404 on /pulls/<n> for an issue. The issue API also returns pull requests, so it re-checks.
 	const pull = await found<Pull>(`/repos/${binding.repo}/pulls/${pr}`, token);
 	const issue = pull ? undefined : await found<Issue>(`/repos/${binding.repo}/issues/${pr}`, token);
@@ -274,7 +290,22 @@ async function accept(root: string, state: string, binding: GithubBinding, comme
 		if (pull.base.repo.full_name.toLowerCase() !== binding.repo.toLowerCase()) return;
 		if (!/^[0-9a-f]{40}$/.test(pull.head.sha) || !/^[0-9a-f]{40}$/.test(pull.base.sha) || !/^[\w./-]+$/.test(pull.base.ref)) throw new Error("GitHub returned invalid PR refs");
 	} else if (issue?.pull_request || issue?.repository_url.toLowerCase() !== `${API}/repos/${binding.repo}`.toLowerCase()) return;
-	const path = join(state, "claims", `${comment.id}.json`);
+	await request(root, state, binding, { id: comment.id, pr, actor: comment.user.login, url: comment.html_url, command: comment.body }, thread, token);
+}
+
+// The body as first read decides: an open issue, not a pull request, opened after connect by a write-or-higher author. The title never counts.
+async function acceptIssue(root: string, state: string, binding: GithubBinding, issue: Issue, token: string): Promise<void> {
+	if (issue.pull_request || issue.state !== "open" || !issue.body || !mentionsLimen(issue.body) || !issue.user || Date.parse(issue.created_at) < Date.parse(binding.connectedAt)) return;
+	if (!Number.isSafeInteger(issue.number) || issue.number < 1) throw new Error("GitHub issue has an invalid number");
+	if (issue.repository_url.toLowerCase() !== `${API}/repos/${binding.repo}`.toLowerCase()) return;
+	if (!(await authorized(binding, issue.user.login, token))) return;
+	await request(root, state, binding, { id: `issue-${issue.number}`, pr: issue.number, actor: issue.user.login, url: issue.html_url }, issue, token);
+}
+
+async function request(root: string, state: string, binding: GithubBinding, trigger: Trigger, thread: Pull | Issue, token: string): Promise<void> {
+	const pull = "base" in thread ? thread : undefined;
+	const pr = trigger.pr;
+	const path = join(state, "claims", `${trigger.id}.json`);
 	let claim: GithubClaim;
 	try {
 		claim = JSON.parse(await readFile(path, "utf8")) as GithubClaim;
@@ -298,7 +329,7 @@ async function accept(root: string, state: string, binding: GithubBinding, comme
 			}
 			let used = 0;
 			for (const entry of entries) {
-				if (endpoint.includes("/issues/") && entry.id === comment.id) continue;
+				if (endpoint.includes("/issues/") && entry.id === trigger.id) continue;
 				const body = entry.body ?? "";
 				const line = `${entry.user?.login ?? "unknown"}: ${body.slice(0, 1200)}${body.length > 1200 ? " [comment excerpt truncated]" : ""}`;
 				if (used + line.length > 3500) {
@@ -313,16 +344,16 @@ async function accept(root: string, state: string, binding: GithubBinding, comme
 		const excerpt = discussion.join("\n");
 		claim = {
 			repo: binding.repo,
-			id: comment.id,
+			id: trigger.id,
 			pr,
-			actor: comment.user.login,
-			url: comment.html_url,
+			actor: trigger.actor,
+			url: trigger.url,
 			...(pull ? { base: pull.base.sha, baseRef: pull.base.ref, head: pull.head.sha } : { kind: "issue" as const }),
 			title: boundedContext(thread.title ?? "", 500, pull ? "PR title" : "Issue title", link),
 			body: boundedContext(thread.body ?? "", 6000, pull ? "PR body" : "Issue body", link),
 			discussion: excerpt.length > 12000 ? `${excerpt.slice(0, 12000)}\n[Discussion truncated; see ${link}]` : excerpt,
 			outcomeNonce: randomBytes(24).toString("hex"),
-			command: boundedContext(comment.body, 4000, "Triggering comment", comment.html_url),
+			...(trigger.command === undefined ? {} : { command: boundedContext(trigger.command, 4000, "Triggering comment", trigger.url) }),
 		};
 		await writeFile(path, `${JSON.stringify(claim)}\n`, { flag: "wx", mode: 0o600, flush: true }); // authoritative claim before handoff
 		await mirror(root, claim);
@@ -379,6 +410,35 @@ async function handoff(root: string, state: string, binding: GithubBinding, clai
 	await reconcile(root, state, claim, token);
 }
 
+// Issue bodies keep their own cursor: the creation time and number of the last issue read. A failed read leaves it in place.
+// `since` filters on update time, never earlier than creation, so every issue opened after the cursor is listed again.
+export async function pollGithubIssues(root: string, state: string, binding: GithubBinding, token: string): Promise<void> {
+	const cursorPath = join(state, "issue-cursor.json");
+	const cursor = await readFile(cursorPath, "utf8").then(
+		(text) => JSON.parse(text) as { number: number; createdAt: string },
+		() => ({ number: 0, createdAt: binding.connectedAt }),
+	);
+	const since = new Date(Date.parse(cursor.createdAt) - 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+	for (let page = 1; ; page++) {
+		const issues = await api<Issue[]>(
+			`/repos/${binding.repo}/issues?state=all&sort=created&direction=asc&since=${encodeURIComponent(since)}&per_page=100&page=${page}`,
+			token,
+		);
+		for (const issue of issues) {
+			const created = Date.parse(issue.created_at);
+			const mark = Date.parse(cursor.createdAt);
+			if (created < mark || (created === mark && issue.number <= cursor.number)) continue;
+			await acceptIssue(root, state, binding, issue, token);
+			cursor.number = issue.number;
+			cursor.createdAt = issue.created_at;
+			const temp = `${cursorPath}.${process.pid}.tmp`;
+			await writeFile(temp, `${JSON.stringify(cursor)}\n`, { flag: "wx", mode: 0o600 });
+			await rename(temp, cursorPath);
+		}
+		if (issues.length < 100) break;
+	}
+}
+
 async function project(root: string, stateDir: string, jwt: string): Promise<void> {
 	const binding = await readBinding(root);
 	if (!binding || originRepository(root, true).toLowerCase() !== binding.repo.toLowerCase()) return;
@@ -404,7 +464,7 @@ async function project(root: string, stateDir: string, jwt: string): Promise<voi
 		const token = await installationToken(binding.repo, jwt); // a token scoped to this installed repository only
 		const claimsDir = join(state, "claims");
 		for (const entry of await readdir(claimsDir)) {
-			if (!/^\d+\.json$/.test(entry)) continue;
+			if (!entry.endsWith(".json") || claimId(entry.slice(0, -5)) === undefined) continue;
 			const claim = JSON.parse(await readFile(join(claimsDir, entry), "utf8")) as GithubClaim;
 			if (claim.repo.toLowerCase() === binding.repo.toLowerCase()) await reconcile(root, state, claim, token);
 		}
@@ -431,6 +491,7 @@ async function project(root: string, stateDir: string, jwt: string): Promise<voi
 			}
 			if (comments.length < 100) break;
 		}
+		await pollGithubIssues(root, state, binding, token);
 	} finally {
 		await rm(lock, { force: true });
 	}
