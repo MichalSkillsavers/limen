@@ -25,7 +25,7 @@
 
 ## NOW
 
-- `F756-feature-decision-spec` (🟠 ACTIVE): two-team group proposes Decision/Effect/Evidence/Open fields and one HTML sample; no live map edits, no code landing.
+- `F757-feature-timeline` (🟠 ACTIVE): two-team group cuts the F756 panel to a timeline graph with detail one click away; screenshots justify each cut; no live map edits, no code landing.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
 ## NEXT
@@ -42,6 +42,7 @@
 
 ## PROVEN
 
+- `F756-feature-decision-spec` (🟢 PROVEN): decision fields belong in the map feature file front matter (`decision`, `touches`, `open`, evidence); group closed, branches kept unmerged.
 - `F755-herdr-shows-running-and-finished` (🟢 PROVEN): finished job tabs close with a logged result; running tabs read `· running`; coordinator title shows running and finished counts. Full check 568/568; live tab closed 1.8 s after finish.
 - `F754-picture-sees-what-it-cites` (🟢 PROVEN): tick counts feature and journey sources; dry-run always prints; build warns `source.missing`; place panel lists touching features and journeys. Load-only timing failures passed alone on main and merge.
 - `F753-readme-is-scannable` (🟢 PROVEN): README has a contents list, headings, tables, steps, and a grouped command reference; facts and commands unchanged.
