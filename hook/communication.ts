@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { formatDrift, inheritFile, listDrift, readOptional } from "../src/project/inherit.ts";
+import { planningSource, privatePlanningGuidance, recordedPlanningSource } from "../src/project/planning.ts";
 import { assistantStopReason } from "../src/runtime/stream.ts";
 
 const CONTEXT_TYPE = "limen-project-context";
@@ -83,6 +84,7 @@ function isWakePrompt(prompt: string | undefined): boolean {
 
 function guidancePrompt(cwd: string, job: boolean): string {
 	const parts: string[] = [];
+	if (privatePlanning(cwd, job)) parts.push(privatePlanningGuidance(cwd));
 	if (!job) {
 		const shop = readInheritedAgents(cwd);
 		if (shop) parts.push(shop);
@@ -126,11 +128,12 @@ function turnCue(cwd: string, job: boolean, wake: boolean, lastTouch: string | u
 	if (job) {
 		const ticket = jobTicket(cwd);
 		if (ticket) lines.push(`Ticket: ${ticket}`);
+		const prefix = privatePlanning(cwd, job) ? `${cwd}/` : "";
 		if (readOptional(join(cwd, "spec/vision.md")) !== undefined) {
-			lines.push("Vision (read-only): `spec/vision.md` — durable intent. Load it before choosing or starting work.");
+			lines.push(`Vision (read-only): \`${prefix}spec/vision.md\` — durable intent. Load it before choosing or starting work.`);
 		}
 		if (readOptional(join(cwd, "spec/build.md")) !== undefined) {
-			lines.push("Board (read-only): `spec/build.md` — consult before reporting work; do not edit.");
+			lines.push(`Board (read-only): \`${prefix}spec/build.md\` — consult before reporting work; do not edit.`);
 		}
 	}
 	lines.push(REPLY_RULES);
@@ -146,6 +149,11 @@ function turnCue(cwd: string, job: boolean, wake: boolean, lastTouch: string | u
 		if (board) lines.push(board);
 	}
 	return ["<limen-project-context>", ...lines, "</limen-project-context>"].join("\n\n");
+}
+
+function privatePlanning(root: string, job: boolean): boolean {
+	const id = process.env.LIMEN_JOB_ID;
+	return (job && id ? recordedPlanningSource(join(root, ".limen/jobs", id)) : planningSource(root)) === "private";
 }
 
 function readRegister(cwd: string): string {

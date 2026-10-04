@@ -1,11 +1,69 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import fs, { existsSync } from "node:fs";
-import { access, chmod, mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { defaultFakePi, git, limen, limenWithEnv, limenWithInput, limenWithSession, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
+
+test("planning source is persistent, defaults to committed, and private ordinary descendants keep canonical pointers", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	assert.equal(limen(scratch, "planning").stdout.trim(), "committed");
+	assert.equal(limen(scratch, "planning", "invalid").status, 1);
+	assert.equal(limen(scratch, "planning", "private").stdout.trim(), "private");
+	assert.equal(limen(scratch, "planning").stdout.trim(), "private");
+	assert.equal(await readFile(`${scratch.root}/.limen/planning-source`, "utf8"), "private\n");
+	const ticket = "spec/features/active/F001-private/ticket.md";
+	await mkdir(`${scratch.root}/spec/features/active/F001-private`, { recursive: true });
+	await writeFile(`${scratch.root}/${ticket}`, "PRIVATE TICKET CONTENT\n");
+	await writeFile(`${scratch.root}/.gitignore`, "/spec/\n/.limen/\n");
+	git(scratch.root, "add", ".");
+	git(scratch.root, "commit", "-m", "ignore private planning");
+	const input = `Read the ticket. Ticket: ${ticket}\n`;
+	const launched = limenWithInput(scratch, input, "spawn", "--task-file", "-", "--engine", "pi", "--detached");
+	assert.equal(launched.status, 0, launched.stderr);
+	const id = onlyJobId(launched.stdout);
+	await waitForState(scratch.root, id, "done");
+	const job = `${scratch.root}/.limen/jobs/${id}`;
+	const worktree = (await readFile(`${job}/worktree`, "utf8")).trim();
+	assert.equal(await readFile(`${job}/task.md`, "utf8"), `Read the ticket. Ticket: ${scratch.root}/${ticket}\n`);
+	assert.equal(await readFile(`${job}/planning-source`, "utf8"), "private\n");
+	assert.equal(existsSync(`${worktree}/spec`), false);
+	assert.equal(git(scratch.root, "ls-tree", "-r", "--name-only", "HEAD", "--", "spec"), "");
+	assert.equal(limen(scratch, "planning", "committed").status, 0);
+	const env = { LIMEN_JOB: "1", LIMEN_JOB_ID: id, LIMEN_CONTEXT_ROOT: scratch.root };
+	const member = { ...scratch, root: worktree };
+	const child = limenWithEnv(member, env, "spawn", `Next slice. Ticket: ${ticket}`, "--detached");
+	assert.equal(child.status, 0, child.stderr);
+	const childId = onlyJobId(child.stdout);
+	await waitForState(scratch.root, childId, "done");
+	assert.equal(await readFile(`${scratch.root}/.limen/jobs/${childId}/planning-source`, "utf8"), "private\n");
+	assert.ok((await readFile(`${scratch.root}/.limen/jobs/${childId}/task.md`, "utf8")).includes(`Ticket: ${scratch.root}/${ticket}`));
+	assert.equal(existsSync(`${worktree}/.limen/jobs`), false);
+});
+
+test("private spawn rejects missing, unreadable, traversal and symlink ticket escapes before publication", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	assert.equal(limen(scratch, "planning", "private").status, 0);
+	const launch = (ticket: string) => limen(scratch, "spawn", `Read. Ticket: ${ticket}`, "--detached");
+	assert.equal(launch("spec/missing.md").status, 1);
+	await writeFile(`${scratch.root}/spec/blocked.md`, "blocked\n", { mode: 0o000 });
+	assert.match(launch("spec/blocked.md").stderr, /not readable/);
+	await writeFile(`${scratch.root}/../outside.md`, "outside\n");
+	await symlink(`${scratch.root}/../outside.md`, `${scratch.root}/spec/escape.md`);
+	for (const ticket of ["spec/escape.md", "../outside.md", `${scratch.root}/../outside.md`, `${scratch.root}/../outside.md/../repo/spec/vision.md`]) {
+		const result = launch(ticket);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /canonical root/);
+	}
+	assert.deepEqual(await readdir(`${scratch.root}/.limen/jobs`).catch(() => []), []);
+	assert.equal(git(scratch.root, "worktree", "list", "--porcelain").split("worktree ").length, 2);
+});
 
 test("spawn creates isolated branch, canonical record, defaults to omp, and resumes its worktree", async (context) => {
 	const scratch = await scratchRepo();

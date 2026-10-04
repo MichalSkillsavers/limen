@@ -55,6 +55,8 @@ You can ask the agent to help:
 
 `limen init` preserves existing specs. The repository must have at least one commit before a worker starts.
 
+Planning is committed by default. To keep planning private in the canonical project root, run `limen planning private`; `limen planning` shows the persisted choice. Jobs read absolute canonical pointers without copying planning into worktrees. Use `limen planning committed` to restore the default for future jobs.
+
 To update Limen, pull the package clone and use `/reload` in the agent session.
 All projects on that computer use the same installed package.
 

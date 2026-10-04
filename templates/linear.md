@@ -38,12 +38,12 @@ Mirror on state change only — created, activated, review filed, landed, droppe
 
 ## Rituals
 
-Three rituals pin the lifecycle so no step gets skipped. Each is the shop manual's own sequence with the mirror as its conditional last step.
+Three rituals pin the lifecycle so no step gets skipped. Each is the shop manual's own sequence with the mirror as its conditional last step. Planning commits below apply only when `limen planning` reports `committed`. In `private` mode, keep planning changes in the canonical project root without copying, linking, staging or committing them; workers receive absolute canonical pointers. This does not authorize publishing private planning through the mirror.
 
 ### Activate (a feature leaves the backlog)
 
 1. Find `spec/features/planned/FNNN-<slug>/` and read its `ticket.md`. If the folder is missing or the ticket is not executable as written, stop and say what's wrong.
-2. Move the whole folder to `spec/features/active/`, update `spec/build.md` (🟠 ACTIVE, NOW/NEXT) in the same change, and commit — workers see only what is committed.
+2. Move the whole folder to `spec/features/active/`, update `spec/build.md` (🟠 ACTIVE, NOW/NEXT) in the same change, and, in committed mode, commit — workers then see the committed files.
 3. Print the spawn command ready to run: short coordinator instruction, `--label "FNNN <short name>"`, `Ticket:` pointing at the active folder. Do not spawn it unless asked in the same breath.
 4. Mirror, if on: in the configured team/project, set the issue titled `FNNN:` to the **started**-type state (create it from the ticket first if it doesn't exist yet).
 

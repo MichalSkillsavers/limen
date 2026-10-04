@@ -31,6 +31,50 @@ function worktreeFor(root: string, id: string): string {
 	return line.slice("worktree ".length);
 }
 
+test("private continuation retains source and canonical ticket even after a setting change and checkout restoration", async (context) => {
+	const scratch = await scratchRepo(continuingFakePi);
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	assert.equal(limen(scratch, "planning", "private").status, 0);
+	const ticket = "spec/features/active/F001-private/ticket.md";
+	await mkdir(`${scratch.root}/spec/features/active/F001-private`, { recursive: true });
+	await writeFile(`${scratch.root}/${ticket}`, "private ticket\n");
+	await writeFile(`${scratch.root}/.gitignore`, "/spec/\n/.limen/\n");
+	git(scratch.root, "add", ".");
+	git(scratch.root, "commit", "-m", "ignore planning");
+	const first = limen(scratch, "spawn", `Read canonical planning. Ticket: ${ticket}`, "--engine", "pi", "--detached");
+	assert.equal(first.status, 0, first.stderr);
+	const parent = onlyJobId(first.stdout);
+	await waitForState(scratch.root, parent, "done");
+	assert.equal(limen(scratch, "planning", "committed").status, 0);
+	const parentJob = `${scratch.root}/.limen/jobs/${parent}`;
+	const tree = (await readFile(`${parentJob}/worktree`, "utf8")).trim();
+	assert.equal(limen(scratch, "prune").status, 0);
+	assert.equal(existsSync(tree), false);
+	const resumed = limen(scratch, "continue", parent, "Check the next seam", "--detached");
+	assert.equal(resumed.status, 0, resumed.stderr);
+	const id = onlyJobId(resumed.stdout);
+	await waitForState(scratch.root, id, "done");
+	const job = `${scratch.root}/.limen/jobs/${id}`;
+	assert.equal(await readFile(`${job}/planning-source`, "utf8"), "private\n");
+	const task = `Check the next seam\n\nTicket: ${scratch.root}/${ticket}`;
+	assert.equal(await readFile(`${job}/task.md`, "utf8"), `${task}\n`);
+	const argv = JSON.parse(await readFile(`${tree}/pi-args.json`, "utf8")) as string[];
+	assert.equal(argv[argv.indexOf("--continue") + 1], task);
+	assert.equal(existsSync(`${tree}/spec`), false);
+	const env = { LIMEN_JOB: "1", LIMEN_JOB_ID: id, LIMEN_CONTEXT_ROOT: scratch.root };
+	const next = limenWithEnv({ ...scratch, root: tree }, env, "continue", id, "Check once more", "--detached");
+	assert.equal(next.status, 0, next.stderr);
+	const nextId = onlyJobId(next.stdout);
+	await waitForState(scratch.root, nextId, "done");
+	assert.equal(await readFile(`${scratch.root}/.limen/jobs/${nextId}/planning-source`, "utf8"), "private\n");
+	const before = await readdir(`${scratch.root}/.limen/jobs`);
+	await rm(`${scratch.root}/${ticket}`);
+	const missing = limen(scratch, "continue", nextId, "Check missing ticket", "--detached");
+	assert.equal(missing.status, 1);
+	assert.deepEqual(await readdir(`${scratch.root}/.limen/jobs`), before);
+});
+
 test("continue resumes a finished job in its own session and links the record", async (context) => {
 	const scratch = await scratchRepo(continuingFakePi);
 	context.after(scratch.cleanup);
@@ -186,6 +230,43 @@ test("continue refuses a running job or missing transcript without writing recor
 	assert.match(pruned.stderr, /has no session transcript to continue/);
 	assert.equal(existsSync((await readFile(join(scratch.root, ".limen/jobs", parent, "worktree"), "utf8")).trim()), false);
 	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), before, "refusals must not create job records");
+});
+
+test("private workspace descendants retain the repository route through continuation", async (context) => {
+	const workspace = await scratchWorkspace(continuingFakePi);
+	context.after(workspace.cleanup);
+	assert.equal(limen(workspace, "workspace", "init").status, 0);
+	assert.equal(limen(workspace, "planning", "private").status, 0);
+	const ticket = "spec/private-ticket.md";
+	await writeFile(`${workspace.root}/${ticket}`, "private workspace ticket\n");
+	const first = limen(workspace, "spawn", "--repo", "api", `Read. Ticket: ${ticket}`, "--detached");
+	assert.equal(first.status, 0, first.stderr);
+	const parent = onlyJobId(first.stdout);
+	await waitForState(workspace.root, parent, "done");
+	const tree = (await readFile(`${workspace.root}/.limen/jobs/${parent}/worktree`, "utf8")).trim();
+	assert.equal(limen(workspace, "planning", "committed").status, 0);
+	const child = limenWithEnv(
+		{ ...workspace, root: tree },
+		{ LIMEN_JOB: "1", LIMEN_JOB_ID: parent, LIMEN_CONTEXT_ROOT: workspace.root },
+		"spawn",
+		`Read again. Ticket: ${ticket}`,
+		"--detached",
+	);
+	assert.equal(child.status, 0, child.stderr);
+	const childId = onlyJobId(child.stdout);
+	await waitForState(workspace.root, childId, "done");
+	const childJob = `${workspace.root}/.limen/jobs/${childId}`;
+	assert.equal(await readFile(`${childJob}/repo`, "utf8"), "api\n");
+	assert.equal(await readFile(`${childJob}/planning-source`, "utf8"), "private\n");
+	assert.equal(limen(workspace, "prune").status, 0);
+	const continued = limen(workspace, "continue", childId, "Check once more", "--detached");
+	assert.equal(continued.status, 0, continued.stderr);
+	const id = onlyJobId(continued.stdout);
+	await waitForState(workspace.root, id, "done");
+	assert.equal(await readFile(`${workspace.root}/.limen/jobs/${id}/planning-source`, "utf8"), "private\n");
+	assert.ok((await readFile(`${workspace.root}/.limen/jobs/${id}/task.md`, "utf8")).includes(`Ticket: ${workspace.root}/${ticket}`));
+	const restored = (await readFile(`${workspace.root}/.limen/jobs/${id}/worktree`, "utf8")).trim();
+	assert.equal(existsSync(`${restored}/spec`), false);
 });
 
 for (const pruned of [false, true]) {

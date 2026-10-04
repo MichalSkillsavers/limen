@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import groupPeer from "../hook/group-peer.ts";
@@ -47,12 +47,13 @@ fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, 'session.jsonl'), '{"type":"session","id":"fake"}\\n');
 console.log(JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'fixture completed' }] } }));
 `;
-async function fixture(): Promise<Scratch & { feature: string }> {
+async function fixture(privatePacket = false): Promise<Scratch & { feature: string }> {
 	const scratch = await scratchRepo(fake);
 	assert.equal(limen(scratch, "init").status, 0);
 	const feature = "spec/features/active/F001-example";
 	await mkdir(`${scratch.root}/${feature}/group/teams`, { recursive: true });
 	for (const path of ["ticket.md", "group/brief.md", "group/teams/team-1.md", "group/teams/team-2.md"]) await writeFile(`${scratch.root}/${feature}/${path}`, `# ${path}\n`);
+	if (privatePacket) await writeFile(`${scratch.root}/.gitignore`, "/spec/\n/.limen/\n");
 	git(scratch.root, "add", ".");
 	git(scratch.root, "commit", "-m", "group packet");
 	await mkdir(`${scratch.root}/.limen/group-leads`, { recursive: true });
@@ -91,6 +92,69 @@ async function launch(scratch: Scratch, added: NodeJS.ProcessEnv, ...args: strin
 	child.once("close", (code) => result.resolve(code ?? 1));
 	return { status: await result.promise, stdout, stderr };
 }
+
+test("private planning admits an ignored packet without copying it, and pins descendants and continuations", async (context) => {
+	const scratch = await fixture(true);
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "planning", "private").status, 0);
+	await writeFile(`${scratch.root}/${scratch.feature}/group/teams/team-1.md`, "PRIVATE APPROACH CONTENT\n");
+	const run = await activate(scratch);
+	assert.equal(run.planningSource, "private");
+	assert.equal(git(scratch.root, "ls-tree", "-r", "--name-only", "HEAD", "--", "spec"), "");
+	const coordinator = run.members[0];
+	assert.ok(coordinator);
+	const job = `${scratch.root}/.limen/jobs/${coordinator.id}`;
+	const worktree = (await readFile(`${job}/worktree`, "utf8")).trim();
+	assert.equal(existsSync(`${worktree}/spec`), false);
+	const task = await readFile(`${job}/task.md`, "utf8");
+	assert.ok(task.includes(`Ticket: ${scratch.root}/${scratch.feature}/ticket.md`));
+	assert.ok(task.includes(`Brief: ${scratch.root}/${scratch.feature}/group/brief.md`));
+	assert.ok(task.includes(`Approach note: ${scratch.root}/${scratch.feature}/group/teams/team-1.md`));
+	assert.doesNotMatch(task, /PRIVATE APPROACH CONTENT/);
+	assert.equal(limen(scratch, "planning", "committed").status, 0);
+	const repeat = limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings);
+	assert.equal(repeat.status, 0, repeat.stderr);
+	assert.equal(onlyJobId(repeat.stdout), run.id);
+	run.workersPerTeam = 2;
+	await saveJson(`${groupPath(run)}/run.json`, run);
+	const child = limenWithEnv({ ...scratch, root: worktree }, environment(run), "spawn", `Read canonical packet. Ticket: ${scratch.feature}/ticket.md`, ...workerSettings);
+	assert.equal(child.status, 0, child.stderr);
+	const childId = onlyJobId(child.stdout);
+	await waitForState(scratch.root, childId, "done");
+	const childJob = `${scratch.root}/.limen/jobs/${childId}`;
+	assert.equal((await readFile(`${childJob}/planning-source`, "utf8")).trim(), "private");
+	assert.ok((await readFile(`${childJob}/task.md`, "utf8")).includes(`Ticket: ${scratch.root}/${scratch.feature}/ticket.md`));
+	const childTree = (await readFile(`${childJob}/worktree`, "utf8")).trim();
+	assert.equal(existsSync(`${childTree}/spec`), false);
+	const continued = limenWithEnv(scratch, lead, "continue", childId, "Check again", ...workerSettings);
+	assert.equal(continued.status, 0, continued.stderr);
+	const continuedId = onlyJobId(continued.stdout);
+	await waitForState(scratch.root, continuedId, "done");
+	assert.equal((await readFile(`${scratch.root}/.limen/jobs/${continuedId}/planning-source`, "utf8")).trim(), "private");
+	assert.ok((await readFile(`${scratch.root}/.limen/jobs/${continuedId}/task.md`, "utf8")).includes(`Ticket: ${scratch.root}/${scratch.feature}/ticket.md`));
+});
+
+test("private packet failures occur before activation, and default mode still requires committed prerequisites", async (context) => {
+	const scratch = await fixture(true);
+	context.after(scratch.cleanup);
+	const start = (feature = scratch.feature) => limenWithEnv(scratch, lead, "group", "start", feature, ...settings);
+	assert.match(start().stderr, /commit group prerequisite/);
+	assert.equal(limen(scratch, "planning", "private").status, 0);
+	const note = `${scratch.root}/${scratch.feature}/group/teams/team-2.md`;
+	await rm(note);
+	assert.equal(start().status, 1);
+	await writeFile(note, "unreadable\n", { mode: 0o000 });
+	assert.match(start().stderr, /not readable/);
+	await chmod(note, 0o600);
+	await rm(note);
+	await writeFile(`${scratch.root}/../outside.md`, "outside\n");
+	await symlink(`${scratch.root}/../outside.md`, note);
+	assert.match(start().stderr, /escapes canonical root/);
+	assert.match(start(`${scratch.feature}/../F001-example`).stderr, /traversal/);
+	assert.match(start("../outside").stderr, /inside this repository/);
+	assert.equal(existsSync(`${scratch.root}/.limen/groups`), false);
+	assert.deepEqual(await readdir(`${scratch.root}/.limen/jobs`).catch(() => []), []);
+});
 
 test("group start refuses a hosted job and points at the Herdr coordinator lead recipe", async (context) => {
 	const scratch = await fixture();

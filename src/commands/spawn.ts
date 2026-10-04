@@ -24,6 +24,7 @@ import {
 	workspaceRoot,
 	worktreeForBranch,
 } from "../project/git.ts";
+import { inheritedPlanning, planningSource, privatePlanningFile, privatePlanningTask } from "../project/planning.ts";
 import { signalProcessGroup, waitForProcessGroup } from "../runtime/contain.ts";
 import { type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { liveJob } from "../runtime/reap.ts";
@@ -123,11 +124,24 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
 	const coordinatorPane = herdrWakePane(notificationSession);
 	const workspace = group ? undefined : workspaceRoot(cwd);
-	const root = group?.run.root ?? workspace ?? repoRoot(cwd);
+	const currentRoot = workspace ?? repoRoot(cwd);
+	const inherited = group || workspace ? undefined : inheritedPlanning(currentRoot);
+	const root = group?.run.root ?? inherited?.root ?? currentRoot;
+	const source = group ? (group.run.planningSource ?? "committed") : (inherited?.source ?? planningSource(root));
 	if (workspace && !options.repo) throw new Error("workspace spawn requires --repo <immediate-child>");
 	if (!workspace && options.repo) throw new Error("--repo is available only from a non-Git workspace coordinator");
-	const repository = workspace ? workspaceRepository(root, options.repo ?? "") : root;
-	const task = loaded.raw ? loaded.text : workspace ? workspaceTask(options.task, root, options.repo ?? "") : options.task;
+	const repository = workspace ? workspaceRepository(root, options.repo ?? "") : group ? root : currentRoot;
+	const repositoryName = options.repo ?? inherited?.repo;
+	let task = loaded.raw ? loaded.text : workspace ? workspaceTask(options.task, root, options.repo ?? "") : options.task;
+	if (source === "private") task = await privatePlanningTask(root, task);
+	let privatePacket = "";
+	if (group && source === "private") {
+		const feature = group.run.feature;
+		const ticket = await privatePlanningFile(root, `${feature}/ticket.md`);
+		const brief = await privatePlanningFile(root, `${feature}/group/brief.md`);
+		const note = await privatePlanningFile(root, `${feature}/group/teams/${group.team}.md`);
+		privatePacket = `Ticket: ${ticket}\nBrief: ${brief}\nApproach note: ${note}`;
+	}
 	const role = options.review ? "reviewer" : (group?.role ?? options.role ?? "worker");
 	if (options.base && !/^[0-9a-f]{40}$/.test(options.base)) throw new Error("--base requires a full commit SHA");
 	if (options.head && !/^[0-9a-f]{40}$/.test(options.head)) throw new Error("--head requires a full commit SHA");
@@ -153,13 +167,14 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		branch,
 		review: options.review,
 		jobsRoot,
-		...(workspace ? { repo: options.repo ?? "" } : {}),
+		...(repositoryName ? { repo: repositoryName } : {}),
 		...(options.branch ? { requestedBranch: options.branch } : {}),
 	});
 	if (options.head && branchCommit(repository, branch) !== options.head) throw new Error("pinned review head moved before spawn");
 	const baseCommit = plan.kind === "add-new" ? headCommit(repository) : branchCommit(repository, branch);
-	for (const [, ticket] of task.matchAll(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g))
-		if (ticket && !commitHasFile(repository, baseCommit, ticket)) throw new Error(`ticket ${ticket} is missing from the base commit`);
+	if (source === "committed")
+		for (const [, ticket] of task.matchAll(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g))
+			if (ticket && !commitHasFile(repository, baseCommit, ticket)) throw new Error(`ticket ${ticket} is missing from the base commit`);
 	const member = group ? await claimMember(group.run, group.team, group.role, id) : undefined;
 	const jobDir = `${jobsRoot}/${id}`;
 	const publishing = `${dirname(jobsRoot)}/.publishing-${id}`;
@@ -168,6 +183,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		await Promise.all([
 			writeFile(`${publishing}/started-at`, `${new Date().toISOString()}\n`, { flag: "wx", flush: true }),
 			writeFile(`${publishing}/worktree`, `${plan.path}\n`, { flag: "wx", flush: true }),
+			writeFile(`${publishing}/planning-source`, `${source}\n`, { flag: "wx", flush: true }),
 			...(group && member
 				? [
 						writeFile(`${publishing}/group`, `${group.run.id}\n`, { flag: "wx", flush: true }),
@@ -184,18 +200,18 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	let worktree: string;
 	try {
 		worktree = executeWorktree(repository, plan);
-		await pruneFinishedWorktrees(root, [worktree]).catch(() => {});
+		await pruneFinishedWorktrees(root, [worktree, currentRoot]).catch(() => {});
 		const candidate = options.review ? branchCommit(repository, branch) : undefined;
 		const base = options.base ?? headCommit(worktree);
 		await mkdir(`${jobDir}/notify/subscribers`, { recursive: true });
-		const taskBody = loaded.raw ? loaded.bytes : candidate ? `${task.trim()}\n\nCandidate commit: ${candidate}.\n` : `${task.trim()}\n`;
+		const taskBody = loaded.raw && source === "committed" ? loaded.bytes : candidate ? `${task.trim()}\n\nCandidate commit: ${candidate}.\n` : `${task.trim()}\n`;
 		await Promise.all([
 			writeFile(`${jobDir}/task.md`, taskBody, { flag: "wx", flush: true }),
 			...(candidate ? [writeFile(`${jobDir}/candidate`, `${candidate}\n`, { flag: "wx", flush: true })] : []),
 			writeFile(`${jobDir}/label`, `${options.label}\n`, { flag: "wx", flush: true }),
 			writeFile(`${jobDir}/branch`, `${branch}\n`, { flag: "wx", flush: true }),
 			writeFile(`${jobDir}/base`, `${base}\n`, { flag: "wx", flush: true }),
-			...(workspace ? [writeFile(`${jobDir}/repo`, `${options.repo}\n`, { flag: "wx", flush: true })] : []),
+			...(repositoryName ? [writeFile(`${jobDir}/repo`, `${repositoryName}\n`, { flag: "wx", flush: true })] : []),
 			writeFile(`${jobDir}/tool-calls`, "0\n", { flag: "wx", flush: true }),
 			writeFile(`${jobDir}/last-tool`, "", { flag: "wx", flush: true }),
 			writeFile(`${jobDir}/activity`, "think\n", { flag: "wx", flush: true }),
@@ -216,10 +232,10 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		]);
 		if (group && member) {
 			const guidance = await readFile(`${PACKAGE_ROOT}/templates/group-member.md`, "utf8");
-			const hypothesis = await readFile(`${root}/${group.run.feature}/group/teams/${group.team}.md`, "utf8");
+			const approach = privatePacket || `Approach note:\n${await readFile(`${root}/${group.run.feature}/group/teams/${group.team}.md`, "utf8")}`;
 			await writeFile(
 				`${jobDir}/task.md`,
-				`${guidance}\nCanonical root: ${root}\nGroup: ${group.run.id}\nTeam: ${group.team}\nFeature: ${group.run.feature}\n${memberRoute(group.run, group.team)}\nApproach note:\n${hypothesis}\n\n${taskBody}`,
+				`${guidance}\nCanonical root: ${root}\nGroup: ${group.run.id}\nTeam: ${group.team}\nFeature: ${group.run.feature}\n${memberRoute(group.run, group.team)}\n${approach}\n\n${taskBody}`,
 			);
 		}
 		await writeFile(`${jobDir}/finish-webhook-author`, `${captureFinishAuthor(cwd, loaded.text, Boolean(workspace))}\n`, { flag: "wx", flush: true });

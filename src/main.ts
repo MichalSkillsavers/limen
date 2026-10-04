@@ -9,6 +9,7 @@ import { landCommand } from "./commands/land.ts";
 import { linearCommand } from "./commands/linear.ts";
 import { openCommand } from "./commands/open.ts";
 import { pictureCommand } from "./commands/picture.ts";
+import { planningCommand } from "./commands/planning-source.ts";
 import { pruneCommand } from "./commands/prune.ts";
 import { spawnCommand } from "./commands/spawn.ts";
 import { statusCommand } from "./commands/status.ts";
@@ -25,6 +26,7 @@ type Command = (args: readonly string[], cwd: string) => Promise<void>;
 const COMMANDS = {
 	init: initCommand,
 	workspace: workspaceCommand,
+	planning: planningCommand,
 	github: githubCommand,
 	group: groupCommand,
 	spawn: spawnCommand,
@@ -48,6 +50,7 @@ const COMMANDS = {
 } as const satisfies Record<
 	| "init"
 	| "workspace"
+	| "planning"
 	| "spawn"
 	| "continue"
 	| "github"
@@ -75,6 +78,7 @@ usage:
   limen init
   limen init --drop-leftovers
   limen workspace init
+  limen planning [committed|private]                # inspect or persist the project planning source; default committed
   limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
   limen group status|publish|wait|stop|close [GROUP-ID]  # members inherit verified membership; lead supplies ID
   limen spawn "Implement FNNN: <outcome>. Start by writing <slice>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--engine pi|omp] [--model X] [--branch B] [--role NAME] [--timeout 20m; default 90m] [--task-file F|-] [--prepare CMD]

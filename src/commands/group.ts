@@ -9,6 +9,7 @@ import { groupIdentity, groupLock, groupPath, leadSession, memberLive, readRun, 
 import { acceptBatch, acceptTransport, groupEvents, publishEvent, syncLifecycle } from "../job/group-events.ts";
 import { parseDuration } from "../job/job.ts";
 import { cleanWorktree, commitHasFile, headCommit, repoRoot } from "../project/git.ts";
+import { planningSource, privatePlanningFile } from "../project/planning.ts";
 import { processAlive } from "../runtime/contain.ts";
 import { preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { spawnCommand } from "./spawn.ts";
@@ -63,6 +64,9 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	const root = repoRoot(cwd);
 	const feature = relative(root, resolve(cwd, featureArgument));
 	if (feature.startsWith("..") || !feature.startsWith("spec/features/")) throw new Error("feature must be inside this repository's spec/features");
+	const priorRun = newRun ? undefined : (await runs(root)).filter((run) => run.feature === feature).at(-1);
+	const source = priorRun ? (priorRun.planningSource ?? "committed") : planningSource(root);
+	if (source === "private" && featureArgument.split(/[\\/]/).includes("..")) throw new Error("private planning feature path must not contain traversal");
 	const lead = (await leadSession(root)) ?? "";
 	if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(lead))
 		throw new Error(
@@ -87,8 +91,11 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	if (timeout <= 60_000 || workerTimeoutMs <= 0) throw new Error("group timeout must leave a 60-second wrap-up reserve");
 	if (mode === "tab" && !herdrAvailable()) throw new Error("hosted group requires Herdr");
 	for (const path of [`${feature}/ticket.md`, `${feature}/group/brief.md`, ...teams.map((team) => `${feature}/group/teams/${team}.md`)]) {
-		await readFile(`${root}/${path}`, "utf8");
-		if (!commitHasFile(root, headCommit(root), path)) throw new Error(`commit group prerequisite ${path} before starting`);
+		if (source === "private") await privatePlanningFile(root, path);
+		else {
+			await readFile(`${root}/${path}`, "utf8");
+			if (!commitHasFile(root, headCommit(root), path)) throw new Error(`commit group prerequisite ${path} before starting`);
+		}
 	}
 	preflightEngine(profile, model, provider);
 	const cabinet = `${root}/.limen/groups`;
@@ -103,6 +110,7 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 			id: randomUUID(),
 			root,
 			feature,
+			planningSource: source,
 			lead,
 			startedAt: Date.now(),
 			teams,
@@ -130,7 +138,7 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 			try {
 				await spawnCommand(
 					[
-						`Pursue the feature with your team. Ticket: ${feature}/ticket.md`,
+						`Pursue the feature with your team. Ticket: ${source === "private" ? `${root}/` : ""}${feature}/ticket.md`,
 						"--label",
 						`${feature.split("/").at(-1)} ${team} coordinator`,
 						"--engine",

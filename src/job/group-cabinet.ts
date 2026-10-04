@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { hostedAgentStatus } from "../integrations/herdr.ts";
 import { limenRoot } from "../project/git.ts";
+import type { PlanningSource } from "../project/planning.ts";
 import { processAlive, processInfo } from "../runtime/contain.ts";
 
 export type GroupMember = { id: string; team: string; role: "coordinator" | "worker"; parent?: string; deadline: number };
@@ -12,6 +13,7 @@ export type GroupRun = {
 	id: string;
 	root: string;
 	feature: string;
+	planningSource?: PlanningSource;
 	lead: string;
 	startedAt: number;
 	teams: string[];

@@ -5,7 +5,8 @@ import { claimMember, commandRoot, groupIdentity, groupLock, groupPath, jobMembe
 import { syncLifecycle } from "../job/group-events.ts";
 import { resolveJob } from "../job/lookup.ts";
 import { atomicWrite, finalizeJob } from "../job/record.ts";
-import { addBranchWorktree, branchExists, headCommit, workspaceRepository } from "../project/git.ts";
+import { addBranchWorktree, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
+import { inheritedPlanning, privatePlanningFile, privatePlanningTask, recordedPlanningSource } from "../project/planning.ts";
 import { engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { launchWrapper } from "../runtime/wrapper.ts";
 import {
@@ -59,8 +60,9 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	if (tab && !herdr) throw new Error("hosted continue requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
 	const chosenModel = model ?? (process.env[review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
 
-	const root = await commandRoot(cwd);
-	const { id: parentId, jobDir: parentDir } = await resolveJob(cwd, query);
+	const inherited = workspaceRoot(cwd) ? undefined : inheritedPlanning(repoRoot(cwd));
+	const root = inherited?.root ?? (await commandRoot(cwd));
+	const { id: parentId, jobDir: parentDir } = await resolveJob(root, query);
 	const membership = await jobMembership(parentDir);
 	if (membership) {
 		if (membership.member?.role === "coordinator") throw new Error("group coordinator continuation is not supported; inspect and stop before --new-run");
@@ -99,6 +101,20 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	const profile = engineProfile(parentEngine);
 	preflightEngine(profile, chosenModel, provider);
 
+	const source = recordedPlanningSource(parentDir);
+	let followUp = instruction;
+	if (source === "private") {
+		const parentTask = await readFile(`${parentDir}/task.md`, "utf8");
+		const ticket = parentTask.match(/\bTicket:\s+(\S+)/)?.[1];
+		if (ticket && !/\bTicket:/.test(followUp)) followUp += `\n\nTicket: ${ticket}`;
+		followUp = await privatePlanningTask(root, followUp);
+		if (membership?.member) {
+			const feature = membership.run.feature;
+			const brief = await privatePlanningFile(root, `${feature}/group/brief.md`);
+			const note = await privatePlanningFile(root, `${feature}/group/teams/${membership.member.team}.md`);
+			followUp += `\nBrief: ${brief}\nApproach note: ${note}`;
+		}
+	}
 	const finalLabel = label ?? `${(await text(`${parentDir}/label`)) || parentId} · continue`;
 	const id = makeJobId(finalLabel);
 	const jobDir = `${root}/.limen/jobs/${id}`;
@@ -118,7 +134,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
 	const coordinatorPane = herdrWakePane(notificationSession);
 	await Promise.all([
-		writeFile(`${jobDir}/task.md`, `${instruction}\n`, { flag: "wx", flush: true }),
+		writeFile(`${jobDir}/task.md`, `${followUp}\n`, { flag: "wx", flush: true }),
 		writeFile(`${jobDir}/label`, `${finalLabel}\n`, { flag: "wx", flush: true }),
 		writeFile(`${jobDir}/branch`, `${branch}\n`, { flag: "wx", flush: true }),
 		writeFile(`${jobDir}/worktree`, `${worktree}\n`, { flag: "wx", flush: true }),
@@ -131,12 +147,13 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 		writeFile(`${jobDir}/log`, "", { flag: "wx", flush: true }),
 		writeFile(`${jobDir}/role`, `${role}\n`, { flag: "wx", flush: true }),
 		writeFile(`${jobDir}/engine`, `${profile.id}\n`, { flag: "wx", flush: true }),
+		writeFile(`${jobDir}/planning-source`, `${source}\n`, { flag: "wx", flush: true }),
 		...(repo ? [writeFile(`${jobDir}/repo`, `${repo}\n`, { flag: "wx", flush: true })] : []),
 		...(hosted
 			? [
 					writeFile(`${jobDir}/hosted`, HOSTED_NOTE, { flag: "wx", flush: true }),
 					writeFile(`${jobDir}/agent-name`, `${hostedAgentName(id)}\n`, { flag: "wx", flush: true }),
-					writeFile(`${jobDir}/continue`, `${instruction}\n`, { flag: "wx", flush: true }),
+					writeFile(`${jobDir}/continue`, `${followUp}\n`, { flag: "wx", flush: true }),
 				]
 			: []),
 		...(!membership && notificationSession
