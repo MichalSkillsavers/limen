@@ -107,9 +107,9 @@ usage:
   limen picture watch [off | on [--branch B] [--dir D] --engine E --provider P --model M --thinking T]  # per-project, off by default: one tick when the top branch moves
   limen github ensure [registered-root]       # require a live registered Herdr coordinator
   limen github poll                           # run one polling pass as the isolated App user
-  limen github review <root> <comment-id> --engine E --provider P --model M --thinking T  # hosted review for one doorbell claim
-  limen github work <root> <comment-id> --engine E --provider P --model M --thinking T --task "…"  # hosted task for one doorbell claim
-  limen github resolve <root> <comment-id> <handoff-nonce> "answer"  # explicit no-job answer for one doorbell claim
+  limen github review <root> <claim-id> --engine E --provider P --model M --thinking T  # hosted review for one doorbell claim
+  limen github work <root> <claim-id> --engine E --provider P --model M --thinking T --task "…"  # hosted task for one doorbell claim
+  limen github resolve <root> <claim-id> <handoff-nonce> "answer"  # explicit no-job answer for one doorbell claim
 Pass a short coordinator instruction, not $(cat ticket.md). The ticket is a pointer, not the prompt.`;
 export async function main(args: readonly string[], cwd = process.cwd()): Promise<void> {
 	try {

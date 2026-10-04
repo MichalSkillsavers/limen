@@ -92,12 +92,12 @@ Members get their group from their recorded membership. The group lead gives the
 
 ### GitHub comments
 
-Start a hosted review or task for one GitHub comment, or give an answer without a job.
+Start a hosted review or task for one GitHub request, or give an answer without a job. The claim ID is the triggering comment ID, or `issue-<number>` when an issue body carries the request.
 
 ```text
-limen github review <root> <comment-id> --engine E --provider P --model M --thinking T
-limen github work <root> <comment-id> --engine E --provider P --model M --thinking T --task "instruction"
-limen github resolve <root> <comment-id> <handoff-nonce> "no-job answer"
+limen github review <root> <claim-id> --engine E --provider P --model M --thinking T
+limen github work <root> <claim-id> --engine E --provider P --model M --thinking T --task "instruction"
+limen github resolve <root> <claim-id> <handoff-nonce> "no-job answer"
 ```
 
 ## Operator actions
