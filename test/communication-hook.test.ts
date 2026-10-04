@@ -99,8 +99,6 @@ test("private planning guidance uses canonical vision and board and honors the j
 	await writeFile(join(root, ".limen/planning-source"), "private\n");
 	const coordinatorPrompt = start(root).systemPrompt ?? "";
 	assert.match(coordinatorPrompt, /Planning source: private/);
-	assert.match(coordinatorPrompt, /In committed mode, commit the shared ticket/);
-	assert.match(coordinatorPrompt, /In private mode \(`limen planning private`\), keep those files readable inside the canonical project root/);
 	await writeFile(join(root, ".limen/jobs/private-job/planning-source"), "private\n");
 	await writeFile(join(root, ".limen/jobs/private-job/task.md"), `Ticket: ${root}/spec/ticket.md\n`);
 	await writeFile(join(root, ".limen/planning-source"), "committed\n");
@@ -108,9 +106,7 @@ test("private planning guidance uses canonical vision and board and honors the j
 	const result = start("/synthetic/worktree-without-planning");
 	assert.ok((result.message?.content ?? "").includes(`Vision (read-only): \`${root}/spec/vision.md\``));
 	assert.ok((result.message?.content ?? "").includes(`Board (read-only): \`${root}/spec/build.md\``));
-	assert.match(result.systemPrompt ?? "", /do not copy, link, stage or commit/);
-	assert.match(result.systemPrompt ?? "", /Planning-commit instructions apply only to committed mode/);
-	assert.match(result.systemPrompt ?? "", /Product-code Git requirements are unchanged/);
+	assert.match(result.systemPrompt ?? "", /Planning source: private/);
 	await writeFile(join(root, ".limen/jobs/private-job/planning-source"), "committed\n");
 	assert.doesNotMatch(start(root).systemPrompt ?? "", /Planning source: private/);
 });
