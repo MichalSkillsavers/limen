@@ -25,6 +25,7 @@
 
 ## NOW
 
+- `F756-feature-decision-spec` (🟠 ACTIVE): two-team group proposes Decision/Effect/Evidence/Open fields and one HTML sample; no live map edits, no code landing.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
 ## NEXT
