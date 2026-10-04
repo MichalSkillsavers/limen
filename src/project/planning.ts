@@ -2,75 +2,79 @@ import { readFileSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
+/** Where planning files live: committed to Git (the default), or private in the canonical project root. */
 export type PlanningSource = "committed" | "private";
 
-/** The project setting is local cabinet state, never a planning copy. */
+/** The project setting is local cabinet state in `.limen/planning-source`, never a copy of planning files. */
 export function planningSource(root: string): PlanningSource {
-	return readPlanningSource(`${root}/.limen/planning-source`);
+	return parsePlanningSource(readIfPresent(`${root}/.limen/planning-source`)?.trim() ?? "committed");
 }
+
+/** A job keeps the source recorded at spawn, even after the project setting changes. */
 export function recordedPlanningSource(jobDir: string): PlanningSource {
-	return readPlanningSource(`${jobDir}/planning-source`);
+	return parsePlanningSource(readIfPresent(`${jobDir}/planning-source`)?.trim() ?? "committed");
 }
-function readPlanningSource(file: string): PlanningSource {
-	let value: string;
-	try {
-		value = readFileSync(file, "utf8").trim();
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return "committed";
-		throw error;
-	}
-	return parsePlanningSource(value);
-}
+
 export function parsePlanningSource(value: string): PlanningSource {
 	if (value !== "committed" && value !== "private") throw new Error("planning source must be committed or private");
 	return value;
 }
 
-/** A running job keeps its recorded choice even if the project setting changes. */
+/** Inside a job's own worktree, return the canonical root, recorded source, and workspace repository from its job record. */
 export function inheritedPlanning(worktree: string): { root: string; source: PlanningSource; repo?: string } | undefined {
 	const root = process.env.LIMEN_CONTEXT_ROOT;
 	const id = process.env.LIMEN_JOB_ID;
 	if (process.env.LIMEN_JOB !== "1" || !root || !id || !/^[A-Za-z0-9._-]+$/.test(id)) return;
-	const dir = `${root}/.limen/jobs/${id}`;
-	const recordedTree = readFileSync(`${dir}/worktree`, "utf8").trim();
-	if (resolve(recordedTree) !== resolve(worktree)) return;
-	let repo: string | undefined;
-	try {
-		repo = readFileSync(`${dir}/repo`, "utf8").trim();
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
-	return { root, source: recordedPlanningSource(dir), ...(repo ? { repo } : {}) };
+	const jobDir = `${root}/.limen/jobs/${id}`;
+	if (resolve(readFileSync(`${jobDir}/worktree`, "utf8").trim()) !== resolve(worktree)) return;
+	const repo = readIfPresent(`${jobDir}/repo`)?.trim();
+	return { root, source: recordedPlanningSource(jobDir), ...(repo ? { repo } : {}) };
 }
 
-/** Reject both lexical escapes and resolved symlink escapes before reading. */
+/** Return the absolute path of a readable planning file inside the canonical root. Reject `..` and symlink escapes before the read. */
 export async function privatePlanningFile(root: string, path: string): Promise<string> {
 	const absolute = resolve(root, path);
-	const inside = (base: string, file: string): boolean => {
-		const rel = relative(base, file);
-		return Boolean(rel) && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel);
-	};
 	if (path.split(/[\\/]/).includes("..") || !inside(resolve(root), absolute)) throw new Error(`private planning path must be inside canonical root: ${path}`);
 	const canonicalRoot = await realpath(root);
-	const canonicalFile = await realpath(absolute);
-	if (!inside(canonicalRoot, canonicalFile)) throw new Error(`private planning path escapes canonical root: ${path}`);
-	const info = await stat(canonicalFile);
+	const file = await realpath(absolute);
+	if (!inside(canonicalRoot, file)) throw new Error(`private planning path escapes canonical root: ${path}`);
+	const info = await stat(file);
 	if (!info.isFile() || !(info.mode & 0o444)) throw new Error(`private planning file is not readable: ${path}`);
-	await readFile(canonicalFile, "utf8");
+	await readFile(file, "utf8");
 	return absolute;
 }
 
+/** Check each `Ticket:` path in the task and replace it with its absolute path in the canonical root. */
 export async function privatePlanningTask(root: string, task: string): Promise<string> {
 	let result = task;
-	for (const match of task.matchAll(/\bTicket:\s+(\S+)/g)) {
-		const token = match[1] ?? "";
+	for (const [pointer, token = ""] of task.matchAll(/\bTicket:\s+(\S+)/g)) {
 		const path = token.replace(/[.,;:!?)\]'"`]+$/, "");
 		const absolute = await privatePlanningFile(root, path);
-		result = result.replace(match[0], match[0].replace(path, absolute));
+		result = result.replace(pointer, pointer.replace(path, absolute));
 	}
 	return result;
 }
 
+/** System-prompt lines for a session that reads private planning from the canonical root. */
 export function privatePlanningGuidance(root: string): string {
-	return `Planning source: private. Read canonical planning in ${root}; do not copy, link, stage or commit it. Planning-commit instructions apply only to committed mode. Product-code Git requirements are unchanged.\nVision (read-only): ${root}/spec/vision.md\nBoard (read-only): ${root}/spec/build.md\n`;
+	return [
+		`Planning source: private. Read canonical planning in ${root}; do not copy, link, stage or commit it. Planning-commit instructions apply only to committed mode. Product-code Git requirements are unchanged.`,
+		`Vision (read-only): ${root}/spec/vision.md`,
+		`Board (read-only): ${root}/spec/build.md`,
+		"",
+	].join("\n");
+}
+
+function inside(base: string, file: string): boolean {
+	const path = relative(base, file);
+	return path !== "" && path !== ".." && !path.startsWith("../") && !isAbsolute(path);
+}
+
+function readIfPresent(file: string): string | undefined {
+	try {
+		return readFileSync(file, "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+		throw error;
+	}
 }
