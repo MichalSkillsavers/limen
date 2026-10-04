@@ -25,6 +25,7 @@
 
 ## NOW
 
+- `F758-lead-group-step-rings-finish` (🟠 ACTIVE): the interactive lead sends the finish webhook once when a turn writes group synthesis or closes a group; no notice on idle turns; no "land it" when the ticket forbids landing.
 - `F757-feature-timeline` (🟠 ACTIVE): two-team group cuts the F756 panel to a timeline graph with detail one click away; screenshots justify each cut; no live map edits, no code landing.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
 
