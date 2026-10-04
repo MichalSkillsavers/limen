@@ -63,6 +63,14 @@ A completed job does not prove that a feature is finished or that its branch is 
 Workers approve tools automatically and have the same access as your account.
 A Git worktree is not a security sandbox. Read the [security notes](SECURITY.md).
 
+## Picture
+
+Run `limen init` in your project, then ask the coordinator:
+
+> Create a Picture map from the code and specs, and open it in my browser.
+
+See the [Picture guide](docs/picture.md) for navigation and updates.
+
 ## Documentation
 
 | Topic | Guide |
