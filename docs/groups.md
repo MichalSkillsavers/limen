@@ -10,7 +10,9 @@ Ordinary jobs keep their existing spawn, wake, steering and pruning behavior. A 
 
 Do **not** `limen spawn` a hosted "lead" job for this. Hosted jobs set `LIMEN_JOB=1`, so `group-peer` skips lead registration and `limen group start` refuses with guidance back to this pane. Managed team coordinators are created only by `group start`, never by ordinary spawn.
 
-Commit the feature's `ticket.md`, `group/brief.md`, and `group/teams/team-1.md`, `team-2.md`, and so on for the requested team count. The brief states the shared outcome, constraints, distinct starting hypotheses and the lead's synthesis responsibility. Markdown is not executable configuration.
+The default planning source is `committed`: commit the feature's `ticket.md`, `group/brief.md`, and `group/teams/team-1.md`, `team-2.md`, and so on for the requested team count. The brief states the shared outcome, constraints, distinct starting hypotheses and the lead's synthesis responsibility. Markdown is not executable configuration.
+
+For canonical private planning, run `limen planning private` in the project root before activation. `limen planning` inspects the persisted `.limen/planning-source` choice; `limen planning committed` restores the default for future runs. Private packets must be readable files inside that root, including resolved symlink targets; traversal and escapes fail before activation. Members receive absolute ticket, brief and team-note pointers, not planning copies or embedded private approach notes. Jobs, descendants and continuations retain their recorded source even if the project setting changes. They use the canonical vision and board; never copy, link, stage or commit private planning. Product-code Git checks, lead authority and group limits remain unchanged.
 
 From the lead's tool, with the repository as its working directory:
 
@@ -85,7 +87,7 @@ Every unclosed group's member worktree and job record is protected from ordinary
 
 Resume the original lead session to recover its subscription and bounded catch-up. A different session does not silently inherit lead authority. Inspect `.lock/owner` before manual lock recovery; dead lock owners are reclaimed with an inode-specific claim. An uncertain or interrupted reclaimer is durable evidence to inspect, not a reason to launch a replacement roster. Retained evidence is addressed by group ID, independently of the feature's current lane.
 
-The lead copies selected findings and team summaries into the feature's versioned `group/findings/` and writes `group/synthesis.md` in an ordinary documentation commit. Moving the feature does not move or strand its live cabinet.
+The lead files selected findings and team summaries in the feature's `group/findings/` and writes `group/synthesis.md`. In committed mode, this is an ordinary documentation commit. In private mode, keep those files in the canonical private packet without staging or committing them. Moving the feature does not move or strand its live cabinet.
 
 ## Reproducible proof setup
 

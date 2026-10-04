@@ -92,6 +92,29 @@ async function coordinatorFiles(root: string): Promise<void> {
 	);
 }
 
+test("private planning guidance uses canonical vision and board and honors the job's recorded source", async (context) => {
+	const root = await projectRoot(context);
+	await coordinatorFiles(root);
+	await mkdir(join(root, ".limen/jobs/private-job"), { recursive: true });
+	await writeFile(join(root, ".limen/planning-source"), "private\n");
+	const coordinatorPrompt = start(root).systemPrompt ?? "";
+	assert.match(coordinatorPrompt, /Planning source: private/);
+	assert.match(coordinatorPrompt, /In committed mode, commit the shared ticket/);
+	assert.match(coordinatorPrompt, /In private mode \(`limen planning private`\), keep those files readable inside the canonical project root/);
+	await writeFile(join(root, ".limen/jobs/private-job/planning-source"), "private\n");
+	await writeFile(join(root, ".limen/jobs/private-job/task.md"), `Ticket: ${root}/spec/ticket.md\n`);
+	await writeFile(join(root, ".limen/planning-source"), "committed\n");
+	stashEnv(context, { LIMEN_CONTEXT_ROOT: root, LIMEN_JOB: "1", LIMEN_JOB_ID: "private-job" });
+	const result = start("/synthetic/worktree-without-planning");
+	assert.ok((result.message?.content ?? "").includes(`Vision (read-only): \`${root}/spec/vision.md\``));
+	assert.ok((result.message?.content ?? "").includes(`Board (read-only): \`${root}/spec/build.md\``));
+	assert.match(result.systemPrompt ?? "", /do not copy, link, stage or commit/);
+	assert.match(result.systemPrompt ?? "", /Planning-commit instructions apply only to committed mode/);
+	assert.match(result.systemPrompt ?? "", /Product-code Git requirements are unchanged/);
+	await writeFile(join(root, ".limen/jobs/private-job/planning-source"), "committed\n");
+	assert.doesNotMatch(start(root).systemPrompt ?? "", /Planning source: private/);
+});
+
 test("two human turns with unchanged files share a system prompt, and a wake turn matches", async (context) => {
 	const root = await projectRoot(context);
 	await coordinatorFiles(root);
