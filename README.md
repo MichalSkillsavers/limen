@@ -1,10 +1,14 @@
-<p align="center">
+<p align="left">
   <a href="https://mega.dev">
     <img src="docs/assets/mega-logo-badge.svg" alt="MEGA.dev" width="220" height="60">
   </a>
 </p>
 
 # Limen
+
+> **[Explore the full workflow → Towards Autonomous Product Development](https://mega.dev/autonomous-product-development)**
+>
+> This MEGA Drop explains the workflow behind Limen. It includes a live video walkthrough with Pi, Herdr, and Grok Bot. [MEGA.dev](https://mega.dev) shares practical articles, repos, and tools for work with AI.
 
 Limen runs AI coding jobs in separate Git worktrees.
 You talk to one coordinator in Herdr. It starts workers and reviewers.
@@ -86,4 +90,3 @@ See the [Picture guide](docs/picture.md) for navigation and updates.
 | Optional Linear mirror | [Linear](templates/linear.md) |
 
 See [Contributing](CONTRIBUTING.md) for development and checks.
-Watch the [workflow walkthrough](https://mega.dev/autonomous-product-development) for a complete example.
