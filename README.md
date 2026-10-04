@@ -10,55 +10,58 @@
 >
 > This MEGA Drop explains the workflow behind Limen. It includes a live video walkthrough with Pi, Herdr, and Grok Bot. [MEGA.dev](https://mega.dev) shares practical articles, repos, and tools for work with AI.
 
-Limen runs AI coding jobs in separate Git worktrees.
-You talk to one coordinator in Herdr. It starts workers and reviewers.
-Each job keeps its task, branch, log, state, and session.
-You choose the work and approve merges.
+You describe a task to an agent in Pi or Herdr.
+The agent uses Limen to plan work, start workers, and request review.
+Jobs run in separate Git worktrees and keep their task, branch, log, state, and session.
+You review the results and approve merges.
 
 Experimental software. Commands, prompts, and project files can change.
 
 ## Requirements
 
 - macOS or Linux, with Node.js 24 or later and Git.
-- OMP for the coordinator. Workers can use OMP or [Pi](https://pi.dev).
-- Herdr for interactive job tabs.
+- [Pi](https://pi.dev) or OMP, installed and authenticated.
+- Herdr is optional for interactive job tabs.
 
-Install and authenticate the engines before you start. Limen does not manage engine credentials.
-See [setup and model configuration](docs/setup.md).
+See the [setup guide](docs/setup.md) for engine and Herdr configuration.
 
 ## Start
 
-Install Limen and the Herdr integration once:
+Install Limen once:
 
 ```bash
 git clone https://github.com/overment/limen.git
 cd limen
 npm install
 npm link
-herdr integration install omp
 ```
 
-Open a Herdr tab in your project’s Git repository. The repository must have at least one commit.
-Start the coordinator:
+In your project’s Git repository, run:
 
 ```bash
 cd /path/to/your-project
 limen init
-LIMEN_COORDINATOR=1 omp --provider <provider> --model <model> --thinking <level>
 ```
 
-Replace the placeholders with your provider, model, and reasoning level.
-Record the model choices for each role in `spec/build.md`.
-The coordinator passes those choices to the CLI as command flags.
-`limen init` preserves existing specs.
+Open Pi (`pi`) in that directory, or start an agent tab in Herdr.
+Before you ask for code, define these project files:
 
-To update Limen, pull the package clone and use `/reload` in the coordinator session.
+- `spec/vision.md`: what the project should do, who it serves, and its scope.
+- `.agents/limen/styleguide.md`: code structure, conventions, and required checks.
+
+You can ask the agent to help:
+
+> Help me define the project vision and code styleguide before we start work.
+
+`limen init` preserves existing specs. The repository must have at least one commit before a worker starts.
+
+To update Limen, pull the package clone and use `/reload` in the agent session.
 All projects on that computer use the same installed package.
 
 ## Work
 
-1. Tell the coordinator the result you need.
-2. The coordinator records a ticket, starts jobs, and requests review.
+1. Tell the agent the result you need, such as “Add email sign-in.”
+2. The agent records a ticket, starts jobs, and requests review.
 3. Inspect the result and approve the merge.
 
 The specs describe the work. `spec/build.md` records its state.
@@ -69,7 +72,7 @@ A Git worktree is not a security sandbox. Read the [security notes](SECURITY.md)
 
 ## Picture
 
-Run `limen init` in your project, then ask the coordinator:
+After `limen init`, ask the agent:
 
 > Create a Picture map from the code and specs, and open it in my browser.
 

@@ -2,7 +2,7 @@
 
 [README](../README.md) · [Command reference](commands.md)
 
-Install Limen, start a coordinator, and set the project configuration.
+Install Limen, define the project, and ask an agent to do the work.
 
 ## Requirements
 
@@ -34,15 +34,23 @@ herdr integration install omp
 
 ### 2. Start each project
 
-Open a Herdr tab in the project’s Git repository. Before you start a worker, the repository must have at least one commit.
+Open a terminal in the project's Git repository. Before you start a worker, the repository must have at least one commit.
 
 ```bash
 cd /path/to/your-project
 limen init
-LIMEN_COORDINATOR=1 omp --provider <provider> --model <model> --thinking <level>
 ```
 
-Get the engine, provider, model, and reasoning level from the project choices in `spec/build.md` (see [Models](#models)). A new plant has no choices until you record them. The coordinator runs on OMP.
+Before you assign work, define these two files:
+
+- `spec/vision.md`: what the product should do, for whom, and within what scope.
+- `.agents/limen/styleguide.md`: how to write and organize the code.
+
+Start Pi in that directory with `pi`, or open an agent tab in Herdr with the project as its working directory. Describe the task to the agent in plain language, for example:
+
+> Add a settings page. Follow the project vision and coding styleguide.
+
+You can also ask the agent to help define the vision and styleguide before it changes code. Set the worker and reviewer model choices with the agent in `spec/build.md` (see [Models](#models)).
 
 ### What `limen init` does
 
@@ -53,13 +61,12 @@ Get the engine, provider, model, and reasoning level from the project choices in
 
 ### The coordinator session
 
-That interactive session is the coordinator (`LIMEN_COORDINATOR=1`). It is not a spawned job. You talk in this session. You do not operate the job CLI.
+The agent you talk to is the coordinator. Give it the task in plain language. It manages Limen jobs and reports the results in that session.
 
 **Roles**
 
 - Ordinary `limen spawn` starts workers and reviewers. It does not start a coordinator.
-- Only an explicit `limen group start` from this pane creates managed team coordinators, and the pane must have `group-peer` loaded. The group lead runs that command from its Herdr pane.
-- A hosted Limen job (`LIMEN_JOB=1`) cannot be the group lead. Do not spawn a "lead" tab in its place. The same environment variable on a spawn shell does not change the role of the job.
+- Team groups have separate lead and hook requirements. Follow the [group setup](groups.md#prepare-and-start) before you use `limen group start`.
 
 **Herdr layout**
 
@@ -84,6 +91,8 @@ Put project skills in `.agents/skills/<name>/SKILL.md`. Each engine finds skills
 The next launch finds new or changed old skills, so the plant needs no links that you keep by hand. Pi finds skills the same way as before.
 
 ## Models
+
+Use this reference when you need to set model choices or run commands yourself.
 
 Project choices are in `spec/build.md`. The board records the engine, provider, model, and reasoning level for each role, and who reviews. The coordinator reads those choices and passes them to the CLI as command flags. The CLI selects settings from flags, environment variables, and package defaults. A newer explicit instruction from the owner has priority over the board. Replace the placeholders in the commands with the project choices.
 
@@ -110,7 +119,7 @@ Two exceptions apply:
 
 **`pi-claude` on OMP.** On OMP, `--model pi-claude/<model>` (without `--provider`) loads the local bridge at `~/.omp/local/pi-claude-bridge` explicitly. This is necessary because jobs otherwise start with `--no-extensions`. `--provider pi-claude` is not an OMP provider.
 
-**Auth.** Pi and OMP keep separate auth stores (`~/.pi` and `~/.omp`), so authenticate OMP yourself. Limen does not change the settings or credentials of either engine. One wrapper and one stream parser serve both engines.
+**Auth.** Pi and OMP keep separate auth stores (`~/.pi` and `~/.omp`). Authenticate each engine you use. Limen does not change the settings or credentials of either engine. One wrapper and one stream parser serve both engines.
 
 ### Start a coordinator in a Herdr pane
 
