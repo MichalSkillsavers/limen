@@ -295,7 +295,8 @@ async function accept(root: string, state: string, binding: GithubBinding, comme
 
 // The body as first read decides: an open issue, not a pull request, opened after connect by a write-or-higher author. The title never counts.
 async function acceptIssue(root: string, state: string, binding: GithubBinding, issue: Issue, token: string): Promise<void> {
-	if (issue.pull_request || issue.state !== "open" || !issue.body || !mentionsLimen(issue.body) || !issue.user || Date.parse(issue.created_at) < Date.parse(binding.connectedAt)) return;
+	if (issue.pull_request || issue.state !== "open" || !issue.body || !mentionsLimen(issue.body) || !issue.user || Date.parse(issue.created_at) < Date.parse(binding.connectedAt))
+		return;
 	if (!Number.isSafeInteger(issue.number) || issue.number < 1) throw new Error("GitHub issue has an invalid number");
 	if (issue.repository_url.toLowerCase() !== `${API}/repos/${binding.repo}`.toLowerCase()) return;
 	if (!(await authorized(binding, issue.user.login, token))) return;
@@ -420,10 +421,7 @@ export async function pollGithubIssues(root: string, state: string, binding: Git
 	);
 	const since = new Date(Date.parse(cursor.createdAt) - 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 	for (let page = 1; ; page++) {
-		const issues = await api<Issue[]>(
-			`/repos/${binding.repo}/issues?state=all&sort=created&direction=asc&since=${encodeURIComponent(since)}&per_page=100&page=${page}`,
-			token,
-		);
+		const issues = await api<Issue[]>(`/repos/${binding.repo}/issues?state=all&sort=created&direction=asc&since=${encodeURIComponent(since)}&per_page=100&page=${page}`, token);
 		for (const issue of issues) {
 			const created = Date.parse(issue.created_at);
 			const mark = Date.parse(cursor.createdAt);
