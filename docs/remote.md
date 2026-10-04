@@ -11,7 +11,7 @@ This is operator guidance, not a provisioner. Limen does not install Tailscale o
 | Layer | Role | What it is not |
 |---|---|---|
 | **Seat** | Runs `omp`, `limen`, and Herdr; owns the project copy, worktrees, and job files | A second clone you `limen spawn` from |
-| **Doorbell** | An opt-in GitHub App poller, isolated under its own Unix user, routes one exact PR comment to the project's persistent Herdr coordinator | A runner, a merge gate, or CI |
+| **Doorbell** | An opt-in GitHub App poller, isolated under its own Unix user, routes one exact PR or issue comment to the project's persistent Herdr coordinator | A runner, a merge gate, or CI |
 
 The App identity is seat-scoped; each project opts in with `limen github connect`. No inbound port or laptop consumer. Never install the private key in a checkout or in an account that runs hosted workers.
 
@@ -37,7 +37,7 @@ Do not: SSHFS the worktrees; run a coordinator on the laptop against a different
 3. **See the product**
    - Usual: preview bound to localhost on the seat, published with `tailscale serve` — open that HTTPS URL. No pull.
    - Local feel (simulator, GPU, your browser profile): `git fetch` the **branch** into a disposable laptop clone and run the app. That clone is a viewer, not a Limen root.
-4. **PR command** (after setup below) — an authorized collaborator comments exactly `/limen review` on an open PR; the seat prompts its registered coordinator, which starts a hosted review. `limen github status` shows the latest delivery; attach to inspect the actual job.
+4. **PR or issue command** (after setup below) — an authorized collaborator comments `/limen review` on an open PR, or `@limen <request>` on an open issue; the seat prompts its registered coordinator, which starts a hosted review or task, or answers without a job. `limen github status` shows the latest delivery; attach to inspect the actual job.
 5. **Travel** — any tailnet device: attach, or just the preview URL.
 
 ## What you pull, and when
@@ -159,9 +159,9 @@ limen jobs --all
 journalctl -u limen-github.service -n 50 --no-pager
 ```
 
-`@limen` or `/limen` in a PR conversation comment reaches the registered coordinator; `@limenology` and issue-only comments do not. The App checks the author's effective write-or-higher role and the installed repository. A warm Herdr agent with `agent_status: done` and `interactive_ready: true` is live; a bare shell is not. The PR title, body, discussion, triggering text, real base/head and links are supplied as bounded, explicitly untrusted context. One coordinator may be registered by several projects on this seat.
+`@limen` or `/limen` in a PR or issue conversation comment reaches the registered coordinator; `@limenology`, an issue body, an issue title, and comments on a closed PR or closed issue do not. The App checks the author's effective write-or-higher role and the installed repository. A warm Herdr agent with `agent_status: done` and `interactive_ready: true` is live; a bare shell is not. The PR title, body, discussion, triggering text, real base/head and links are supplied as bounded, explicitly untrusted context. For an issue, the coordinator gets the issue title, body, recent conversation, triggering text, and link as the same untrusted context; the prompt says it is an issue, with no base or head. One coordinator may be registered by several projects on this seat.
 
-The coordinator chooses a hosted review (`limen github review <root> <comment-id>` with explicit board model flags), a different hosted task (`limen github work … --task <instruction>`), or an explicit no-job answer (`limen github resolve …`). Review fetches and verifies the pinned PR head and real base; work uses a separate branch from the registered project, not a claim of having reviewed the PR. The poller posts a start reply only after observing a matching hosted job and a terminal reply after actual completion; prompt acceptance alone is never success. `done` does not mean approval.
+The coordinator chooses a hosted review (`limen github review <root> <comment-id>` with explicit board model flags), a different hosted task (`limen github work … --task <instruction>`), or an explicit no-job answer (`limen github resolve …`). Review fetches and verifies the pinned PR head and real base; work uses a separate branch from the registered project, not a claim of having reviewed the PR. An issue claim accepts `work` (branch `limen/github-issue-<number>-<comment-id>`) and `resolve`; `review` refuses it, because an issue has no pull request head to review. The poller posts a start reply only after observing a matching hosted job and a terminal reply after actual completion; prompt acceptance alone is never success. `done` does not mean approval.
 
 No-job answer text is written under the coordinator's Unix identity, which hosted workers share. The poller's private nonce prevents a forged checkout claim from creating a new App request, but it does not authenticate that answer against a compromised worker account; the PR reply labels this limit and is never an approval.
 
