@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { claimPath, type GithubBinding, githubDir, originRepository, readBinding } from "../commands/github.ts";
-import { type GithubClaim, matchedGithubJob } from "./github-review.ts";
+import { type GithubClaim, githubSubject, matchedGithubJob } from "./github-review.ts";
 
 const API = "https://api.github.com";
 type Comment = { id: number; body: string | null; created_at: string; html_url: string; issue_url: string; user: { login: string } | null };
@@ -17,6 +17,7 @@ type Pull = {
 	base: { sha: string; ref: string; repo: { full_name: string } };
 	head: { sha: string };
 };
+type Issue = { number: number; state: string; title?: string; body?: string | null; repository_url: string; pull_request?: object };
 
 function mentionsLimen(body: string): boolean {
 	let fence: string | undefined;
@@ -52,6 +53,16 @@ async function api<T>(path: string, token: string, method = "GET", body?: object
 	});
 	if (!response.ok) throw new Error(`GitHub ${method} ${path.split("?")[0]} returned HTTP ${response.status}`);
 	return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+}
+
+// GitHub answers HTTP 404 for a missing resource or a hidden collaborator; either ends the handoff quietly.
+async function found<T>(path: string, token: string): Promise<T | undefined> {
+	try {
+		return await api<T>(path, token);
+	} catch (error) {
+		if (String(error).includes("HTTP 404")) return undefined;
+		throw error;
+	}
 }
 
 async function installationToken(repo: string, jwt: string): Promise<string> {
@@ -144,7 +155,7 @@ async function reconcile(root: string, state: string, claim: GithubClaim, token:
 			claim,
 			token,
 			"terminal",
-			`A seat-recorded answer for PR #${claim.pr} without starting a job (shared worker/coordinator account; answer text is not independently authenticated):\n\n${claim.answer ?? "No answer recorded."}\n\nNo review approval or merge occurred.`,
+			`A seat-recorded answer for ${githubSubject(claim)} without starting a job (shared worker/coordinator account; answer text is not independently authenticated):\n\n${claim.answer ?? "No answer recorded."}\n\nNo review approval or merge occurred.`,
 		);
 		return;
 	}
@@ -181,7 +192,7 @@ async function reconcile(root: string, state: string, claim: GithubClaim, token:
 					claim,
 					token,
 					"terminal",
-					`A seat-recorded answer for PR #${claim.pr} without starting a job (shared worker/coordinator account; answer text is not independently authenticated):\n\n${claim.answer}\n\nNo review approval or merge occurred.`,
+					`A seat-recorded answer for ${githubSubject(claim)} without starting a job (shared worker/coordinator account; answer text is not independently authenticated):\n\n${claim.answer}\n\nNo review approval or merge occurred.`,
 				);
 				return;
 			}
@@ -200,7 +211,7 @@ async function reconcile(root: string, state: string, claim: GithubClaim, token:
 				claim,
 				token,
 				"notice",
-				`Limen request for PR #${claim.pr} is pending: handoff to the Herdr coordinator is unconfirmed and no hosted job has been observed. Inspect this seat's .limen/github/claims/${claim.id}.json; no detached fallback was started.`,
+				`Limen request for ${githubSubject(claim)} is pending: handoff to the Herdr coordinator is unconfirmed and no hosted job has been observed. Inspect this seat's .limen/github/claims/${claim.id}.json; no detached fallback was started.`,
 			);
 		}
 		return;
@@ -219,7 +230,7 @@ async function reconcile(root: string, state: string, claim: GithubClaim, token:
 				claim,
 				token,
 				"notice",
-				`Limen created job \`${found.id}\` for PR #${claim.pr}, but the hosted agent never started (state: ${found.state}). Inspect \`limen jobs ${found.id}\` on the owning seat. No review approval or detached fallback occurred.`,
+				`Limen created job \`${found.id}\` for ${githubSubject(claim)}, but the hosted agent never started (state: ${found.state}). Inspect \`limen jobs ${found.id}\` on the owning seat. No review approval or detached fallback occurred.`,
 			);
 		return;
 	}
@@ -229,7 +240,7 @@ async function reconcile(root: string, state: string, claim: GithubClaim, token:
 		claim,
 		token,
 		"start",
-		`Limen started a hosted ${found.review ? "review" : "task"} for PR #${claim.pr}${found.review ? ` at pinned head \`${claim.head}\` against base \`${claim.base}\`` : " from the registered repository"}. Job: \`${found.id}\`; branch: \`${found.branch}\`. On its owning seat: \`limen jobs ${found.id}\`. This is not an approval.`,
+		`Limen started a hosted ${found.review ? "review" : "task"} for ${githubSubject(claim)}${found.review ? ` at pinned head \`${claim.head}\` against base \`${claim.base}\`` : " from the registered repository"}. Job: \`${found.id}\`; branch: \`${found.branch}\`. On its owning seat: \`limen jobs ${found.id}\`. This is not an approval.`,
 	);
 	if (!found.state || found.state === "running") return;
 	const dir = join(root, ".limen/jobs", found.id);
@@ -252,37 +263,35 @@ async function accept(root: string, state: string, binding: GithubBinding, comme
 	if (!Number.isSafeInteger(comment.id) || comment.id < 1) throw new Error("GitHub comment has an invalid ID");
 	const pr = Number(/\/issues\/(\d+)$/.exec(comment.issue_url)?.[1]);
 	if (!Number.isSafeInteger(pr) || pr < 1) return;
-	let permission: { permission: string };
-	try {
-		permission = await api<{ permission: string }>(`/repos/${binding.repo}/collaborators/${encodeURIComponent(comment.user.login)}/permission`, token);
-	} catch (error) {
-		if (String(error).includes("HTTP 404")) return;
-		throw error;
-	}
-	if (!["admin", "write", "maintain"].includes(permission.permission)) return;
-	let pull: Pull;
-	try {
-		pull = await api<Pull>(`/repos/${binding.repo}/pulls/${pr}`, token);
-	} catch (error) {
-		if (String(error).includes("HTTP 404")) return;
-		throw error;
-	}
-	if (pull.state !== "open" || pull.number !== pr || pull.base.repo.full_name.toLowerCase() !== binding.repo.toLowerCase()) return;
-	if (!/^[0-9a-f]{40}$/.test(pull.head.sha) || !/^[0-9a-f]{40}$/.test(pull.base.sha) || !/^[\w./-]+$/.test(pull.base.ref)) throw new Error("GitHub returned invalid PR refs");
+	const permission = await found<{ permission: string }>(`/repos/${binding.repo}/collaborators/${encodeURIComponent(comment.user.login)}/permission`, token);
+	if (!permission || !["admin", "write", "maintain"].includes(permission.permission)) return;
+	// GitHub answers 404 on /pulls/<n> for an issue. The issue API also returns pull requests, so it re-checks.
+	const pull = await found<Pull>(`/repos/${binding.repo}/pulls/${pr}`, token);
+	const issue = pull ? undefined : await found<Issue>(`/repos/${binding.repo}/issues/${pr}`, token);
+	const thread = pull ?? issue;
+	if (!thread || thread.state !== "open" || thread.number !== pr) return;
+	if (pull) {
+		if (pull.base.repo.full_name.toLowerCase() !== binding.repo.toLowerCase()) return;
+		if (!/^[0-9a-f]{40}$/.test(pull.head.sha) || !/^[0-9a-f]{40}$/.test(pull.base.sha) || !/^[\w./-]+$/.test(pull.base.ref)) throw new Error("GitHub returned invalid PR refs");
+	} else if (issue?.pull_request || issue?.repository_url.toLowerCase() !== `${API}/repos/${binding.repo}`.toLowerCase()) return;
 	const path = join(state, "claims", `${comment.id}.json`);
 	let claim: GithubClaim;
 	try {
 		claim = JSON.parse(await readFile(path, "utf8")) as GithubClaim;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		const link = `https://github.com/${binding.repo}/${pull ? "pull" : "issues"}/${pr}`;
 		const discussion: string[] = [];
-		for (const endpoint of [`/repos/${binding.repo}/issues/${pr}/comments`, `/repos/${binding.repo}/pulls/${pr}/comments`, `/repos/${binding.repo}/pulls/${pr}/reviews`]) {
+		for (const endpoint of [
+			`/repos/${binding.repo}/issues/${pr}/comments`,
+			...(pull ? [`/repos/${binding.repo}/pulls/${pr}/comments`, `/repos/${binding.repo}/pulls/${pr}/reviews`] : []),
+		]) {
 			let entries: Array<{ id: number; body: string | null; user: { login: string } | null }>;
 			try {
 				entries = await api<typeof entries>(`${endpoint}?per_page=100`, token);
 			} catch (error) {
 				if (!endpoint.includes("/issues/") && /HTTP (403|404)/.test(String(error))) {
-					discussion.push(`[${endpoint.split("/").at(-1)} unavailable via App; see https://github.com/${binding.repo}/pull/${pr}]`);
+					discussion.push(`[${endpoint.split("/").at(-1)} unavailable via App; see ${link}]`);
 					continue;
 				}
 				throw error;
@@ -293,13 +302,13 @@ async function accept(root: string, state: string, binding: GithubBinding, comme
 				const body = entry.body ?? "";
 				const line = `${entry.user?.login ?? "unknown"}: ${body.slice(0, 1200)}${body.length > 1200 ? " [comment excerpt truncated]" : ""}`;
 				if (used + line.length > 3500) {
-					discussion.push(`[Further ${endpoint.split("/").at(-1)} omitted; see https://github.com/${binding.repo}/pull/${pr}]`);
+					discussion.push(`[Further ${endpoint.split("/").at(-1)} omitted; see ${link}]`);
 					break;
 				}
 				discussion.push(line);
 				used += line.length;
 			}
-			if (entries.length === 100) discussion.push(`[More ${endpoint.split("/").at(-1)} may exist; first 100 fetched at https://github.com/${binding.repo}/pull/${pr}]`);
+			if (entries.length === 100) discussion.push(`[More ${endpoint.split("/").at(-1)} may exist; first 100 fetched at ${link}]`);
 		}
 		const excerpt = discussion.join("\n");
 		claim = {
@@ -308,12 +317,10 @@ async function accept(root: string, state: string, binding: GithubBinding, comme
 			pr,
 			actor: comment.user.login,
 			url: comment.html_url,
-			base: pull.base.sha,
-			baseRef: pull.base.ref,
-			head: pull.head.sha,
-			title: boundedContext(pull.title ?? "", 500, "PR title", `https://github.com/${binding.repo}/pull/${pr}`),
-			body: boundedContext(pull.body ?? "", 6000, "PR body", `https://github.com/${binding.repo}/pull/${pr}`),
-			discussion: excerpt.length > 12000 ? `${excerpt.slice(0, 12000)}\n[Discussion truncated; see https://github.com/${binding.repo}/pull/${pr}]` : excerpt,
+			...(pull ? { base: pull.base.sha, baseRef: pull.base.ref, head: pull.head.sha } : { kind: "issue" as const }),
+			title: boundedContext(thread.title ?? "", 500, pull ? "PR title" : "Issue title", link),
+			body: boundedContext(thread.body ?? "", 6000, pull ? "PR body" : "Issue body", link),
+			discussion: excerpt.length > 12000 ? `${excerpt.slice(0, 12000)}\n[Discussion truncated; see ${link}]` : excerpt,
 			outcomeNonce: randomBytes(24).toString("hex"),
 			command: boundedContext(comment.body, 4000, "Triggering comment", comment.html_url),
 		};
@@ -341,7 +348,7 @@ async function handoff(root: string, state: string, binding: GithubBinding, clai
 			claim,
 			token,
 			"notice",
-			`Limen could not reach the registered Herdr coordinator for PR #${claim.pr}. The request remains pending on its owning seat (.limen/github/claims/${claim.id}.json). No detached job was started.`,
+			`Limen could not reach the registered Herdr coordinator for ${githubSubject(claim)}. The request remains pending on its owning seat (.limen/github/claims/${claim.id}.json). No detached job was started.`,
 		);
 		return;
 	}
@@ -363,7 +370,7 @@ async function handoff(root: string, state: string, binding: GithubBinding, clai
 			claim,
 			token,
 			"notice",
-			`Limen could not confirm delivery to the Herdr coordinator for PR #${claim.pr}. The request remains pending for inspection on its owning seat (.limen/github/claims/${claim.id}.json). No detached job was started.`,
+			`Limen could not confirm delivery to the Herdr coordinator for ${githubSubject(claim)}. The request remains pending for inspection on its owning seat (.limen/github/claims/${claim.id}.json). No detached job was started.`,
 		);
 		return;
 	}
