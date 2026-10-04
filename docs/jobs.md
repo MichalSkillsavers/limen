@@ -1,0 +1,168 @@
+# Jobs
+
+[README](../README.md) · [Command reference](commands.md)
+
+Use this guide to start, inspect, review, and recover coding jobs.
+
+![A coordinator starts workers and reviewers in separate Git worktrees](https://raw.githubusercontent.com/overment/limen/main/docs/limen.gif)
+
+## How work runs
+
+1. Tell the coordinator the outcome that you want.
+2. The coordinator writes or moves the ticket. It keeps `spec/build.md` correct.
+3. The coordinator commits the ticket, so that the worker can see it.
+4. The coordinator starts a job.
+5. Stay in that conversation. A wake comes when a job ends.
+
+Speak only when something looks wrong, or when the coordinator asks you. The coordinator asks about product ambiguity, a real tradeoff, credentials, or a merge.
+
+### Requests
+
+A good request names the outcome and the first artifact. It does not describe the whole repository. The coordinator changes the request into a short spawn with a `Ticket:` pointer. It does not paste the ticket into the prompt.
+
+### Wakes
+
+The type of coordinator controls how the wake comes:
+
+| Coordinator | How the wake comes |
+|---|---|
+| **Pi** | The coordinator subscribes its session at spawn. The wake hook then puts the completion into that session. |
+| **Herdr, without a Pi session (OMP)** | The job records the coordinator pane as `origin-pane`. When the job ends, Limen runs `herdr agent prompt` on that pane. Then Limen waits until Herdr sees the pane at work. |
+
+For a Herdr wake, `limen jobs <id>` shows the result as `herdr-wake`: `turn observed`, `submitted …; no turn observed`, or `failed …`.
+
+### Job states
+
+| State | Meaning |
+|---|---|
+| `done` | The run ended cleanly. The selected engine exited 0, or a hosted session ended, and the last stop reason was not `error` or `aborted`. |
+| `failed` | The run had a provider error, and Limen records the reason. A limit also records `failed` (see [Limits](#limits)). A failed job keeps its worktree and transcript. |
+
+**Neither state is approval.** Neither state means that the ticket is finished or that the branch is safe to merge, because `done` only means that the run exited cleanly. The coordinator reads the record, the diff, and the checks. Then, under the review policy of the project, it merges, or resumes a repair, or asks you.
+
+### Reviews
+
+When a mistake would be expensive, the coordinator starts a new reviewer on the candidate. The reviewer gives a verdict. The reviewer does not change the branch.
+
+## What the coordinator runs
+
+These commands are the harness. The coordinator types them. This list helps you recognize a job ID, a wake, or a recovery step. It is not a daily script.
+
+```bash
+# Start a worker
+limen spawn --label "session handler · F001" \
+  'Implement F001: sign-in survives a restart. Start with the failing session test. One commit. Ticket: spec/features/active/F001-auth/ticket.md'
+
+# Inspect
+limen status
+limen jobs
+limen jobs <id|suffix|label>
+git diff HEAD...<branch>
+
+# Review
+limen spawn --review --branch limen/<job-id> --label "session handler review 1 · F001" \
+  'Review the F001 candidate against spec/features/active/F001-auth/ticket.md. Name the commit reviewed.'
+
+# Correct, stop, repair, or continue
+limen steer <id> "stay on the session test; do not widen"
+limen stop <id> "reason"
+limen spawn --branch limen/<job-id> --label "session handler repair 1 · F001" 'Focused resume instruction'
+limen continue <id> 'Follow-up instruction'
+
+# Follow and land
+limen watch <id|label>
+limen land <id>
+```
+
+### Job IDs and labels
+
+- **Job ID:** The last line of `spawn` output is the durable job ID.
+- **Labels:** A label names the change first and the feature number last. A repair label or a review label names its round.
+
+### Steer, stop, and resume
+
+Use these steps in this order:
+
+1. **Steer.** A running job reads a steer between tool calls.
+2. **Stop.** Stop a job only after it ignores a steer, or when it is clearly dead. Stop sends TERM, and then a stronger signal.
+3. **Resume.** A resume uses the same branch and worktree, with the uncommitted files, so the coordinator reads that state first.
+
+### Watch and land
+
+- **Watch:** To take over a job that another coordinator started, watch that job by name. `watch --running` subscribes to every running job, but it is not a takeover.
+- **Land:** `limen land` merges a `done` job onto the current branch. Read [Job states](#job-states) first.
+
+### Finished jobs
+
+Finished jobs keep their files in `.limen/jobs/`, but not their worktrees. The next spawn removes finished worktrees. A resume with `--branch` keeps that worktree.
+
+| Command | Effect |
+|---|---|
+| `limen prune` | Removes finished worktrees, as the next spawn does. |
+| `limen prune --retire` | Deletes the records of finished jobs whose branches are already merged or dropped. |
+| `limen prune --retire --dry-run` | Prints the IDs and removes nothing. |
+
+Spawn and sweep never retire records.
+
+### Continue a finished job
+
+To keep the conversation of a finished job, run:
+
+```bash
+limen continue <job-id> "Follow-up instruction"
+```
+
+Limen then does these steps:
+
+1. If prune removed the worktree, Limen puts it back at the recorded path from the local branch.
+2. Limen copies the saved session into a new linked job.
+
+**Only committed branch contents come back.** Uncommitted files that prune removed are lost. Recovery is not possible without the branch or the transcript. Limen does not take over a branch that is checked out in a different place.
+
+### Limits
+
+| Limit | Detached job | Hosted job |
+|---|---|---|
+| Time | 90 minutes (change it with `--timeout 20m`) | None |
+| Tool-start events | 900 (`LIMEN_MAX_TOOL_CALLS`) | None |
+
+**Stalled tools.** In both modes, Limen fails a pending tool only in one case: an owned child process stays silent, and its process tree uses no new CPU time for three minutes. `LIMEN_TOOL_STALL_MS` changes that confirmation time. If the engine identity or the process snapshot is not certain, Limen records an advisory. It does not stop the process, because the process is possibly not part of the job.
+
+### Seat notifications
+
+`limen sweep` scans registered projects for terminal jobs that nobody heard and for hosted-stall advisories. Each event gets one seat notification, also across restarts and concurrent sweeps. Old timestamp receipts stay valid. When an advisory clears and a new one starts, the new one can send a notification again.
+
+The sweep records `notify/seat` before it sends. So if a notification fails in an unclear way, the sweep logs an error and does not send that event again automatically. Seat receipts do not use up coordinator wakes or finish webhooks.
+
+## Ticket authorship
+
+`limen ticket-author` shows the name, email, and commit that first added a ticket. Collaborators who share a project can run it:
+
+```bash
+limen ticket-author spec/features/active/F001-auth/ticket.md
+```
+
+It follows renames between lanes when Git recognizes them. Paths are relative to the current directory. Absolute paths in the repository also work. The lookup reads the committed `HEAD` of the current branch. It never reads the Git config or the GitHub session of the current operator, and it writes nothing.
+
+### What the result means
+
+The result is the **author** of the creation commit. It is not the committer or the latest editor. It is **evidence from Git, not a verified human identity**. Shared bot credentials identify the bot, not the person who asked the bot to file the ticket. So if collaborators need different attribution, use different authors on filing commits.
+
+For a GitHub noreply email, the lookup also gives the recorded login. A usual email is still a usable identity, without a GitHub account or network access. Spawn records that creation `@login` on the job for finish routing. If no login is available, spawn records the reason.
+
+### When authorship is not available
+
+For uncommitted paths and shallow history, the lookup says that authorship is not available. It does not guess. So commit a new ticket before you look it up, and fetch the full history for a shallow clone.
+
+A move that Git cannot recognize, a squash, or changed history can lose the original attribution. If you delete a path and create it again, a new ticket history starts. Limen adds no author tags to ticket Markdown.
+
+## Recovery
+
+The coordinator does this. You need it only if you look at a stuck tab yourself.
+
+| Symptom | Safe next step |
+|---|---|
+| The job is quiet or repeats itself | Read `limen jobs <id>`, the log, and the worktree. Stop only on evidence. Then resume with a narrower task. |
+| The worker has a real question | Read its durable note. Answer it. Resume the branch. |
+| The wrapper is dead, but the state says `running` | Check the recorded PID. Correct the plain `state` file. Then resume. |
+| A completion wake did not come | Read `.limen/jobs/` and Git. The job files stay the source of truth when a notification does not come. |

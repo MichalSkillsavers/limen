@@ -13,10 +13,11 @@
 		"picture",
 		"templates",
 		"docs/seat",
-		"docs/remote.md",
-		"docs/groups.md",
-		"docs/vps.md",
+		"docs/*.md",
+		"docs/assets",
 		"README.md",
+		"SECURITY.md",
+		"CONTRIBUTING.md",
 		"LICENSE"
 	],
 	"scripts": {
