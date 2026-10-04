@@ -60,6 +60,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	if (tab && !herdr) throw new Error("hosted continue requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
 	const chosenModel = model ?? (process.env[review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
 
+	// A job that continues from its own worktree resolves jobs in its canonical root.
 	const inherited = workspaceRoot(cwd) ? undefined : inheritedPlanning(repoRoot(cwd));
 	const root = inherited?.root ?? (await commandRoot(cwd));
 	const { id: parentId, jobDir: parentDir } = await resolveJob(root, query);
@@ -101,12 +102,12 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	const profile = engineProfile(parentEngine);
 	preflightEngine(profile, chosenModel, provider);
 
+	// Private planning: carry the parent's canonical ticket and check every pointer before a record exists.
 	const source = recordedPlanningSource(parentDir);
 	let followUp = instruction;
 	if (source === "private") {
-		const parentTask = await readFile(`${parentDir}/task.md`, "utf8");
-		const ticket = parentTask.match(/\bTicket:\s+(\S+)/)?.[1];
-		if (ticket && !/\bTicket:/.test(followUp)) followUp += `\n\nTicket: ${ticket}`;
+		const parentTicket = (await readFile(`${parentDir}/task.md`, "utf8")).match(/\bTicket:\s+(\S+)/)?.[1];
+		if (parentTicket && !/\bTicket:/.test(followUp)) followUp += `\n\nTicket: ${parentTicket}`;
 		followUp = await privatePlanningTask(root, followUp);
 		if (membership?.member) {
 			const feature = membership.run.feature;

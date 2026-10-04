@@ -64,6 +64,7 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	const root = repoRoot(cwd);
 	const feature = relative(root, resolve(cwd, featureArgument));
 	if (feature.startsWith("..") || !feature.startsWith("spec/features/")) throw new Error("feature must be inside this repository's spec/features");
+	// A repeated start resumes the prior run, so it keeps that run's planning source.
 	const priorRun = newRun ? undefined : (await runs(root)).filter((run) => run.feature === feature).at(-1);
 	const source = priorRun ? (priorRun.planningSource ?? "committed") : planningSource(root);
 	if (source === "private" && featureArgument.split(/[\\/]/).includes("..")) throw new Error("private planning feature path must not contain traversal");
@@ -90,12 +91,14 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	for (const level of [thinking, workerThinking]) if (!["off", "minimal", "low", "medium", "high", "xhigh"].includes(level)) throw new Error("unsupported group reasoning level");
 	if (timeout <= 60_000 || workerTimeoutMs <= 0) throw new Error("group timeout must leave a 60-second wrap-up reserve");
 	if (mode === "tab" && !herdrAvailable()) throw new Error("hosted group requires Herdr");
+	// Check the packet before activation: readable inside the canonical root when private, committed at HEAD otherwise.
 	for (const path of [`${feature}/ticket.md`, `${feature}/group/brief.md`, ...teams.map((team) => `${feature}/group/teams/${team}.md`)]) {
-		if (source === "private") await privatePlanningFile(root, path);
-		else {
-			await readFile(`${root}/${path}`, "utf8");
-			if (!commitHasFile(root, headCommit(root), path)) throw new Error(`commit group prerequisite ${path} before starting`);
+		if (source === "private") {
+			await privatePlanningFile(root, path);
+			continue;
 		}
+		await readFile(`${root}/${path}`, "utf8");
+		if (!commitHasFile(root, headCommit(root), path)) throw new Error(`commit group prerequisite ${path} before starting`);
 	}
 	preflightEngine(profile, model, provider);
 	const cabinet = `${root}/.limen/groups`;
@@ -134,11 +137,12 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 		return { run, created: true };
 	});
 	if (activated.created) {
+		const ticket = source === "private" ? `${root}/${feature}/ticket.md` : `${feature}/ticket.md`;
 		for (const team of teams) {
 			try {
 				await spawnCommand(
 					[
-						`Pursue the feature with your team. Ticket: ${source === "private" ? `${root}/` : ""}${feature}/ticket.md`,
+						`Pursue the feature with your team. Ticket: ${ticket}`,
 						"--label",
 						`${feature.split("/").at(-1)} ${team} coordinator`,
 						"--engine",

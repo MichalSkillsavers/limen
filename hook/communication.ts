@@ -151,9 +151,11 @@ function turnCue(cwd: string, job: boolean, wake: boolean, lastTouch: string | u
 	return ["<limen-project-context>", ...lines, "</limen-project-context>"].join("\n\n");
 }
 
+/** A job follows the planning source recorded at its spawn; the coordinator follows the project setting. */
 function privatePlanning(root: string, job: boolean): boolean {
 	const id = process.env.LIMEN_JOB_ID;
-	return (job && id ? recordedPlanningSource(join(root, ".limen/jobs", id)) : planningSource(root)) === "private";
+	const source = job && id ? recordedPlanningSource(join(root, ".limen/jobs", id)) : planningSource(root);
+	return source === "private";
 }
 
 function readRegister(cwd: string): string {
