@@ -83,7 +83,7 @@ test("hosted launches omit json mode and keep the profile flags", () => {
 	assert.equal(pi[pi.indexOf("--extension") + 1], "/hook/hosted.ts");
 });
 
-test("omp pi-claude models load the local bridge under --no-extensions and never add a provider", async (context) => {
+test("omp pi-claude models load the local bridge under --no-extensions and drop the provider", async (context) => {
 	const home = await mkdtemp(join(tmpdir(), "limen-bridge-home-"));
 	const previous = process.env.HOME;
 	context.after(async () => {
@@ -92,7 +92,7 @@ test("omp pi-claude models load the local bridge under --no-extensions and never
 		await rm(home, { recursive: true, force: true });
 	});
 	process.env.HOME = home;
-	const model = { ...slots, jsonMode: false, model: "pi-claude/claude-opus-5-5", thinking: "xhigh" };
+	const model = { ...slots, jsonMode: false, provider: "pi-claude", model: "pi-claude/claude-opus-5-5", thinking: "xhigh" };
 	assert.equal(argvFor(ENGINES.omp, model).filter((arg) => arg.includes("pi-claude-bridge")).length, 0, "no bridge installed, nothing invented");
 	const installed = join(home, "bridges/pi-claude-bridge");
 	await mkdir(installed, { recursive: true });
@@ -105,10 +105,15 @@ test("omp pi-claude models load the local bridge under --no-extensions and never
 		omp.flatMap((arg, i) => (arg === "--extension" ? [omp[i + 1]] : [])),
 		[...slots.extensions, real],
 	);
-	assert.equal(omp.includes("--provider"), false);
+	assert.equal(omp.includes("--provider"), false, "omp rejects --provider pi-claude");
+	assert.equal(omp.includes("pi-claude"), false);
 	assert.equal(omp[omp.indexOf("--model") + 1], "pi-claude/claude-opus-5-5");
-	assert.equal(argvFor(ENGINES.omp, { ...model, model: "anthropic/claude-opus-5-5" }).includes(real), false);
-	assert.equal(argvFor(ENGINES.pi, model).includes(real), false);
+	const anthropic = argvFor(ENGINES.omp, { ...model, provider: "anthropic", model: "anthropic/claude-opus-5-5" });
+	assert.equal(anthropic.includes(real), false);
+	assert.equal(anthropic[anthropic.indexOf("--provider") + 1], "anthropic", "a normal provider still reaches omp");
+	const pi = argvFor(ENGINES.pi, model);
+	assert.equal(pi.includes(real), false);
+	assert.equal(pi[pi.indexOf("--provider") + 1], "pi-claude", "pi argv is unchanged");
 });
 
 test("OMP launch view exposes legacy skills without shadowing native or changing Pi", async (context) => {

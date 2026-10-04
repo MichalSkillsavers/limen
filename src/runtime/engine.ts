@@ -138,8 +138,11 @@ export function argvFor(profile: EngineProfile, slots: EngineArgv): string[] {
 	if (profile.noTitle) args.push("--no-title");
 	if (profile.id === "omp" && slots.skillConfig) args.push("--config", slots.skillConfig);
 	args.push("--append-system-prompt", slots.preamble);
-	for (const path of [...slots.extensions, ...bridgeExtensions(profile, slots.model)]) args.push("--extension", path);
-	if (slots.provider) args.push("--provider", slots.provider);
+	// OMP serves `pi-claude/…` models from a local bridge extension. The model id alone selects it:
+	// OMP rejects `--provider pi-claude`, so the provider stays in the job record but not on argv.
+	const bridged = profile.id === "omp" && !!slots.model?.startsWith("pi-claude/");
+	for (const path of [...slots.extensions, ...(bridged ? bridgeExtensions() : [])]) args.push("--extension", path);
+	if (slots.provider && !bridged) args.push("--provider", slots.provider);
 	if (slots.model) args.push("--model", slots.model);
 	if (slots.thinking) args.push("--thinking", slots.thinking);
 	if (slots.continueValue !== undefined) args.push("--continue", slots.continueValue);
@@ -147,10 +150,9 @@ export function argvFor(profile: EngineProfile, slots: EngineArgv): string[] {
 	return args;
 }
 
-// OMP serves `pi-claude/…` models from a local bridge extension that `--no-extensions`
-// hides. Name it explicitly so the model resolves while other user extensions stay off.
-function bridgeExtensions(profile: EngineProfile, model: string | undefined): string[] {
-	if (profile.id !== "omp" || !model?.startsWith("pi-claude/")) return [];
+// `--no-extensions` hides the bridge. Name it explicitly so the model resolves while other user
+// extensions stay off.
+function bridgeExtensions(): string[] {
 	const bridge = join(homedir(), ".omp", "local", "pi-claude-bridge");
 	return existsSync(bridge) ? [realpathSync(bridge)] : [];
 }
