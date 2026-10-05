@@ -148,6 +148,7 @@ function page(hash: string, state: unknown = null) {
 		activeElement: null as FakeElement | null,
 		createElement: () => new FakeElement(doc),
 		querySelector: () => null,
+		querySelectorAll: () => [],
 		addEventListener: on,
 		body: null as unknown as FakeElement,
 		documentElement: null as unknown as FakeElement,
