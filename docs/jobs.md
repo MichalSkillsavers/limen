@@ -31,6 +31,8 @@ The type of coordinator controls how the wake comes:
 
 For a Herdr wake, `limen jobs <id>` shows the result as `herdr-wake`: `turn observed`, `submitted …; no turn observed`, or `failed …`.
 
+Both routes carry the same completion facts: the task, branch and repository, stop reason, bounded commit and final-message excerpts, and undelivered steers when present. A job with zero recorded tool calls and no commits says that it produced nothing. Missing evidence files remain absent from the wake; the route-specific next-step instruction may differ.
+
 ### Job states
 
 | State | Meaning |
@@ -114,8 +116,10 @@ limen continue <job-id> "Follow-up instruction"
 
 Limen then does these steps:
 
-1. If prune removed the worktree, Limen puts it back at the recorded path from the local branch.
-2. Limen copies the saved session into a new linked job.
+1. Limen copies the saved session into a new linked job. It writes the complete starting record in a hidden directory and publishes it with one rename.
+2. The published record protects the worktree from prune. If prune removed the old checkout before publication, Limen restores it at the recorded path from the local branch.
+
+Spawn uses the same publication path. A publication failure removes the hidden child record and leaves the parent record and saved session unchanged.
 
 **Only committed branch contents come back.** Uncommitted files that prune removed are lost. Recovery is not possible without the branch or the transcript. Limen does not take over a branch that is checked out in a different place.
 

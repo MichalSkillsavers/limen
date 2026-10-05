@@ -211,6 +211,84 @@ test("continue restores a pruned finished checkout from its branch and saved ses
 	assert.equal(argv[argv.indexOf("--continue") + 1], "refine committed work");
 });
 
+for (const failPublication of [false, true]) {
+	test(`continuation publication ${failPublication ? "failure preserves parent without a child" : "survives prune before markers"}`, async (context) => {
+		const scratch = await scratchRepo(continuingFakePi);
+		context.after(scratch.cleanup);
+		assert.equal(limen(scratch, "init").status, 0);
+		const parent = onlyJobId(limen(scratch, "spawn", "--engine", "omp", "first slice").stdout);
+		await waitForState(scratch.root, parent, "done");
+		const parentDir = join(scratch.root, ".limen/jobs", parent);
+		const worktree = (await readFile(join(parentDir, "worktree"), "utf8")).trim();
+		const transcript = '{"type":"session","id":"frozen-parent"}\n';
+		await writeFile(join(parentDir, "session/zz-parent.jsonl"), transcript);
+		const parentState = await readFile(join(parentDir, "state"), "utf8");
+		const preload = join(scratch.fakeBin, "publication-probe.mjs");
+		const pruneModule = new URL("../src/commands/prune.ts", import.meta.url).href;
+		await writeFile(
+			preload,
+			`import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import assert from "node:assert/strict";
+const writeFile = fs.promises.writeFile;
+let interleaved = false;
+fs.promises.writeFile = async (path, ...args) => {
+  if (!interleaved && String(path).endsWith(${JSON.stringify(failPublication ? "/task.md" : "/started-at")})) {
+    interleaved = true;
+    // Load after builtin synchronization so prune uses the instrumented filesystem.
+    if (!${failPublication}) {
+      const { pruneFinishedWorktrees } = await import(${JSON.stringify(pruneModule)});
+      await pruneFinishedWorktrees(${JSON.stringify(scratch.root)});
+    }
+    await writeFile(${JSON.stringify(join(scratch.root, "publication-interleaved"))}, "publication paused\\n");
+    if (${failPublication}) throw new Error("publication probe write failed");
+  }
+  return writeFile(path, ...args);
+};
+const rename = fs.promises.rename;
+fs.promises.rename = async (from, to) => {
+  const result = await rename(from, to);
+  const jobsRoot = ${JSON.stringify(`${scratch.root}/.limen/jobs/`)};
+  if (String(to).startsWith(jobsRoot) && !String(to).slice(jobsRoot.length).includes("/")) {
+    assert.equal(await fs.promises.readFile(String(to) + "/session/zz-parent.jsonl", "utf8"), ${JSON.stringify(transcript)});
+    assert.equal(await fs.promises.readFile(String(to) + "/notify/ready", "utf8"), "1\\n");
+    const { pruneFinishedWorktrees } = await import(${JSON.stringify(pruneModule)});
+    await pruneFinishedWorktrees(${JSON.stringify(scratch.root)});
+    assert.ok(fs.existsSync(String(to)), "published continuation record was pruned");
+  }
+  return result;
+};
+syncBuiltinESMExports();
+`,
+		);
+		const result = limenWithEnv(scratch, { NODE_OPTIONS: `--import=${new URL(`file://${preload}`).href}` }, "continue", "--detached", parent, "resume copied context");
+		assert.equal(await readFile(join(scratch.root, "publication-interleaved"), "utf8"), "publication paused\n");
+		assert.equal(await readFile(join(parentDir, "state"), "utf8"), parentState);
+		assert.equal(await readFile(join(parentDir, "session/zz-parent.jsonl"), "utf8"), transcript);
+		const jobs = await readdir(join(scratch.root, ".limen/jobs"));
+		assert.equal(
+			(await readdir(join(scratch.root, ".limen"))).some((name) => name.startsWith(".publishing-")),
+			false,
+		);
+		if (failPublication) {
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /publication probe write failed/);
+			assert.deepEqual(jobs, [parent], "publication failure must leave no visible child record");
+		} else {
+			assert.equal(result.status, 0, result.stderr);
+			const id = onlyJobId(result.stdout);
+			await waitForState(scratch.root, id, "done");
+			const child = join(scratch.root, ".limen/jobs", id);
+			assert.equal(await readFile(join(child, "engine"), "utf8"), "omp\n");
+			assert.equal(await readFile(join(child, "session/zz-parent.jsonl"), "utf8"), transcript);
+			assert.equal(await readFile(join(child, "result"), "utf8"), "continued ok\n");
+			assert.equal(existsSync(worktree), true);
+			const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
+			assert.equal(argv[argv.indexOf("--continue") + 1], "resume copied context");
+		}
+	});
+}
+
 test("continue refuses a running job or missing transcript without writing records", async (context) => {
 	const scratch = await scratchRepo(sleeperFakePi);
 	context.after(scratch.cleanup);

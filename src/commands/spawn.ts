@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureFinishAuthor, finishWebhookEnv } from "../integrations/finish-webhook.ts";
@@ -10,6 +10,7 @@ import type { GroupRun } from "../job/group-cabinet.ts";
 import { claimMember, groupIdentity, groupLock, groupPath, teamRoute } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
 import { parseDuration } from "../job/job.ts";
+import { publishJob } from "../job/publication.ts";
 import { appendLimenLog, atomicWrite, finalizeJob } from "../job/record.ts";
 import {
 	addBranchWorktree,
@@ -56,8 +57,6 @@ export function resolvePreamble(root: string, role: string): string {
 	for (const path of [`${root}/.agents/limen/${role}.md`, `${PACKAGE_ROOT}/templates/${role}.md`]) if (existsSync(path)) return path;
 	throw new Error(`no preamble for role ${role}`);
 }
-export const HOSTED_NOTE =
-	"Hosted job: weaker guarantees. No 90-minute timeout, no tool-call cap, no F007 process containment. Herdr owns the process tree. Closing the tab ends the worker.\n";
 type WorktreePlan =
 	| { readonly kind: "detach"; readonly path: string; readonly ref: string }
 	| { readonly kind: "reuse"; readonly path: string }
@@ -97,13 +96,10 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 			throw new Error("group launches require the recorded engine/provider/model/reasoning explicitly");
 		if (parsed.repo || (parsed.branch && !parsed.review) || (parsed.role && parsed.role !== group.role) || parsed.timeoutMs)
 			throw new Error("group launches use isolated new branches, recorded roles and deadlines; omit --repo, ordinary --branch and --timeout");
-		if (
-			parsed.review &&
-			!(await Promise.all(run.members.filter((member) => member.team === group.team).map((member) => text(`${run.root}/.limen/jobs/${member.id}/branch`))).then((branches) =>
-				branches.includes(parsed.branch ?? ""),
-			))
-		)
-			throw new Error("group review requires a candidate branch owned by this team");
+		if (parsed.review) {
+			const teamBranches = await Promise.all(run.members.filter((member) => member.team === group.team).map((member) => text(`${run.root}/.limen/jobs/${member.id}/branch`)));
+			if (!teamBranches.includes(parsed.branch ?? "")) throw new Error("group review requires a candidate branch owned by this team");
+		}
 	}
 	const herdr = herdrAvailable();
 	const tab = parsed.detached ? false : parsed.tab || herdr;
@@ -182,72 +178,39 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	}
 	const member = group ? await claimMember(group.run, group.team, group.role, id) : undefined;
 	const jobDir = `${jobsRoot}/${id}`;
-	const publishing = `${dirname(jobsRoot)}/.publishing-${id}`;
-	await mkdir(publishing);
-	try {
-		await Promise.all([
-			writeFile(`${publishing}/started-at`, `${new Date().toISOString()}\n`, { flag: "wx", flush: true }),
-			writeFile(`${publishing}/worktree`, `${plan.path}\n`, { flag: "wx", flush: true }),
-			writeFile(`${publishing}/planning-source`, `${source}\n`, { flag: "wx", flush: true }),
-			...(group && member
-				? [
-						writeFile(`${publishing}/group`, `${group.run.id}\n`, { flag: "wx", flush: true }),
-						writeFile(`${publishing}/team`, `${group.team}\n`, { flag: "wx", flush: true }),
-						writeFile(`${publishing}/deadline`, `${member.deadline}\n`, { flag: "wx", flush: true }),
-					]
-				: []),
-		]);
-		await rename(publishing, jobDir);
-	} catch (error) {
-		await rm(publishing, { recursive: true, force: true });
-		throw error;
+	const candidate = options.review ? branchCommit(repository, branch) : undefined;
+	const base = options.base ?? baseCommit;
+	// Private planning may rewrite ticket pointers, so its task is the checked text, not the raw bytes.
+	let taskBody: string | Uint8Array = loaded.raw && source === "committed" ? loaded.bytes : candidate ? `${task.trim()}\n\nCandidate commit: ${candidate}.\n` : `${task.trim()}\n`;
+	if (group && member) {
+		const guidance = await readFile(`${PACKAGE_ROOT}/templates/group-member.md`, "utf8");
+		const approach = privatePacket || `Approach note:\n${await readFile(`${root}/${group.run.feature}/group/teams/${group.team}.md`, "utf8")}`;
+		taskBody = `${guidance}\nCanonical root: ${root}\nGroup: ${group.run.id}\nTeam: ${group.team}\nFeature: ${group.run.feature}\n${memberRoute(group.run, group.team)}\n${approach}\n\n${taskBody}`;
 	}
+	const finishConfig = finishWebhookEnv(root, cwd);
+	await publishJob(jobDir, {
+		task: taskBody,
+		label: options.label,
+		branch,
+		worktree: plan.path,
+		base,
+		role,
+		engine,
+		planningSource: source,
+		finishAuthor: captureFinishAuthor(cwd, loaded.text, Boolean(workspace)),
+		...(repo ? { repo } : {}),
+		...(options.tab ? { agentName: hostedAgentName(id) } : {}),
+		...(!group && notificationSession ? { notificationSession } : {}),
+		...(coordinatorTab ? { originTab: coordinatorTab } : {}),
+		...(coordinatorPane ? { originPane: coordinatorPane } : {}),
+		...(group && member ? { group: { id: group.run.id, team: group.team, deadline: member.deadline } } : {}),
+		...(candidate ? { candidate } : {}),
+		...(finishConfig ? { finishConfig } : {}),
+	});
 	let worktree: string;
 	try {
 		worktree = executeWorktree(repository, plan);
 		await pruneFinishedWorktrees(root, [worktree, currentRoot]).catch(() => {});
-		const candidate = options.review ? branchCommit(repository, branch) : undefined;
-		const base = options.base ?? headCommit(worktree);
-		await mkdir(`${jobDir}/notify/subscribers`, { recursive: true });
-		// Private planning may rewrite ticket pointers, so its task is the checked text, not the raw bytes.
-		const taskBody = loaded.raw && source === "committed" ? loaded.bytes : candidate ? `${task.trim()}\n\nCandidate commit: ${candidate}.\n` : `${task.trim()}\n`;
-		await Promise.all([
-			writeFile(`${jobDir}/task.md`, taskBody, { flag: "wx", flush: true }),
-			...(candidate ? [writeFile(`${jobDir}/candidate`, `${candidate}\n`, { flag: "wx", flush: true })] : []),
-			writeFile(`${jobDir}/label`, `${options.label}\n`, { flag: "wx", flush: true }),
-			writeFile(`${jobDir}/branch`, `${branch}\n`, { flag: "wx", flush: true }),
-			writeFile(`${jobDir}/base`, `${base}\n`, { flag: "wx", flush: true }),
-			...(repo ? [writeFile(`${jobDir}/repo`, `${repo}\n`, { flag: "wx", flush: true })] : []),
-			writeFile(`${jobDir}/tool-calls`, "0\n", { flag: "wx", flush: true }),
-			writeFile(`${jobDir}/last-tool`, "", { flag: "wx", flush: true }),
-			writeFile(`${jobDir}/activity`, "think\n", { flag: "wx", flush: true }),
-			writeFile(`${jobDir}/log`, "", { flag: "wx", flush: true }),
-			writeFile(`${jobDir}/role`, `${role}\n`, { flag: "wx", flush: true }),
-			writeFile(`${jobDir}/engine`, `${engine}\n`, { flag: "wx", flush: true }),
-			...(options.tab
-				? [writeFile(`${jobDir}/hosted`, HOSTED_NOTE, { flag: "wx", flush: true }), writeFile(`${jobDir}/agent-name`, `${hostedAgentName(id)}\n`, { flag: "wx", flush: true })]
-				: []),
-			...(!group && notificationSession
-				? [
-						writeFile(`${jobDir}/origin-session`, `${notificationSession}\n`, { flag: "wx", flush: true }),
-						writeFile(`${jobDir}/notify/subscribers/${notificationSession}`, `${new Date().toISOString()}\n`, { flag: "wx", flush: true }),
-					]
-				: []),
-			...(coordinatorTab ? [writeFile(`${jobDir}/origin-tab`, `${coordinatorTab}\n`, { flag: "wx", flush: true })] : []),
-			...(coordinatorPane ? [writeFile(`${jobDir}/origin-pane`, `${coordinatorPane}\n`, { flag: "wx", flush: true })] : []),
-		]);
-		if (group && member) {
-			const guidance = await readFile(`${PACKAGE_ROOT}/templates/group-member.md`, "utf8");
-			const approach = privatePacket || `Approach note:\n${await readFile(`${root}/${group.run.feature}/group/teams/${group.team}.md`, "utf8")}`;
-			await writeFile(
-				`${jobDir}/task.md`,
-				`${guidance}\nCanonical root: ${root}\nGroup: ${group.run.id}\nTeam: ${group.team}\nFeature: ${group.run.feature}\n${memberRoute(group.run, group.team)}\n${approach}\n\n${taskBody}`,
-			);
-		}
-		await writeFile(`${jobDir}/finish-webhook-author`, `${captureFinishAuthor(cwd, loaded.text, Boolean(workspace))}\n`, { flag: "wx", flush: true });
-		const finishConfig = finishWebhookEnv(root, cwd);
-		if (finishConfig) await writeFile(`${jobDir}/finish-webhook-env`, `${finishConfig}\n`, { flag: "wx", mode: 0o600, flush: true });
-		await writeFile(`${jobDir}/notify/ready`, "1\n", { flag: "wx", flush: true });
 		await runPrepare(jobDir, worktree, parsed.prepare ?? process.env.LIMEN_PREPARE?.trim());
 	} catch (error) {
 		if (group) await finalizeJob(jobDir, "failed", `group launch failed: ${String(error)}`);

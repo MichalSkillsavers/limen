@@ -91,7 +91,12 @@ export async function prepareSkillConfig(worktree: string, jobDir: string): Prom
 		if (!info) continue;
 		const flat = info.isFile() && entry.endsWith(".md");
 		const name = flat ? basename(entry, ".md") : entry;
-		if (!name || (!flat && (!info.isDirectory() || !(await stat(join(source, "SKILL.md")).catch(() => undefined))?.isFile()))) continue;
+		if (!name) continue;
+		if (!flat) {
+			if (!info.isDirectory()) continue;
+			const skillFile = await stat(join(source, "SKILL.md")).catch(() => undefined);
+			if (!skillFile?.isFile()) continue;
+		}
 		if (
 			(await stat(join(worktree, ".agents/skills", name, "SKILL.md")).catch(() => undefined))?.isFile() ||
 			(await stat(join(worktree, ".omp/skills", name, "SKILL.md")).catch(() => undefined))?.isFile()

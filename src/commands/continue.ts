@@ -1,18 +1,18 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { herdrAvailable, openWatchTab } from "../integrations/herdr.ts";
 import { claimMember, commandRoot, groupIdentity, groupLock, groupPath, jobMembership, teamRoute } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
 import { resolveJob } from "../job/lookup.ts";
+import { publishJob } from "../job/publication.ts";
 import { atomicWrite, finalizeJob } from "../job/record.ts";
-import { addBranchWorktree, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
+import { addBranchWorktree, branchCommit, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { inheritedPlanning, privatePlanningFile, privatePlanningTask, recordedPlanningSource } from "../project/planning.ts";
 import { engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { launchWrapper } from "../runtime/wrapper.ts";
 import {
 	capturedVersions,
 	currentNotificationSession,
-	HOSTED_NOTE,
 	herdrWakePane,
 	hostedAgentName,
 	makeJobId,
@@ -122,66 +122,47 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	const role = review ? "reviewer" : (await text(`${parentDir}/role`)) || "worker";
 	const preamble = resolvePreamble(root, role);
 	const member = membership?.member ? await claimMember(membership.run, membership.member.team, "worker", id, parentId) : undefined;
-	if (!existsSync(worktree)) {
-		const repository = repo ? workspaceRepository(root, repo) : root;
-		if (!branchExists(repository, branch))
-			throw new Error(`parent worktree ${worktree} is gone and branch ${branch} is missing in ${repository}; restore that branch before continuing`);
-		addBranchWorktree(repository, worktree, branch);
-		console.log(`restored ${worktree} from ${branch}; only committed branch contents were recovered`);
-	}
-	await mkdir(jobDir, { recursive: false });
-	await mkdir(`${jobDir}/notify/subscribers`, { recursive: true });
+	const repository = repo ? workspaceRepository(root, repo) : root;
+	if (!existsSync(worktree) && !branchExists(repository, branch))
+		throw new Error(`parent worktree ${worktree} is gone and branch ${branch} is missing in ${repository}; restore that branch before continuing`);
 	const notificationSession = currentNotificationSession();
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
 	const coordinatorPane = herdrWakePane(notificationSession);
-	await Promise.all([
-		writeFile(`${jobDir}/task.md`, `${followUp}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/label`, `${finalLabel}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/branch`, `${branch}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/worktree`, `${worktree}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/base`, `${headCommit(worktree)}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/parent`, `${parentId}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/started-at`, `${new Date().toISOString()}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/tool-calls`, "0\n", { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/last-tool`, "", { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/activity`, "think\n", { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/log`, "", { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/role`, `${role}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/engine`, `${profile.id}\n`, { flag: "wx", flush: true }),
-		writeFile(`${jobDir}/planning-source`, `${source}\n`, { flag: "wx", flush: true }),
-		...(repo ? [writeFile(`${jobDir}/repo`, `${repo}\n`, { flag: "wx", flush: true })] : []),
-		...(hosted
-			? [
-					writeFile(`${jobDir}/hosted`, HOSTED_NOTE, { flag: "wx", flush: true }),
-					writeFile(`${jobDir}/agent-name`, `${hostedAgentName(id)}\n`, { flag: "wx", flush: true }),
-					writeFile(`${jobDir}/continue`, `${followUp}\n`, { flag: "wx", flush: true }),
-				]
-			: []),
-		...(!membership && notificationSession
-			? [
-					writeFile(`${jobDir}/origin-session`, `${notificationSession}\n`, { flag: "wx", flush: true }),
-					writeFile(`${jobDir}/notify/subscribers/${notificationSession}`, `${new Date().toISOString()}\n`, { flag: "wx", flush: true }),
-				]
-			: []),
-		...(coordinatorTab ? [writeFile(`${jobDir}/origin-tab`, `${coordinatorTab}\n`, { flag: "wx", flush: true })] : []),
-		...(coordinatorPane ? [writeFile(`${jobDir}/origin-pane`, `${coordinatorPane}\n`, { flag: "wx", flush: true })] : []),
-	]);
-	if (membership && member) {
-		await writeFile(`${jobDir}/group`, `${membership.run.id}\n`, { flag: "wx", flush: true });
-		await writeFile(`${jobDir}/team`, `${member.team}\n`, { flag: "wx", flush: true });
-		await writeFile(`${jobDir}/deadline`, `${member.deadline}\n`, { flag: "wx", flush: true });
-	}
 	// Resume the parent's opt-in (or absence), not the current shell's destination.
 	const finishConfig = await text(`${parentDir}/finish-webhook-env`);
-	if (finishConfig) await writeFile(`${jobDir}/finish-webhook-env`, `${finishConfig}\n`, { flag: "wx", mode: 0o600, flush: true });
 	const finishAuthor = await text(`${parentDir}/finish-webhook-author`);
-	if (finishAuthor) await writeFile(`${jobDir}/finish-webhook-author`, `${finishAuthor}\n`, { flag: "wx", flush: true });
-	await writeFile(`${jobDir}/notify/ready`, "1\n", { flag: "wx", flush: true });
+	await publishJob(jobDir, {
+		task: `${followUp}\n`,
+		label: finalLabel,
+		branch,
+		worktree,
+		base: existsSync(worktree) ? headCommit(worktree) : branchCommit(repository, branch),
+		role,
+		engine: profile.id,
+		planningSource: source,
+		parent: parentId,
+		session: { source: `${parentDir}/session/${inheritedSession}`, name: inheritedSession ?? "" },
+		...(repo ? { repo } : {}),
+		...(hosted ? { agentName: hostedAgentName(id), continueTask: followUp } : {}),
+		...(!membership && notificationSession ? { notificationSession } : {}),
+		...(coordinatorTab ? { originTab: coordinatorTab } : {}),
+		...(coordinatorPane ? { originPane: coordinatorPane } : {}),
+		...(membership && member ? { group: { id: membership.run.id, team: member.team, deadline: member.deadline } } : {}),
+		...(finishConfig ? { finishConfig } : {}),
+		...(finishAuthor ? { finishAuthor } : {}),
+	});
+	try {
+		// Publication protects the checkout before restoration. Prune during hidden writes may remove
+		// an old finished checkout; restore it only after the complete starting record is visible.
+		if (!existsSync(worktree)) {
+			addBranchWorktree(repository, worktree, branch);
+			console.log(`restored ${worktree} from ${branch}; only committed branch contents were recovered`);
+		}
+	} catch (error) {
+		await rm(jobDir, { recursive: true, force: true });
+		throw error;
+	}
 	const versions = capturedVersions(profile).then((text) => writeFile(`${jobDir}/versions`, text, { flag: "wx", flush: true }));
-	// The continued run writes into its own transcript, seeded with a copy of the parent's
-	// newest session — the parent record stays frozen history.
-	await mkdir(`${jobDir}/session`, { recursive: true });
-	await copyFile(`${parentDir}/session/${inheritedSession}`, `${jobDir}/session/${inheritedSession}`);
 	await atomicWrite(`${jobDir}/state`, "running\n");
 	if (membership) await syncLifecycle(membership.run, "skip");
 	if (hosted) {

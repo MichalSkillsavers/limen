@@ -179,8 +179,7 @@ export function locateHostedAgent(target: string, engine: EngineId, agentName = 
 		if (names.some((n) => n === ENGINES[engine].binaryDefault || n === "node")) return target;
 		if (!Array.isArray(info.foreground_processes)) uncertain = true;
 	} catch (error) {
-		if (!(typeof error === "object" && error !== null && "code" in error && ["target_not_found", "pane_not_found", "agent_not_found"].includes(String(error.code))))
-			uncertain = true;
+		if (!["target_not_found", "pane_not_found", "agent_not_found"].includes(String(errorCode(error)))) uncertain = true;
 	}
 	if (concrete && uncertain) return "unknown";
 }
@@ -225,7 +224,8 @@ export function hostedAgentStatus(target: string, fresh = false): HostedAgentSta
 		lastHostedFault.delete(target);
 		return status;
 	} catch (error) {
-		const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" && error.code ? error.code : "herdr_error";
+		const rawCode = errorCode(error);
+		const code = typeof rawCode === "string" && rawCode ? rawCode : "herdr_error";
 		if (code === "agent_not_found" || code === "target_not_found") {
 			lastHostedStatus.delete(target);
 			lastHostedFault.delete(target);
@@ -233,6 +233,12 @@ export function hostedAgentStatus(target: string, fresh = false): HostedAgentSta
 		}
 		return fresh ? "unknown" : noteHostedFault(target, code);
 	}
+}
+
+function errorCode(error: unknown): unknown {
+	if (typeof error !== "object" || error === null) return;
+	if (!("code" in error)) return;
+	return error.code;
 }
 
 function noteHostedFault(target: string, code: string): HostedAgentStatus {
@@ -368,7 +374,7 @@ export async function closeJobTab(herdr: string, jobDir: string, tab: string): P
 			call(herdr, ["tab", "close", tab], 10_000);
 			return note(attempt === 1 ? "closed" : "closed on retry");
 		} catch (error) {
-			if (typeof error === "object" && error !== null && "code" in error && error.code === "tab_not_found") return note("already closed");
+			if (errorCode(error) === "tab_not_found") return note("already closed");
 			refusal = error instanceof Error ? error.message : String(error);
 			if (attempt === 1) {
 				await note(`refused (${refusal}); retrying once`);

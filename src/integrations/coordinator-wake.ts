@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { appendLimenLog, atomicWrite, textFile } from "../job/record.ts";
+import { completionWake } from "../job/wake-text.ts";
 
 const PROMPT_MS = 15_000;
 const ATTEMPTS = 2;
@@ -21,7 +22,10 @@ export async function promptCoordinator(jobDir: string, shutdownDeadline = Numbe
 	} catch {
 		return; // Another finalizer already owns this wake.
 	}
-	const message = await wakeText(jobDir);
+	const [label, state, branch, repo] = await Promise.all(["label", "state", "branch", "repo"].map((name) => textFile(`${jobDir}/${name}`)));
+	const id = jobDir.split("/").at(-1) ?? "";
+	const instruction = `Start with \`limen jobs ${id}\`. Inspect its diff, commits, final message, and checks before landing. If a check blocks landing, name that check and resume a focused fix. Keep the user informed; ask only when a genuine product decision needs them.`;
+	const message = completionWake(jobDir, label || id, state ?? "", id, branch ?? "", repo ?? "", false, instruction);
 	const lines: string[] = [];
 	for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
 		const budget = Math.min(PROMPT_MS, shutdownDeadline - Date.now());
@@ -47,17 +51,6 @@ export async function promptCoordinator(jobDir: string, shutdownDeadline = Numbe
 		else lines.push(`automatic delivery stopped after ${ATTEMPTS} unsuccessful attempts; inspect the job and wake the coordinator deliberately`);
 	}
 	await atomicWrite(`${jobDir}/notify/herdr-prompt`, `${lines.join("\n")}\n`);
-}
-
-async function wakeText(jobDir: string): Promise<string> {
-	const [label, state, branch, repo] = await Promise.all(["label", "state", "branch", "repo"].map((name) => textFile(`${jobDir}/${name}`)));
-	const id = jobDir.split("/").at(-1) ?? "";
-	const location = repo ? ` in repository ${repo}` : "";
-	const meaning =
-		state === "done"
-			? "Job done. Next step: land it after you check its diff, commits, final message, and checks. If a check still blocks landing, name that check and resume a focused fix."
-			: "Inspect the failure in its log and session before deciding whether to resume work; do not treat it as a new-spawn or release signal.";
-	return `Limen job ${JSON.stringify(label || id)} is ${state} (${id}) on branch ${branch}${location}. ${meaning} Start with \`limen jobs ${id}\`. Keep the user informed; ask only when a genuine product decision needs them.`;
 }
 
 function run(binary: string, args: readonly string[], timeout: number): Promise<{ readonly ok: boolean; readonly detail: string }> {

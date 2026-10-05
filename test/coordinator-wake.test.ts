@@ -61,7 +61,7 @@ test("a job spawned from a Herdr coordinator without a Pi session starts a turn 
 	context.after(() => wipe(scratch));
 	const herdr = await fakeHerdr(scratch, "observed");
 	limenWithEnv(scratch, {}, "init");
-	const launched = limenWithEnv(scratch, herdrCoordinator(herdr), "spawn", "--detached", "--label", "omp wake", "do work");
+	const launched = limenWithEnv(scratch, herdrCoordinator(herdr), "spawn", "--detached", "--label", "omp wake", "make commit");
 	assert.equal(launched.status, 0, launched.stderr);
 	const id = onlyJobId(launched.stdout);
 	const job = join(scratch.root, ".limen/jobs", id);
@@ -72,8 +72,9 @@ test("a job spawned from a Herdr coordinator without a Pi session starts a turn 
 	assert.equal(sent.length, 1, "an observed turn ends automatic delivery");
 	const [verb, sub, target, text, ...flags] = sent[0] ?? [];
 	assert.deepEqual([verb, sub, target], ["agent", "prompt", "w1:p7"]);
-	assert.match(text ?? "", new RegExp(`"omp wake" is done \\(${id}\\)`));
 	assert.match(text ?? "", new RegExp(`limen jobs ${id}`));
+	assert.match(text ?? "", /Commits:\n[0-9a-f]+ candidate/);
+	assert.match(text ?? "", /Final message:\nfake pi completed/);
 	assert.ok(flags.includes("--wait") && flags.includes("working"), "the prompt must wait for an observed turn");
 	// The observed turn settles the in-process wake hook so no Pi fallback repeats it.
 	assert.ok((await readFile(join(job, "notify/delivered/_herdr"), "utf8")).trim());

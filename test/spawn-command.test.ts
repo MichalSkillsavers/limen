@@ -798,6 +798,7 @@ while (!existsSync(${JSON.stringify(gate)})) Atomics.wait(new Int32Array(new Sha
 		await second?.settle();
 	});
 	const firstId = await waitForInFlightJob(scratch.root);
+	await waitFor("first start did not reach prepare", async () => existsSync(join(waitingRoot, firstId)), 30_000);
 	const firstJob = join(scratch.root, ".limen/jobs", firstId);
 	const firstWorktree = (await readFile(join(firstJob, "worktree"), "utf8")).trim();
 	await access(firstWorktree);

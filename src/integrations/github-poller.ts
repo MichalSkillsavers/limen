@@ -47,6 +47,10 @@ function mentionsLimen(body: string): boolean {
 	return false;
 }
 
+function sameRepo(repo: string, expected: string): boolean {
+	return repo.toLowerCase() === expected.toLowerCase();
+}
+
 function boundedContext(text: string, limit: number, label: string, link: string): string {
 	return text.length > limit ? `${text.slice(0, limit)}\n[${label} truncated; see ${link}]` : text;
 }
@@ -181,38 +185,30 @@ async function reconcile(root: string, state: string, claim: GithubClaim, token:
 			const outcome = await readFile(join(githubDir(root), "outcomes", `${claim.id}.json`), "utf8")
 				.then((text) => JSON.parse(text) as { repo: string; id: number; coordinator: string; nonce: string; answer: string })
 				.catch(() => undefined);
-			if (
-				binding &&
-				claim.outcomeNonce &&
-				outcome?.nonce === claim.outcomeNonce &&
-				typeof outcome.repo === "string" &&
-				outcome.repo.toLowerCase() === claim.repo.toLowerCase() &&
-				binding.repo.toLowerCase() === claim.repo.toLowerCase() &&
-				originRepository(root, true).toLowerCase() === claim.repo.toLowerCase() &&
-				outcome.id === claim.id &&
-				outcome.coordinator === binding.coordinator &&
-				typeof outcome.answer === "string" &&
-				outcome.answer.trim() &&
-				outcome.answer.length <= 1600
-			) {
-				claim.answer = outcome.answer.trim();
-				claim.receipt = "resolved";
-				await persist(root, state, claim);
-				await reply(
-					root,
-					state,
-					claim,
-					token,
-					"terminal",
-					`A seat-recorded answer for ${githubSubject(claim)} without starting a job (shared worker/coordinator account; answer text is not independently authenticated):\n\n${claim.answer}\n\nNo review approval or merge occurred.`,
-				);
-				return;
+			if (binding && claim.outcomeNonce && outcome?.nonce === claim.outcomeNonce) {
+				const repositoriesMatch =
+					typeof outcome.repo === "string" && sameRepo(outcome.repo, claim.repo) && sameRepo(binding.repo, claim.repo) && sameRepo(originRepository(root, true), claim.repo);
+				const requestMatches = repositoriesMatch && outcome.id === claim.id && outcome.coordinator === binding.coordinator;
+				const answerUsable = requestMatches && typeof outcome.answer === "string" && outcome.answer.trim() && outcome.answer.length <= 1600;
+				if (answerUsable) {
+					claim.answer = outcome.answer.trim();
+					claim.receipt = "resolved";
+					await persist(root, state, claim);
+					await reply(
+						root,
+						state,
+						claim,
+						token,
+						"terminal",
+						`A seat-recorded answer for ${githubSubject(claim)} without starting a job (shared worker/coordinator account; answer text is not independently authenticated):\n\n${claim.answer}\n\nNo review approval or merge occurred.`,
+					);
+					return;
+				}
 			}
 		}
 		if (claim.receipt?.startsWith("pending: coordinator unavailable") && Date.now() - Date.parse(claim.attemptedAt ?? "") > 30_000) {
 			const binding = await readBinding(root);
-			if (binding && binding.repo.toLowerCase() === claim.repo.toLowerCase() && originRepository(root, true).toLowerCase() === claim.repo.toLowerCase())
-				await handoff(root, state, binding, claim, token);
+			if (binding && sameRepo(binding.repo, claim.repo) && sameRepo(originRepository(root, true), claim.repo)) await handoff(root, state, binding, claim, token);
 		}
 		if ((claim.receipt?.startsWith("handoff attempted; outcome unconfirmed") || claim.receipt === "prompt accepted") && Date.now() - Date.parse(claim.attemptedAt ?? "") > 90_000) {
 			claim.receipt = "pending: no matching job record; inspect coordinator before retry";
@@ -287,9 +283,12 @@ async function accept(root: string, state: string, binding: GithubBinding, comme
 	const thread = pull ?? issue;
 	if (!thread || thread.state !== "open" || thread.number !== pr) return;
 	if (pull) {
-		if (pull.base.repo.full_name.toLowerCase() !== binding.repo.toLowerCase()) return;
+		if (!sameRepo(pull.base.repo.full_name, binding.repo)) return;
 		if (!/^[0-9a-f]{40}$/.test(pull.head.sha) || !/^[0-9a-f]{40}$/.test(pull.base.sha) || !/^[\w./-]+$/.test(pull.base.ref)) throw new Error("GitHub returned invalid PR refs");
-	} else if (issue?.pull_request || issue?.repository_url.toLowerCase() !== `${API}/repos/${binding.repo}`.toLowerCase()) return;
+	} else {
+		if (issue?.pull_request) return;
+		if (!issue || !sameRepo(issue.repository_url, `${API}/repos/${binding.repo}`)) return;
+	}
 	await request(root, state, binding, { id: comment.id, pr, actor: comment.user.login, url: comment.html_url, command: comment.body }, thread, token);
 }
 
@@ -298,7 +297,7 @@ async function acceptIssue(root: string, state: string, binding: GithubBinding, 
 	if (issue.pull_request || issue.state !== "open" || !issue.body || !mentionsLimen(issue.body) || !issue.user || Date.parse(issue.created_at) < Date.parse(binding.connectedAt))
 		return;
 	if (!Number.isSafeInteger(issue.number) || issue.number < 1) throw new Error("GitHub issue has an invalid number");
-	if (issue.repository_url.toLowerCase() !== `${API}/repos/${binding.repo}`.toLowerCase()) return;
+	if (!sameRepo(issue.repository_url, `${API}/repos/${binding.repo}`)) return;
 	if (!(await authorized(binding, issue.user.login, token))) return;
 	await request(root, state, binding, { id: `issue-${issue.number}`, pr: issue.number, actor: issue.user.login, url: issue.html_url }, issue, token);
 }
@@ -439,7 +438,7 @@ export async function pollGithubIssues(root: string, state: string, binding: Git
 
 async function project(root: string, stateDir: string, jwt: string): Promise<void> {
 	const binding = await readBinding(root);
-	if (!binding || originRepository(root, true).toLowerCase() !== binding.repo.toLowerCase()) return;
+	if (!binding || !sameRepo(originRepository(root, true), binding.repo)) return;
 	const state = join(stateDir, createHash("sha256").update(root).digest("hex"));
 	await mkdir(join(state, "claims"), { recursive: true, mode: 0o700 });
 	for (const dir of [state, join(state, "claims")]) {
@@ -464,7 +463,7 @@ async function project(root: string, stateDir: string, jwt: string): Promise<voi
 		for (const entry of await readdir(claimsDir)) {
 			if (!entry.endsWith(".json") || claimId(entry.slice(0, -5)) === undefined) continue;
 			const claim = JSON.parse(await readFile(join(claimsDir, entry), "utf8")) as GithubClaim;
-			if (claim.repo.toLowerCase() === binding.repo.toLowerCase()) await reconcile(root, state, claim, token);
+			if (sameRepo(claim.repo, binding.repo)) await reconcile(root, state, claim, token);
 		}
 		// Keep a durable cursor, with one second overlap for comments sharing a GitHub timestamp.
 		const cursorPath = join(state, "cursor.json");

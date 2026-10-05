@@ -132,11 +132,15 @@ async function claimTick(lock: string): Promise<boolean> {
 export function relevantPicturePaths(diff: string, sources: readonly string[], dataset: string): string[] {
 	const fields = diff.split("\0");
 	const relevant = new Set<string>();
-	const ignored = (path: string): boolean =>
-		["spec/", "docs/", ".agents/"].some((prefix) => path.startsWith(prefix)) ||
-		(!path.includes("/") && path.endsWith(".md")) ||
-		dataset === "" ||
-		(!isAbsolute(dataset) && dataset !== ".." && !dataset.startsWith("../") && (path === dataset || path.startsWith(`${dataset}/`)));
+	const datasetInsideRepository = !isAbsolute(dataset) && dataset !== ".." && !dataset.startsWith("../");
+	const datasetPrefix = `${dataset}/`;
+	const ignored = (path: string): boolean => {
+		if (["spec/", "docs/", ".agents/"].some((prefix) => path.startsWith(prefix))) return true;
+		if (!path.includes("/") && path.endsWith(".md")) return true;
+		if (dataset === "") return true;
+		if (!datasetInsideRepository) return false;
+		return path === dataset || path.startsWith(datasetPrefix);
+	};
 	const cited = (path: string): boolean =>
 		sources.some((source) => {
 			const prefix = source.replace(/^\.\//, "").replace(/\/$/, "");
