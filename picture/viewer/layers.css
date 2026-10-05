@@ -43,7 +43,7 @@ html.layers-open body {
 .layers-trail {
 	position: absolute;
 	top: var(--sp-3);
-	right: var(--gap);
+	right: calc(var(--gap) + var(--layers-bar, 0px));
 	width: var(--layer-w);
 	height: var(--trail-h);
 	display: flex;
@@ -96,7 +96,7 @@ html.layers-open body {
 .layers-stack {
 	position: absolute;
 	top: calc(var(--sp-3) + var(--trail-h));
-	right: var(--gap);
+	right: calc(var(--gap) + var(--layers-bar, 0px));
 	bottom: 0;
 	width: var(--layer-w);
 }

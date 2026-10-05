@@ -264,8 +264,8 @@
 	function label(layer, short = false) {
 		const item = find(layer.kind, layer.id);
 		if (layer.kind === "day") return date(layer.id);
-		if (layer.kind === "work" && item.code) return short ? item.code : `${item.code} · ${cut(item.title || "", 28)}`;
-		return cut(item.title || layer.id, short ? 20 : 32);
+		if (layer.kind === "work" && item.code) return short ? item.code : `${item.code} · ${cut(item.title || "", 24)}`;
+		return cut(item.title || layer.id, short ? 18 : 30);
 	}
 
 	/* DOM: one root after the page; the page and the lower layers are inert. */
@@ -326,7 +326,9 @@
 			),
 		);
 		const trail = root.querySelector(".layers-trail");
-		trail.innerHTML = `${crumbs.join('<span class="layers-sep" aria-hidden="true">/</span>')}<span class="layers-trail-hint">Esc closes the top one</span>`;
+		// The hint shows on the first layer only; deeper, the trail needs the room.
+		const hint = stack.length === 1 ? '<span class="layers-trail-hint">Esc closes the top one</span>' : "";
+		trail.innerHTML = crumbs.join('<span class="layers-sep" aria-hidden="true">/</span>') + hint;
 		// A deep stack scrolls the trail; keep the newest crumb in view.
 		trail.scrollLeft = trail.scrollWidth;
 	}
@@ -349,12 +351,14 @@
 		html.classList.toggle("layers-open", on);
 		root.hidden = !on;
 	}
-	// After a close, focus goes back to what opened the layer; after a reload, to the page control for the closed item.
+	// After a close, focus goes back to what opened the layer. If the page redrew that control, or after a reload,
+	// focus goes to the page control with the same data-layer value, else the one for the closed item.
 	function refocus(closed, top) {
 		const back = openers[stack.length];
 		openers.length = stack.length;
-		const fallback = top ? null : document.querySelector(`[data-layer="${CSS.escape(keyOf(closed))}"]`);
-		const to = back?.isConnected && !back.closest("[inert]") ? back : (fallback ?? top?.querySelector("h2"));
+		const usable = (el) => el?.isConnected && !el.closest("[inert]");
+		const byKey = (key) => (key ? document.querySelector(`[data-layer="${CSS.escape(key)}"]`) : null);
+		const to = usable(back) ? back : top ? top.querySelector("h2") : (byKey(back?.dataset?.layer) ?? byKey(keyOf(closed)));
 		to?.focus({ preventScroll: true });
 	}
 	function show(next, why) {
