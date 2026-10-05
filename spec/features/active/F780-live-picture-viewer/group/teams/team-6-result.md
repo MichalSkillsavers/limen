@@ -52,8 +52,37 @@ Place glosses and "How it works" lines come from the plant map (for example "con
   Also put the full text in the pin's `title` attribute.
 - **L2 · module glosses clip at 1440 and 900 px.** `Hooks carry guidance, steering, and wakes into…`. Change `.mod p` to `-webkit-line-clamp:3`. The stage has free height at 1440×900, so the plant still fits.
 
+### Empty pins (owner: Team 3)
+
+- **E1.** With no open ask, the mast still shows three pins with plain text: `Nothing waits for you.`, `No open problem.`, `Nothing landed yet.`, muted, linked to the work list. No empty box and no `undefined`. The lead adopted this wording.
+
+## Findings on the data (Teams 1 and 2)
+
+- **D1 · answered ask pinned (Team 1).** The first backfill pinned F775 with `Park the merged picture, or approve its landing?`. Adam had already answered it: F780 is the live build he asked for. Removed in `b2c965c`.
+- **D2 · Wrong on the wrong ticket (Team 1).** F775 carried the end-goal layout's problem, which its own merge fixed. Removed in `b2c965c`. The open Wrong pin is now F777, an observed live problem.
+- **D3 · pins never leave (Team 1).** The docs did not say when to remove a flag. `docs/picture.md` now says: remove a Needs Adam request after Adam answers, and a Wrong problem after the fix.
+- **D4 · unclear ask (Team 1).** The F759 owner choice was first worded `Should change counts be written when the map refreshes, or read from Git during build?`. It now reads `Count each place's code changes when the map refreshes, or read them from Git at every build?` (`c667ef7`).
+- **D5 · empty pin scope (Team 2).** 9 of 26 Changed pins had scope `Limen coding-job plant` because their ticket names no place. Scope is now empty for those, a module title when all places share one module, else `N places in M modules` (`f1c114e`).
+- Checked and clean: no Markdown, link, or backtick leaks into work titles or purposes; no empty purpose (158 work items).
+
+## Findings on the layers (owner: Team 4)
+
+Reviewed `94c4747` inside the reference page with Team 2's model sample. Shots: `group/shots/team-6/layers-94c4747/`.
+
+- Passes: the page behind does not move at any width (scroll position, column and atlas boxes unchanged after one and two layers). With forced 15 px classic scrollbars, the lost scrollbar width is compensated exactly. No horizontal scroll. No `undefined`, `null`, or `NaN`. Motion is 160 ms and stops under reduced motion.
+- **Y1 · the sheet hides the atlas it lights.** At 1440 px the 760 px sheet covers x 656–922 of the atlas: all of External adapters. Above 1240 px, make the sheet the reading column's width (470 px) and wrap the head tools under the title.
+- **Y2 · sliced pin text between trail and sheet.** An 8 px gap shows half-cut mast text. Join the trail to the sheet.
+- **Y3 · `158 of 158`.** Count siblings in the same lane and name them: `2 of 9 active features`.
+- **Y4 · connection rows read out of order.** `Publish a self-contained browser map: from Dataset validation and HTML build generates`. Use `<place> generates this place`, then the label.
+- **Y5 · trail crumbs cut at 200 px** with free room. Let the current crumb take the free width.
+- **Y6 · two date formats.** Layers print `6 Oct 2026`; pins print `6 Oct`. Use one.
+- **Y7 · `Work that names it`.** The page says "touches". Use one word.
+
 ## Fix status
 
 | Fix | Owner | Filed | Taken |
 | --- | --- | --- | --- |
-| C1–C3, W1–W12, L1–L2 | Team 3 | yes | open |
+| C1–C3, W1–W12, L1–L2, E1 | Team 3 | yes | open |
+| D1–D4 | Team 1 | yes | yes (`b2c965c`, `c667ef7`, `8d6f11d`) |
+| D5 | Team 2 | yes | yes (`f1c114e`) |
+| Y1–Y7 | Team 4 | yes | open |
