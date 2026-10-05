@@ -32,3 +32,8 @@ When a Limen job reaches a terminal state, the agent pane that owns the next ste
 - `group start` refuses a registration that the hook did not refresh in the last 30 seconds, and names the reload fix.
 - A continuation started with no wake route records the parent's `origin-pane`.
 - `npm run check` passes.
+
+## Notes
+
+- Load-aware spawn and a worker limit remain open. This slice does not implement either.
+- Existing coordinator processes must reload the hooks after landing. Alice still prefers the separate `limen-groups` checkout; that loader must use the shared install before a reload can pick up this fix.
