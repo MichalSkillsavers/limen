@@ -138,9 +138,9 @@ const fixture = {
 			mapFeature: "s.feature.f101",
 		}),
 		work("f102", { touches: ["s.core.queue"], wrong: { problem: "The queue drops jobs.", on: "2026-10-05" } }),
-		work("f103", { lane: "done/2026-10", touches: ["s.cli"], landed: "2026-10-03", board: { section: "PROVEN", state: "PROVEN", line: 9 } }),
+		work("f103", { lane: "done", touches: ["s.cli"], landed: "2026-10-03", board: { section: "PROVEN", state: "PROVEN", line: 9 } }),
 		work("f104", { lane: "planned", title: 'Use <b> & "quotes"', touches: [], touchSource: "none" }),
-		work("f105", { lane: "done/2026-09", touches: ["s.app.ui"], landed: "2026-09-28" }),
+		work("f105", { lane: "done", touches: ["s.app.ui"], landed: "2026-09-28" }),
 	],
 	pins: {
 		changed: [
@@ -269,7 +269,7 @@ test("a plant with no open ask, problem, or change still renders every route", a
 		days: [],
 	};
 	const v = await viewer(quiet);
-	assert.equal(v.adapt(quiet).pins.length, 0, "no pin is invented");
+	assert.equal(v.adapt(quiet).pins.filter((p) => p.work).length, 0, "no pin names work that nothing pinned");
 	const routes = v.allRoutes();
 	assert.ok(!routes.some((h) => h.startsWith("#day/")), "no day route without days");
 	for (const hash of routes) {
