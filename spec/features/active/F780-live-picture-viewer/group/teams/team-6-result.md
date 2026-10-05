@@ -1,6 +1,27 @@
 # Team 6 · Cold-reader review and contrast
 
-Status of each fix lives in the table at the end. Shots are in `group/shots/team-6/`. Contrast ratios are WCAG 2.x, computed against the effective background with ancestor opacity applied (`/tmp/f780-team-6/audit.mjs`).
+**Verdict:** the integration build at lead tip `3728b60` passes this review at 1440, 1240, and 900 px wide. Every finding below was filed to its owner, and every owner took it. No Team 6 finding is open.
+
+The checked file is `/tmp/f780-lead/build/map.html`, byte-identical to a strict build of `3728b60` from this worktree. Checks were headless Chromium (Playwright) only, never the hidden screen. Contrast ratios are WCAG 2.x, against the effective background with ancestor opacity applied. Scripts: `/tmp/f780-team-6/` (`shoot.mjs`, `audit.mjs`, `fit.mjs`, `spacing.mjs`, `layers-live.mjs`, `shift.mjs`, `atlasfit.mjs`). Shots: `group/shots/team-6/`.
+
+## Final checks on `3728b60`
+
+| Check | Result |
+| --- | --- |
+| Horizontal scroll, 5 routes × 3 widths | none |
+| `undefined`, `null`, `NaN` in visible text | none |
+| Network requests | none |
+| Text under 4.5:1, 10 routes plus top layer and trail | none |
+| Pin text and module glosses cut | none at any width |
+| Atlas scrolls inside at 1440×900, 195 routes | never |
+| Padding, margin, gap off the `--sp` scale | only the intended `60vh` scroll room under the column |
+| Page moves when a layer opens (scrollbars shown) | no: scroll position, column, and plant top unchanged at all widths |
+| Sheet covers the plant at 1440 | no: sheet starts at x 931, plant ends at 907 |
+| Esc with two layers open | closes only the top layer |
+
+Before and after: `group/shots/team-6/reference/` (the approved sample), `lead-build-1/` (first integration, pins and glosses cut), `team-3-3728b60/` (final).
+
+Not checked by Team 6: route and link sweeps and keyboard focus (Team 5), dark theme, and real reading time with Adam.
 
 ## Findings on the reference page (input to the port)
 
@@ -111,9 +132,15 @@ Built locally from those two commits. Everything above passes, and V1–V5 are f
 | Fix | Owner | Filed | Taken |
 | --- | --- | --- | --- |
 | C1–C3, W1–W12, L1, E1 | Team 3 | yes | yes (`9186c68`) |
-| L2, V1–V5 | Team 3 | yes, as a patch | yes (`e0d8d41`); not yet in a lead build |
-| V6 | Team 3 | yes, as a patch | open |
+| L2, V1–V5 | Team 3 | yes, as a patch | yes (`e0d8d41`) |
+| V6 | Team 3 | yes, as a patch | yes (`b06d45a`) |
 | D1–D4 | Team 1 | yes | yes (`b2c965c`, `c667ef7`, `8d6f11d`) |
 | D5 | Team 2 | yes | yes (`f1c114e`) |
 | Y1–Y7 | Team 4 | yes | yes (`f74928a`) |
 | Connection label separator in layers | Team 4 | yes, optional | yes (`122f394`) |
+
+## Open risks
+
+- Place glosses come from the plant map and still hold engineer words (for example "birth identity before signaling attributed descendants"). The map is read-only for this feature, so they were not filed.
+- Some ticket titles hold engineer words too (`LIMEN_COORDINATOR`, `HERDR_ENV`). Ticket titles were out of scope.
+- The build-warning list shows raw diagnostic text (`active ticket has no touches`, `source "…" does not exist in the project root`). It sits behind a closed "N warnings" control. Not filed.
