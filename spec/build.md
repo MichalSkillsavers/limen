@@ -25,6 +25,8 @@
 
 ## NOW
 
+- `F775-picture-merge-broad-digdown` (🟠 ACTIVE): four-team group merges live picture broad atlas/overview with F774 dig-down clarity; deliverable one polished merged HTML at `/Users/overment/Downloads/limen-picture-merged.html`; all-Sol (Opus still rate-limited); vscreen-only preview; no land unless synthesis asks park vs land.
+
 - `F774-picture-endgoal-layout` (🟠 ACTIVE): four-team group designs the target limen picture/dashboard layout from F768+F769 lessons; deliverable one polished endgoal HTML at `/Users/overment/Downloads/limen-picture-endgoal.html`; Sol-first (Opus rate-limited); no land unless synthesis asks park vs land.
 - `F773-styleguide-quality-scan` (🟠 ACTIVE): four-team read-only group scans Limen against the styleguide, vision, and speech register; lead writes one ordered P0/P1/P2 spec list; anthropic/claude-opus-5-5 only; no code lands, no team branch lands.
 - `F759-graph-shows-what-to-decide` (🟠 ACTIVE): four-team group keeps the graph, mixes in time, removes side panels, and shows only what the owner must decide under 200+ changes; no landing, no live map edits.
