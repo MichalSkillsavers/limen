@@ -14,7 +14,7 @@ The architecture map is a local file. `limen picture build` makes it from a Mark
 
 The picture shows the plant atlas beside a quiet column of work and dated decisions. Select a place to read its sources, connections, and the features and journeys that name it.
 
-Select a feature or journey to reveal its `touches` or `steps`, including places inside different modules. Only named places light; nested places keep their parent captions. Collapsed containers show where named places sit without lighting as touches.
+Select a feature or journey to reveal its `touches` or `steps`, including places inside different modules. Only named places light; nested places keep their parent captions.
 
 Follow a journey through its ordered steps, including repeated visits and stops at the whole project. The URL preserves a selected place, work item, or day on reload. Opening another item as a layer adds to the visible stack; Esc and browser Back close one layer. The map never uses Git history to guess places.
 
@@ -23,6 +23,8 @@ Follow a journey through its ordered steps, including repeated visits and stops 
 Ticket dates show when work opened or landed; a dated **Needs Adam** request or **Wrong** problem appears as a pin. Ticket `touches` link the work to exact map places; a place with no evidence stays unlinked.
 
 Put `---` front matter before a ticket's title. Use `opened: YYYY-MM-DD`; use a `touches:` block list of known plant or module ids when evidence supports it. A one-line `needs-adam` request needs `needs-adam-on: YYYY-MM-DD`; a one-line `wrong` problem needs `wrong-on: YYYY-MM-DD`. Set `landed: YYYY-MM-DD` on done work when its landing date is known. The [picture contract](../templates/picture/CONTRACT.md#ticket-front-matter) lists the fields. Build reports bad ids, dates, or unpaired requests with a ticket path and line. `--strict` fails on those errors; an active ticket without known touches gets a warning, not an invented link.
+
+Remove a Needs Adam request and its date after Adam answers. Remove a Wrong problem and its date after the fix. The pin then leaves the page.
 
 ## Refresh the map
 
