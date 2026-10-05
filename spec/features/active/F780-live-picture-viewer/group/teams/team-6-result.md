@@ -100,13 +100,20 @@ Re-checked `f74928a` on the real build at three widths with classic scrollbars s
 
 Passes: no horizontal scroll on 15 route shots, no `undefined`, `null`, or `NaN`, no network request, spacing on the scale, and the layer checks above. It fails only on V1–V3 and V5, because it carries Team 3's `9186c68` instead of `e0d8d41`. Filed to the lead: merge the Team 3 tip.
 
+## Pre-check of the next build (Team 3 `59152ac` with Team 4 `122f394`)
+
+Built locally from those two commits. Everything above passes, and V1–V5 are fixed. One new failure:
+
+- **V6 · opening a layer moves the plant.** Team 3 let the selection line wrap to two lines. Opening a layer lights the atlas for the top item, so the line grows. At 1440 px the plant moves down 8 px beside the open sheet; at 900 px the page scrolls by 12 px. This breaks the acceptance line that opening a layer does not move the page. Patch: `group/teams/team-6-patches/team-3-selection-line-on-59152ac.patch` keeps the line two lines tall at all times. With it, nothing moves at any width, and over 195 work, journey, day, and place routes at 1440×900 the line is always 44 px and the atlas never scrolls inside.
+
 ## Fix status
 
 | Fix | Owner | Filed | Taken |
 | --- | --- | --- | --- |
 | C1–C3, W1–W12, L1, E1 | Team 3 | yes | yes (`9186c68`) |
 | L2, V1–V5 | Team 3 | yes, as a patch | yes (`e0d8d41`); not yet in a lead build |
+| V6 | Team 3 | yes, as a patch | open |
 | D1–D4 | Team 1 | yes | yes (`b2c965c`, `c667ef7`, `8d6f11d`) |
 | D5 | Team 2 | yes | yes (`f1c114e`) |
 | Y1–Y7 | Team 4 | yes | yes (`f74928a`) |
-| Connection label separator in layers | Team 4 | yes, optional | open |
+| Connection label separator in layers | Team 4 | yes, optional | yes (`122f394`) |
