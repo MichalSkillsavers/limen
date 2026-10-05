@@ -39,7 +39,7 @@ test("plant plate shows working coordinator outside worker workspace, live hoste
 		pid: "1",
 		activity: "tool",
 		"last-tool": "bash: git status",
-		advisory: "needs attention",
+		advisory: "blocked after 3 tool calls, session still open",
 		"herdr/agent": "wSC:p1",
 		"herdr/tab": "wSC:t1",
 		worktree: join(scratch.root, ".limen-worktrees/worker"),
@@ -71,7 +71,7 @@ else process.exit(1);
 	assert.equal(jobs.status, 0, jobs.stderr);
 	assert.equal(status.status, 0, status.stderr);
 	assert.match(jobs.stdout, /tool.*bash: git status/);
-	assert.match(status.stdout, /Running \(1\):[\s\S]*live OMP worker.*wSC:t1 · \d+m · tool.*advisory needs attention.*bash: git status/);
+	assert.match(status.stdout, /Running \(1\):[\s\S]*live OMP worker.*wSC:t1 · \d+m · tool · blocked after 3 tool calls, session still open · bash: git status/);
 	assert.match(status.stdout, /Candidates to inspect \(1\):\n  finished change \(completed\) · limen\/finished · repo api/);
 	assert.doesNotMatch(status.stdout, /Ready to land/);
 	assert.match(status.stdout, /Coordinator tabs:[\s\S]*\n  API billing migration · F701 · handle api-coordinator · working · wNF:t19 wNF:p19 · /);
@@ -104,11 +104,11 @@ test("plant plate does not leave merged, empty or deleted branches waiting; Herd
 		branch: "limen/detached",
 		engine: "pi",
 		"started-at": new Date().toISOString(),
-		advisory: "review stall",
+		advisory: "tool stall observation uncertain: CPU or process identity unavailable",
 	});
 	const before = limen(scratch, "status");
 	assert.equal(before.status, 0, before.stderr);
-	assert.match(before.stdout, /Running \(1\):[\s\S]*Pi detached.*starting.*advisory review stall/);
+	assert.match(before.stdout, /Running \(1\):[\s\S]*Pi detached.*starting · ownership: tool stall observation uncertain/);
 	assert.match(before.stdout, /Candidates to inspect \(1\):\n  pending \(pending\) · limen\/pending\n/);
 	assert.doesNotMatch(before.stdout, /empty \(empty\)|gone \(gone\)/);
 	assert.match(before.stdout, /Coordinator tabs:\n  unknown \(Herdr unavailable\)/);
