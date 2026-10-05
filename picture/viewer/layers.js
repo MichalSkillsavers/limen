@@ -149,7 +149,8 @@
 		const kept = rows.filter(([, value]) => value);
 		return kept.length ? `<dl class="layer-facts">${kept.map(([name, value]) => `<dt>${esc(name)}</dt><dd>${value}</dd>`).join("")}</dl>` : "";
 	};
-	const flag = (kind, label, on, text) => `<div class="layer-flag ${kind}"><p class="layer-flag-label">${esc(label)}${on ? ` · ${esc(date(on))}` : ""}</p><p>${esc(text)}</p></div>`;
+	const flag = (kind, label, on, text) =>
+		`<div class="layer-flag ${kind}"><p class="layer-flag-label">${esc(label)}${on ? ` · ${esc(date(on))}` : ""}</p><p>${esc(text)}</p></div>`;
 	const moduleTitle = (n) => (n.parent ? (index.nodes.get(n.parent)?.title ?? "") : "");
 	const touching = (ids) => [...index.work.values()].filter((w) => (w.touches ?? []).some((t) => ids.includes(t)));
 	const featuresTouching = (ids) => [...index.features.values()].filter((f) => (f.touches ?? []).some((t) => ids.includes(t)));
@@ -184,7 +185,12 @@
 					["Landed", w.landed ? esc(date(w.landed)) : ""],
 					["Ticket", w.path ? `<code>${esc(w.path)}</code>` : ""],
 				]) +
-				section("Places it touches", places.length ? (touchNote ? `<p class="layer-note">${esc(touchNote)}</p>` : "") + list(places) : `<p class="layer-note">${esc(touchNote || "The ticket names no places yet.")}</p>`) +
+				section(
+					"Places it touches",
+					places.length
+						? (touchNote ? `<p class="layer-note">${esc(touchNote)}</p>` : "") + list(places)
+						: `<p class="layer-note">${esc(touchNote || "The ticket names no places yet.")}</p>`,
+				) +
 				section("Map feature", w.mapFeature && index.features.has(w.mapFeature) ? list([workLink(w.mapFeature)]) : "") +
 				section("Days", list(days)),
 		};
@@ -249,7 +255,10 @@
 			title: j.title || j.id,
 			html:
 				(j.summary ? `<p class="layer-lead">${esc(j.summary)}</p>` : "") +
-				section("Steps", steps.length ? `<ol class="layer-list">${steps.map((id, i) => `<li>${nodeLink(id)}${notes[i] ? `<br><small>${esc(notes[i])}</small>` : ""}</li>`).join("")}</ol>` : ""),
+				section(
+					"Steps",
+					steps.length ? `<ol class="layer-list">${steps.map((id, i) => `<li>${nodeLink(id)}${notes[i] ? `<br><small>${esc(notes[i])}</small>` : ""}</li>`).join("")}</ol>` : "",
+				),
 		};
 	}
 	function render(layer) {
