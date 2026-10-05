@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -146,7 +146,8 @@ export function argvFor(profile: EngineProfile, slots: EngineArgv): string[] {
 	// OMP serves `pi-claude/…` models from a local bridge extension. The model id alone selects it:
 	// OMP rejects `--provider pi-claude`, so the provider stays in the job record but not on argv.
 	const bridged = profile.id === "omp" && !!slots.model?.startsWith("pi-claude/");
-	for (const path of [...slots.extensions, ...(bridged ? bridgeExtensions() : [])]) args.push("--extension", path);
+	const named = [...slots.extensions, ...(bridged ? bridgeExtensions() : []), ...(slots.jsonMode ? [] : herdrStateExtensions(profile))];
+	for (const path of named) args.push("--extension", path);
 	if (slots.provider && !bridged) args.push("--provider", slots.provider);
 	if (slots.model) args.push("--model", slots.model);
 	if (slots.thinking) args.push("--thinking", slots.thinking);
@@ -160,4 +161,17 @@ export function argvFor(profile: EngineProfile, slots: EngineArgv): string[] {
 function bridgeExtensions(): string[] {
 	const bridge = join(homedir(), ".omp", "local", "pi-claude-bridge");
 	return existsSync(bridge) ? [realpathSync(bridge)] : [];
+}
+
+// `--no-extensions` also hides Herdr's state extension, so a hosted pane falls back to screen
+// detection and reads the working agent as idle. Name the Herdr-managed file by its marker.
+function herdrStateExtensions(profile: EngineProfile): string[] {
+	const dir = join(homedir(), `.${profile.id}`, "agent", "extensions");
+	const files = existsSync(dir)
+		? readdirSync(dir)
+				.filter((name) => name.endsWith(".ts"))
+				.sort()
+		: [];
+	const marker = new RegExp(`^// HERDR_INTEGRATION_ID=${profile.herdrKind}$`, "m");
+	return files.map((name) => join(dir, name)).filter((path) => marker.test(readFileSync(path, "utf8")));
 }

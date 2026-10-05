@@ -100,6 +100,38 @@ test("omp pi-claude models load the local bridge under --no-extensions and drop 
 	assert.equal(pi[pi.indexOf("--provider") + 1], "pi-claude", "pi argv is unchanged");
 });
 
+test("hosted argv names the Herdr state extension when installed; json mode never does", async (context) => {
+	const home = await mkdtemp(join(tmpdir(), "limen-herdr-home-"));
+	const previous = process.env.HOME;
+	context.after(async () => {
+		if (previous === undefined) delete process.env.HOME;
+		else process.env.HOME = previous;
+		await rm(home, { recursive: true, force: true });
+	});
+	process.env.HOME = home;
+	const hosted = { ...slots, jsonMode: false };
+	const named = (argv: string[]) => argv.flatMap((arg, i) => (arg === "--extension" ? [argv[i + 1]] : []));
+	assert.deepEqual(named(argvFor(ENGINES.omp, hosted)), slots.extensions, "absent: nothing invented");
+	assert.deepEqual(named(argvFor(ENGINES.pi, hosted)), slots.extensions, "absent: nothing invented");
+	const ompDir = join(home, ".omp/agent/extensions");
+	const piDir = join(home, ".pi/agent/extensions");
+	await mkdir(ompDir, { recursive: true });
+	await mkdir(piDir, { recursive: true });
+	const marker = (id: string) => `// installed by herdr\n// HERDR_INTEGRATION_ID=${id}\nexport default () => {};\n`;
+	await writeFile(join(ompDir, "herdr-omp-agent-state.ts"), marker("omp"));
+	await writeFile(join(ompDir, "other-hooks.ts"), "export default () => {};\n");
+	await writeFile(join(piDir, "herdr-agent-state.ts"), marker("pi"));
+	await writeFile(join(piDir, "wrong-engine.ts"), marker("omp"));
+	const omp = argvFor(ENGINES.omp, hosted);
+	const pi = argvFor(ENGINES.pi, hosted);
+	assert.equal(omp.includes("--no-extensions"), true, "other user extensions stay off");
+	assert.deepEqual(named(omp), [...slots.extensions, join(ompDir, "herdr-omp-agent-state.ts")]);
+	assert.deepEqual(named(pi), [...slots.extensions, join(piDir, "herdr-agent-state.ts")]);
+	for (const profile of [ENGINES.omp, ENGINES.pi]) {
+		assert.deepEqual(named(argvFor(profile, { ...slots, jsonMode: true })), slots.extensions, `${profile.id} json mode has no Herdr pane`);
+	}
+});
+
 test("OMP launch view exposes legacy skills without shadowing native or changing Pi", async (context) => {
 	const root = await mkdtemp(join(tmpdir(), "limen-skills-"));
 	context.after(() => rm(root, { recursive: true, force: true }));

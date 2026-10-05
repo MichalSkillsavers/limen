@@ -503,7 +503,7 @@ test("herdr pane naming follows running jobs and each terminal state notifies on
 	assert.deepEqual(naming.slice(0, 5), ["pane", "report-metadata", "w1:p1", "--source", "limen"]);
 	const titleAt = naming.indexOf("--title");
 	assert.equal(naming[titleAt + 1], "Limen · F001 implementation");
-	assert.equal(naming[naming.indexOf("--display-agent") + 1], "✦ Limen · 1 waking");
+	assert.equal(naming[naming.indexOf("--display-agent") + 1], "Limen · waiting on 1 job");
 	const tokenAt = naming.indexOf(`limen=${body}`);
 	assert.equal(naming[tokenAt - 1], "--token");
 	assert.equal(naming[tokenAt + 1], "--state-label");
@@ -558,7 +558,8 @@ test("settled coordinator labels count watched and visible unwatched RUNNING job
 			messages.push(message);
 		},
 	});
-	const session = { cwd: root, isIdle: () => true, sessionManager: sessionManager("coordinator-a"), ui: { notify() {}, setStatus() {} } };
+	let leadIdle = true;
+	const session = { cwd: root, isIdle: () => leadIdle, sessionManager: sessionManager("coordinator-a"), ui: { notify() {}, setStatus() {} } };
 	handlers.get("session_start")?.({}, session);
 	context.after(() => handlers.get("session_shutdown")?.({}, session));
 	handlers.get("agent_settled")?.({}, session);
@@ -574,6 +575,11 @@ test("settled coordinator labels count watched and visible unwatched RUNNING job
 		return idle ?? "";
 	};
 	assert.match(await report("4 RUNNING · 3 watched · 1 unwatched"), /a think b think c think \+1$/);
+	// The overlay names the lead pane: an idle lead waits on its jobs, a working lead is never called waiting.
+	assert.ok((await readCalls(calls)).some((call) => call.includes("Limen · waiting on 4 jobs")));
+	leadIdle = false;
+	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("Limen · 4 jobs")));
+	leadIdle = true;
 	await writeFile(join(jobs, "d/pid"), "99999999\n");
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("⚠ Limen · 4 needs attention")));
 	await writeFile(join(jobs, "d/pid"), `${worker.pid}\n`);
