@@ -1,3 +1,15 @@
+---
+touches:
+  - limen.integrations.github
+  - limen.integrations.herdr
+  - limen.commands
+  - limen.cabinet.git
+  - limen.cabinet.records
+  - limen.runtime.hosted
+opened: 2026-08-16
+landed: 2026-10-03
+---
+
 # F014-github-doorbell · A PR command reaches its Herdr seat
 
 [2026-08-16] [🔴] [PLANNED] [COORDINATOR] PLANNED · F014-github-doorbell

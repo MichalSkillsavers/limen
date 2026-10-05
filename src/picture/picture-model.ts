@@ -85,6 +85,37 @@ export interface PictureJourney {
 	meta: Record<string, unknown>;
 	steps: string[];
 }
+
+export interface PictureWork {
+	id: string;
+	code: string;
+	slug: string;
+	title: string;
+	lane: string;
+	board: BoardEntry | null;
+	purpose: string;
+	outcome: string;
+	touches: string[];
+	touchSource: "ticket" | "map" | "none";
+	opened: string | null;
+	landed: string | null;
+	needsAdam: { ask: string; on: string } | null;
+	wrong: { problem: string; on: string } | null;
+	path: string;
+	mapFeature: string | null;
+}
+
+export interface PicturePin {
+	work: string;
+	date: string;
+	text: string;
+	scope: string;
+}
+
+export interface PictureDay {
+	date: string;
+	items: { work: string; kind: "opened" | "landed" | "needs-adam" | "wrong"; text: string }[];
+}
 export interface PictureModel {
 	schema: string;
 	generatedAt: string;
@@ -103,6 +134,9 @@ export interface PictureModel {
 	edges: PictureEdge[];
 	features: PictureFeature[];
 	journeys: PictureJourney[];
+	work: PictureWork[];
+	pins: { changed: PicturePin[]; wrong: PicturePin[]; needs: PicturePin[] };
+	days: PictureDay[];
 	diagnostics: Diagnostic[];
 }
 
@@ -113,11 +147,13 @@ export interface PictureModel {
 // A missing child file is a gap; nothing is invented.
 
 import { basename } from "node:path";
+import type { BoardEntry } from "./board.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 import { inlineText, proseBlocks, renderMarkdown } from "./markdown.ts";
+import { checkTickets, type TicketRecord } from "./tickets.ts";
 
 export const INPUT_SCHEMA = "architecture-map/1";
-export const MODEL_SCHEMA = "architecture-map-model/2";
+export const MODEL_SCHEMA = "architecture-map-model/3";
 export const KINDS = ["plant", "module", "edge", "feature", "journey"];
 export const RELATIONS = ["depends-on", "hosts", "calls", "implements", "generates", "reads", "writes", "composes"];
 export const STATUSES = ["ready", "partial", "stub"];
@@ -136,12 +172,16 @@ const KIND_RANK: Record<string, number> = { module: 0 };
 export function buildModel({
 	files,
 	diagnostics = [],
-	now = new Date(),
+	now,
 	exists,
+	tickets = [],
+	board,
 }: {
 	files: readonly PictureFile[];
 	diagnostics?: readonly Diagnostic[];
 	now?: Date;
+	tickets?: readonly TicketRecord[];
+	board?: ReadonlyMap<string, BoardEntry>;
 	/** Answers whether a cited path exists under the project root; when omitted, sources are not checked. */
 	exists?: ((path: string) => boolean) | undefined;
 }): PictureModel {
@@ -203,6 +243,7 @@ export function buildModel({
 	);
 	const modules = new Set(records.filter((r) => r.kind === "module").map((r) => r.id));
 	const places = new Set([...modules, ...plantIds]);
+	if (tickets.length) diags.push(...checkTickets(tickets, places));
 	const featureModels: PictureFeature[] = features.map((r) => ({
 		id: r.id,
 		title: r.title,
@@ -227,11 +268,78 @@ export function buildModel({
 		meta: r.meta,
 		steps: resolveOverlayList(r, "steps", places, diag),
 	}));
+	const featureById = new Map(featureModels.map((feature) => [feature.id, feature]));
+	const nodeTitles = new Map(ordered.map((node) => [node.id, node.title]));
+	const topModule = new Map<string, string>();
+	for (const node of ordered) topModule.set(node.id, node.parent ? (topModule.get(node.parent) ?? node.parent) : node.id);
+	const work: PictureWork[] = [...tickets]
+		.sort((a, b) => cmp(a.id, b.id) || cmp(a.path, b.path))
+		.map((ticket) => {
+			const feature = featureById.get(`limen.feature.${ticket.id}`);
+			const touches = ticket.touches.length ? ticket.touches.filter((id) => places.has(id)) : (feature?.touches ?? []);
+			return {
+				id: ticket.id,
+				code: ticket.code,
+				slug: ticket.slug,
+				title: ticket.title,
+				lane: ticket.lane,
+				board: board?.get(ticket.id) ?? null,
+				purpose: ticket.purpose,
+				outcome: ticket.outcome,
+				touches,
+				touchSource: ticket.touches.length ? "ticket" : feature?.touches.length ? "map" : "none",
+				opened: ticket.opened,
+				landed: ticket.landed,
+				needsAdam: ticket.needsAdam,
+				wrong: ticket.wrong,
+				path: ticket.path,
+				mapFeature: feature?.id ?? null,
+			};
+		});
+	const pins: PictureModel["pins"] = { changed: [], wrong: [], needs: [] };
+	const dayItems = new Map<string, PictureDay["items"]>();
+	const addDay = (date: string, item: PictureDay["items"][number]): void => {
+		const items = dayItems.get(date) ?? [];
+		items.push(item);
+		dayItems.set(date, items);
+	};
+	for (const item of work) {
+		let scope = "";
+		if (item.touches.length === 1) scope = nodeTitles.get(item.touches[0]!) ?? plant?.title ?? "";
+		else if (item.touches.length > 1) {
+			const modules = new Set(item.touches.map((id) => topModule.get(id) ?? id));
+			scope = modules.size === 1 ? (nodeTitles.get(modules.values().next().value!) ?? "") : `${item.touches.length} places in ${modules.size} modules`;
+		}
+		if (item.opened) addDay(item.opened, { work: item.id, kind: "opened", text: item.title });
+		if (item.landed) {
+			pins.changed.push({ work: item.id, date: item.landed, text: item.title, scope });
+			addDay(item.landed, { work: item.id, kind: "landed", text: item.title });
+		}
+		if (item.wrong) {
+			pins.wrong.push({ work: item.id, date: item.wrong.on, text: item.wrong.problem, scope });
+			addDay(item.wrong.on, { work: item.id, kind: "wrong", text: item.wrong.problem });
+		}
+		if (item.needsAdam) {
+			pins.needs.push({ work: item.id, date: item.needsAdam.on, text: item.needsAdam.ask, scope });
+			addDay(item.needsAdam.on, { work: item.id, kind: "needs-adam", text: item.needsAdam.ask });
+		}
+	}
+	const newest = (a: PicturePin, b: PicturePin): number => cmp(b.date, a.date) || cmp(a.work, b.work);
+	pins.changed.sort(newest);
+	pins.wrong.sort(newest);
+	pins.needs.sort(newest);
+	const days: PictureDay[] = [...dayItems]
+		.sort(([a], [b]) => cmp(b, a))
+		.map(([date, items]) => ({
+			date,
+			items: items.sort((a, b) => cmp(a.work, b.work) || cmp(a.kind, b.kind)),
+		}));
+	const newestDate = days[0]?.date;
 
 	diags.sort(diagCmp);
 	return {
 		schema: MODEL_SCHEMA,
-		generatedAt: now.toISOString().replace(/\.\d{3}Z$/, "Z"),
+		generatedAt: now ? now.toISOString().replace(/\.\d{3}Z$/, "Z") : `${newestDate ?? "1970-01-01"}T00:00:00Z`,
 		project: plant
 			? {
 					id: projectId,
@@ -262,6 +370,9 @@ export function buildModel({
 		edges,
 		features: featureModels,
 		journeys: journeyModels,
+		work,
+		pins,
+		days,
 		diagnostics: diags,
 	};
 }

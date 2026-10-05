@@ -1,3 +1,8 @@
+---
+opened: 2026-10-02
+landed: 2026-10-02
+---
+
 # F742 · Feature identities stay unambiguous
 
 ## Outcome

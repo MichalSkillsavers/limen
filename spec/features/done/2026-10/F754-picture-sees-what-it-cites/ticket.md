@@ -1,3 +1,12 @@
+---
+touches:
+  - limen.picture.tick
+  - limen.picture.build
+  - limen.picture.viewer
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F754 · The map refreshes for everything it cites and shows what touches each place
 
 ## Outcome

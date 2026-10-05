@@ -1,3 +1,11 @@
+---
+touches:
+  - limen.commands
+  - limen.sessions.guidance
+opened: 2026-10-04
+landed: 2026-10-04
+---
+
 # F762 · The private planning code reads clearly and follows the Limen style
 
 ## Outcome
