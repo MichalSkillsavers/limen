@@ -38,3 +38,9 @@ Live Alice facts. All checks on Alice are read-only for this feature.
 - The worker and coordinator user `overment` has no sudo. The Alice checkout is `/home/overment/alice` (origin `iceener/alice`). Its Herdr coordinator is the registered doorbell target.
 - The Limen plant is the Mac checkout `~/.overment/limen`. It is not on Alice.
 - Known contradiction: `docs/seat/README.md` says 4 GB / 80 GB. `docs/remote.md` and `docs/vps.md` say 8 GB / 150 GB.
+
+Decisions (Adam, 2026-10-05):
+
+- Limen is installed and available on both the Mac and the VPS seat. A plant checkout on the seat, such as `/home/overment/limen` on Alice, is intended. The docs say that a plant can live on the Mac and on the seat.
+- The stray `limen init` entry for `/home/overment/.nvm` in the Alice project list (`/home/overment/.limen/projects`) is approved for removal.
+- `github-setup.sh` disables `limen-github.timer` (`systemctl disable --now`), not only stops it. So a reboot during an upgrade cannot start polling again before `limen github doctor` is clean and the operator enables the timer again.
