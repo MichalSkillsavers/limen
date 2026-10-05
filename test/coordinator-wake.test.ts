@@ -136,3 +136,41 @@ test("a Pi coordinator keeps its in-process wake route and records no Herdr pane
 	await assert.rejects(readFile(join(job, "origin-pane")));
 	assert.ok(await readFile(join(job, "notify/subscribers/pi-session"), "utf8"));
 });
+
+// A separate fake engine process that runs until the test writes `.limen/release`, so a coordinator can take the live job over.
+// It polls the file because the test controls its end only through the shared job root.
+const releasedPi = `#!/usr/bin/env node
+const { existsSync } = require("node:fs");
+const release = require("node:path").join(process.env.LIMEN_CONTEXT_ROOT, ".limen/release");
+console.log(JSON.stringify({ type: "agent_start" }));
+console.log(JSON.stringify({ type: "tool_execution_start", toolName: "bash", args: { command: "git status" } }));
+const timer = setInterval(() => {
+  if (!existsSync(release)) return;
+  clearInterval(timer);
+  console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "released" }] } }));
+}, 25);
+`;
+
+test("an OMP coordinator that takes over a live job with limen watch gets its wake on its own pane", async (context) => {
+	const scratch = await scratchRepo(releasedPi);
+	context.after(() => wipe(scratch));
+	const herdr = await fakeHerdr(scratch, "observed");
+	limenWithEnv(scratch, {}, "init");
+	const spawned = limenWithEnv(scratch, { ...herdrCoordinator(herdr), HERDR_PANE_ID: "w1:p3" }, "spawn", "--detached", "--label", "taken over", "do work");
+	assert.equal(spawned.status, 0, spawned.stderr);
+	const id = onlyJobId(spawned.stdout);
+	const job = join(scratch.root, ".limen/jobs", id);
+	const watched = limenWithEnv(scratch, herdrCoordinator(herdr), "watch", id);
+	assert.equal(watched.status, 0, watched.stderr);
+	assert.equal(watched.stdout, "watching 1 job\n");
+	await writeFile(join(scratch.root, ".limen/release"), "");
+	await waitForState(scratch.root, id, "done");
+	assert.match(await receipt(job), /^attempt 1: turn observed on w1:p7 \S+$/);
+	const sent = await prompts(scratch);
+	assert.deepEqual(
+		sent.map((args) => args[2]),
+		["w1:p7"],
+		"the pane that spawned the job no longer gets its wake",
+	);
+	assert.match(sent[0]?.[3] ?? "", new RegExp(`"taken over" is done \\(${id}\\)`));
+});

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { limen, limenWithSession, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
+import { limen, limenWithEnv, limenWithSession, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
 const waitingPi = `#!/usr/bin/env node
 process.on("SIGTERM", () => process.exit(0));
@@ -117,6 +117,26 @@ test("steer --running with no live watched job says nothing was reached", async 
 	const result = limenWithSession(scratch, "coordinator-f080", "steer", "--running", "unused");
 	assert.equal(result.status, 0, result.stderr);
 	assert.match(result.stdout, /nothing was reached/);
+});
+
+test("steer --running from an OMP coordinator pane reaches the live jobs that wake that pane", async (context) => {
+	const scratch = await scratchRepo(steeringPi);
+	context.after(scratch.cleanup);
+	limen(scratch, "init");
+	const pane = { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p7" };
+	const mine = onlyJobId(limenWithEnv(scratch, pane, "spawn", "--detached", "--label", "mine", "wait for steer").stdout);
+	const other = onlyJobId(limenWithEnv(scratch, { ...pane, HERDR_PANE_ID: "w1:p8" }, "spawn", "--detached", "--label", "other", "wait for steer").stdout);
+	const result = limenWithEnv(scratch, pane, "steer", "--running", "pane correction");
+	assert.equal(result.status, 0, result.stderr);
+	assert.match(result.stdout, new RegExp(`steered ${mine}`));
+	assert.doesNotMatch(result.stdout, new RegExp(other));
+	await waitUntil(async () => (await steeredText(join(scratch.root, ".limen/jobs", mine))) === "pane correction\n");
+	assert.equal(await steeredText(join(scratch.root, ".limen/jobs", other)), "");
+	const outside = limen(scratch, "steer", "--running", "unused");
+	assert.equal(outside.status, 1);
+	assert.match(outside.stderr, /name the job instead: limen steer <id> "correction"/);
+	limen(scratch, "stop", mine, "done");
+	limen(scratch, "stop", other, "done");
 });
 
 test("steer --running reports a job that ended between selection and delivery", async (context) => {

@@ -517,7 +517,10 @@ export function currentNotificationSession(): string | undefined {
 	if (value && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) throw new Error("PI_SESSION_ID is not safe for notification routing");
 	return value || undefined;
 }
-/** A Herdr coordinator without a Pi session (OMP) cannot be woken in-process; its pane is the wake route instead. */
+/**
+ * OMP does not export its session to tool commands, so a Herdr coordinator without a Pi session is woken on its pane.
+ * `limen watch` and `steer --running` use the same route through `origin-pane`.
+ */
 export function herdrWakePane(notificationSession: string | undefined): string | undefined {
 	const pane = process.env.HERDR_PANE_ID?.trim();
 	if (notificationSession || process.env.HERDR_ENV !== "1" || !pane) return undefined;

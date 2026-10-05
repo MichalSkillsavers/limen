@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { resolveJob } from "../job/lookup.ts";
 import { limenRoot } from "../project/git.ts";
 import { processGroupAlive } from "../runtime/contain.ts";
+import { coordinatorWakeRoute, watches } from "./watch.ts";
 
 const READY_WAIT_MS = 2_000;
 
@@ -36,14 +37,13 @@ async function deliver(target: { readonly id: string; readonly jobDir: string },
 }
 
 async function watchedRunning(cwd: string): Promise<ReadonlyArray<{ readonly id: string; readonly jobDir: string }>> {
-	const session = process.env.PI_SESSION_ID?.trim();
-	if (!session || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(session)) throw new Error("steer --running requires a Pi session; ask the coordinator to steer through its bash tool");
+	const route = coordinatorWakeRoute("steer --running", 'name the job instead: limen steer <id> "correction"');
 	const jobsRoot = `${limenRoot(cwd)}/.limen/jobs`;
 	const selected: Array<{ id: string; jobDir: string }> = [];
 	for (const entry of await readdir(jobsRoot, { withFileTypes: true }).catch(() => [])) {
 		if (!entry.isDirectory()) continue;
 		const jobDir = `${jobsRoot}/${entry.name}`;
-		if ((await text(`${jobDir}/state`)) === "running" && (await text(`${jobDir}/notify/subscribers/${session}`))) selected.push({ id: entry.name, jobDir });
+		if ((await text(`${jobDir}/state`)) === "running" && (await watches(jobDir, route))) selected.push({ id: entry.name, jobDir });
 	}
 	return selected;
 }
