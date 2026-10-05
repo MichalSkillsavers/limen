@@ -24,6 +24,7 @@ function commitAsMover(s: Scratch, cwd: string, message: string): void {
 		...process.env,
 		PATH: `${s.fakeBin}:${process.env.PATH}`,
 		LIMEN_PI: "pi",
+		LIMEN_OMP: "omp",
 		LIMEN_HERDR: "0",
 		LIMEN_HUNK: "0",
 		LIMEN_HOME: dirname(s.root),

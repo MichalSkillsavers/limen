@@ -160,5 +160,5 @@ test("an OMP coordinator that takes over a live job with limen watch gets its wa
 		["w1:p7"],
 		"the pane that spawned the job no longer gets its wake",
 	);
-	assert.match(sent[0]?.[3] ?? "", new RegExp(`"taken over" is done \\(${id}\\)`));
+	assert.match(sent[0]?.[3] ?? "", new RegExp(`"taken over": do work\\nis done \\(${id}\\)`));
 });
