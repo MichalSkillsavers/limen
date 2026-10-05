@@ -43,6 +43,7 @@
 
 ## PROVEN
 
+- `F770-omp-coordinator-counts-as-live` (🟢 PROVEN): a warm OMP coordinator counts as live when Herdr omits `interactive_ready`; explicit false stays not live; one rule for ensure, poller, and doctor. Landed `abf1e84`; focused tests 19/19.
 - `F762-private-planning-reads-clearly` (🟢 PROVEN): PR #4 private planning code reads top-down with plain docs; same behavior (smoke diff empty); no pre-PR test changed. Landed `130cf0c`; focused tests 110/110.
 - `F761-issue-body-rings-doorbell` (🟢 PROVEN): `@limen` in an open issue body rings the doorbell once per issue with its own cursor and `issue-<n>` claim; title, closed issues, and PR bodies never count. Landed `211efee`; live Alice bot needs `/opt/limen` upgraded.
 - `F760-issue-comment-rings-doorbell` (🟢 PROVEN): an authorized issue conversation comment rings the doorbell like a PR comment; review refuses an issue claim; PR behavior unchanged. Landed `086aeb9`; live Alice bot needs `/opt/limen` upgraded.
