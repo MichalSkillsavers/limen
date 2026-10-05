@@ -184,7 +184,6 @@ test("a completion wake says when a terminal job produced nothing", async (conte
 	assert.doesNotMatch(messages[1] ?? "", /produced nothing/);
 });
 
-
 test("a reloaded coordinator tab resubscribes to its running jobs", async (context) => {
 	stashEnv(context, "LIMEN_JOB", undefined);
 	stashEnv(context, "LIMEN_HERDR", "0");
