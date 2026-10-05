@@ -261,6 +261,24 @@ test("the mast shows the newest pin of each kind with its date", async () => {
 	assert.ok(!html.includes("#work/f105"), "an older change is not pinned");
 });
 
+test("a plant with no open ask, problem, or change still renders every route", async () => {
+	const quiet = {
+		...fixture,
+		work: fixture.work.map((w) => ({ ...w, needsAdam: null, wrong: null, landed: null, lane: "active" })),
+		pins: { changed: [], wrong: [], needs: [] },
+		days: [],
+	};
+	const v = await viewer(quiet);
+	assert.equal(v.adapt(quiet).pins.length, 0, "no pin is invented");
+	const routes = v.allRoutes();
+	assert.ok(!routes.some((h) => h.startsWith("#day/")), "no day route without days");
+	for (const hash of routes) {
+		const r = v.parse(hash);
+		assert.doesNotMatch(v.renderMastHtml(r) + v.readHtml(r) + v.lighting(r).text, BAD_WORD, hash);
+	}
+	assert.ok(!v.renderMastHtml(v.parse("#plant/work")).includes("#work/f10"), "the mast links no work when nothing is pinned");
+});
+
 test("the adapter groups work by its signal", async () => {
 	const v = await viewer();
 	const group = Object.fromEntries(v.adapt(fixture).work.map((w) => [w.id, w.group]));
@@ -275,7 +293,7 @@ test("the atlas puts the busiest sender on top and the busiest receiver on the f
 	const modules = v.adapt(fixture).modules;
 	const layer = Object.fromEntries(modules.map((m) => [m.id, m.layer]));
 	assert.deepEqual(layer, { "s.core": "floor", "s.app": "mid", "s.cli": "entry" });
-	assert.deepEqual(modules.find((m) => m.id === "s.cli")?.places, ["s.cli"], "a childless module is its own place");
+	assert.deepEqual(sorted(modules.find((m) => m.id === "s.cli")?.places ?? []), ["s.cli"], "a childless module is its own place");
 	assert.deepEqual(sorted(modules.find((m) => m.id === "s.core")?.places ?? []), ["s.core.queue", "s.core.store"]);
 });
 
