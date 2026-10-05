@@ -154,13 +154,15 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	});
 	if (activated.created) {
 		const ticket = source === "private" ? `${root}/${feature}/ticket.md` : `${feature}/ticket.md`;
+		const featureName = feature.split("/").at(-1) ?? feature;
+		const featureLabel = /^F\d+/i.exec(featureName)?.[0]?.toUpperCase() ?? featureName;
 		for (const team of teams) {
 			try {
 				await spawnCommand(
 					[
 						`Pursue the feature with your team. Ticket: ${ticket}`,
 						"--label",
-						`${feature.split("/").at(-1)} ${team} coordinator`,
+						`${team} coordinator · ${featureLabel}`,
 						"--engine",
 						profile.id,
 						"--provider",

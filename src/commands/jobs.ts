@@ -1,13 +1,12 @@
 import { open, readdir, readFile, stat } from "node:fs/promises";
 import { inspectFinishWebhook } from "../integrations/finish-receipt.ts";
 import { hostedAgentStatus } from "../integrations/herdr.ts";
-import { derivePulse, parseJob, producedNothing, renderJob } from "../job/job.ts";
+import { derivePulse, type Pulse, parseJob, producedNothing, renderJob } from "../job/job.ts";
 import { resolveJob } from "../job/lookup.ts";
 import { colorWanted, humanDetail, humanSnapshot, type JobRecord, paintWhen, resolveView, tallyStates } from "../job/view.ts";
 import { limenRoot, liveDiffstat, workspaceRepository } from "../project/git.ts";
-import { processGroupAlive } from "../runtime/contain.ts";
 import { hostedUncertaintyText, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
-import { confirmDeadJobs } from "../runtime/reap.ts";
+import { confirmDeadJobs, ownerAlive } from "../runtime/reap.ts";
 
 export async function jobsCommand(args: readonly string[], cwd: string): Promise<void> {
 	const selection = select(args);
@@ -120,8 +119,9 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 		advisory = "",
 		parent = "",
 		engine = "",
+		stopReason = "",
 	] = await Promise.all(
-		"state label branch repo pid started-at finished-at tool-calls last-tool activity hosted candidate advisory parent engine"
+		"state label branch repo pid started-at finished-at tool-calls last-tool activity hosted candidate advisory parent engine stop-reason"
 			.split(" ")
 			.map((field) => text(`${jobDir}/${field}`)),
 	);
@@ -130,7 +130,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 	const warning = advisory || (uncertainty ? hostedUncertaintyText(uncertainty) : "");
 	const agent = await text(`${jobDir}/herdr/agent`);
 	const [commits, commitsStat] = await Promise.all([text(`${jobDir}/commits`), optionalStat(`${jobDir}/commits`)]);
-	const [result, stopReason, versions] = detailed ? await Promise.all([text(`${jobDir}/result`), text(`${jobDir}/stop-reason`), text(`${jobDir}/versions`)]) : ["", "", ""];
+	const [result, versions] = detailed ? await Promise.all([text(`${jobDir}/result`), text(`${jobDir}/versions`)]) : ["", ""];
 	const [taskStat, logStat] = await Promise.all([optionalStat(`${jobDir}/task.md`), optionalStat(`${jobDir}/log`)]);
 	const cleanup = detailed ? await text(`${jobDir}/cleanup`) : "";
 	const finishWebhook = detailed ? await inspectFinishWebhook(jobDir) : "";
@@ -151,11 +151,15 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 			detail: detailed ? log.detail : "",
 		});
 		const observedAt = job.phase === "running" ? Date.now() : recordedDate(finished, new Date(), "finished-at").getTime();
-		const processAlive = job.phase === "running" && job.pid !== undefined && processGroupAlive(job.pid);
+		const alive = job.phase === "running" && (await ownerAlive(jobDir));
 		const agentStatus = job.phase === "running" && hosted && agent ? hostedAgentStatus(agent) : undefined;
-		const hostedAlive = agentStatus !== undefined && agentStatus !== "missing";
-		const alive = hosted ? hostedAlive || processAlive : processAlive;
-		const pulse = job.phase === "running" ? derivePulse({ alive, ...(job.pid !== undefined ? { pid: job.pid } : {}), ...(activity ? { activity } : {}) }) : undefined;
+		let pulse: Pulse | undefined;
+		if (job.phase === "running") {
+			const input: { alive: boolean; pid?: number; activity?: string } = { alive };
+			if (job.pid !== undefined) input.pid = job.pid;
+			if (activity) input.activity = activity;
+			pulse = derivePulse(input);
+		}
 		const recordedTools = toolCalls ? recordedCount(toolCalls) : undefined;
 		const empty = job.phase !== "running" && producedNothing(recordedTools, commitsStat ? commits : undefined);
 		const diffstat = detailed ? liveDiffstat(repo ? workspaceRepository(root, repo) : root, branch) : "";
@@ -175,6 +179,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 		if (candidate) blocks.push(`  candidate ${display(candidate)}`);
 		if (engine && engine !== "pi") blocks.push(`  engine ${display(engine)}`);
 		if (hosted) blocks.push("  hosted (weaker guarantees)");
+		if (agentStatus) blocks.push(`  agent ${agentStatus}`);
 		if (job.phase === "running" && warning) blocks.push(`  advisory ${display(warning)}`);
 		if (stopReason) blocks.push(indented("stop-reason", stopReason));
 		if (versions) blocks.push(indented("versions", versions));
@@ -189,7 +194,14 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 					.map((line) => `    ${line}`)
 					.join("\n")}`,
 			);
-		const reason = log.detail.replace(/^\[limen [^\]]*\]\s*/, "").replace(/^(failed|stopped):\s*/, "");
+		let reason = (stopReason || log.detail)
+			.replace(/^\[limen [^\]]*\]\s*/, "")
+			.replace(/^(error|failed|stopped):\s*/, "")
+			.replace(/\s+/g, " ");
+		if (/\b429\b/.test(reason) && /rate_limit_error|rate limit/i.test(reason)) {
+			const retryMs = /retry-after-ms=(\d+)/.exec(reason)?.[1];
+			reason = `rate limit (429)${retryMs ? `; retry after ${Math.max(1, Math.round(Number(retryMs) / 60_000))}m` : ""}`;
+		}
 		const record: JobRecord = {
 			id,
 			job,
@@ -206,6 +218,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 			...(parent ? { parent } : {}),
 			...(candidate ? { candidate } : {}),
 			...(hosted ? { hosted: true } : {}),
+			...(agentStatus ? { agentStatus } : {}),
 			...(job.phase === "running" && warning ? { advisory: warning } : {}),
 			...(stopReason ? { stopReason } : {}),
 			...(versions ? { versions } : {}),
@@ -273,7 +286,7 @@ async function readLog(path: string): Promise<{ tail: string; detail: string }> 
 			const overflow = bytes.byteLength > 4_096;
 			const slice = overflow ? bytes.subarray(bytes.byteLength - 4_096) : bytes;
 			const tail = overflow ? slice.toString("utf8").replace(/^[^\n]*\n?/, "…\n") : slice.toString();
-			return { tail, detail: lines.findLast((line) => line.startsWith("[limen ")) ?? "" };
+			return { tail, detail: lines.findLast((line) => /^\[limen [^\]]*\] (failed|stopped):/.test(line)) ?? "" };
 		} finally {
 			await handle.close();
 		}

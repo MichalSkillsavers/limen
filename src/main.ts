@@ -80,7 +80,8 @@ usage:
   limen workspace init
   limen planning [committed|private]                # inspect or persist the project planning source; default committed
   limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
-  limen group status|publish|wait|stop|close [GROUP-ID]  # members inherit verified membership; lead supplies ID
+  limen group status [GROUP-ID] [--json]  # short roster by default; --json keeps the full record
+  limen group publish|wait|stop|close [GROUP-ID]  # members inherit verified membership; lead supplies ID
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "Implement FNNN: <outcome>. Start by writing <slice>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--branch B] [--role NAME] [--timeout 20m; default 90m] [--task-file F|-] [--prepare CMD]
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "Short title" --task-file F|-  # the file is the task; the positional words become the label
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "…" [--label L]  # selected engine's flags; in Herdr: hosted, else detached

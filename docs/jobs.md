@@ -43,6 +43,8 @@ Both routes carry the same completion facts: the task, branch and repository, st
 | `done` | The run ended cleanly. The selected engine exited 0, or a hosted session ended, and the last stop reason was not `error` or `aborted`. |
 | `failed` | The run had a provider error, and Limen records the reason. A limit also records `failed` (see [Limits](#limits)). A failed job keeps its worktree and transcript. |
 
+Failed rows use the recorded `stop-reason`, not a later webhook or tab-close log line. Rate-limit rows show the HTTP status and approximate retry minutes; `jobs <id>` retains the full provider reason. Older records without `stop-reason` use the last `failed:` or `stopped:` log entry.
+
 **Neither state is approval.** Neither state means that the ticket is finished or that the branch is safe to merge, because `done` only means that the run exited cleanly. The coordinator reads the record, the diff, and the checks. Then, under the review policy of the project, it merges, or resumes a repair, or asks you.
 
 ### Reviews
@@ -89,6 +91,7 @@ limen land <id>
 - **Job ID:** The last line of `spawn` output is the durable job ID.
 - **Labels:** A label names the change first and the feature number last. A repair label or a review label names its round.
 - **Hosted labels:** Ordinary text such as `Fix the lead-in paragraph · F900` is allowed. Lead ownership comes from the coordinator pane, not the label; `--role coordinator` and `--role lead` remain refused.
+- **Group labels:** Team jobs read `team-2 coordinator · F773`, so jobs on the same feature remain distinct.
 
 ### Steer, stop, and resume
 

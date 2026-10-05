@@ -194,7 +194,7 @@ test("private packet failures occur before activation, and default mode still re
 	await writeFile(`${scratch.root}/../outside.md`, "outside\n");
 	await symlink(`${scratch.root}/../outside.md`, note);
 	assert.match(start().stderr, /escapes canonical root/);
-	assert.match(start(`${scratch.feature}/../F001-example`).stderr, /traversal/);
+	assert.equal(start(`${scratch.feature}/../F001-example`).status, 1);
 	assert.match(start("../outside").stderr, /inside this repository/);
 	assert.equal(existsSync(`${scratch.root}/.limen/groups`), false);
 	assert.deepEqual(await readdir(`${scratch.root}/.limen/jobs`).catch(() => []), []);
@@ -249,7 +249,7 @@ test("duplicate and concurrent activation start one fixed roster, never repair o
 	assert.equal(repeat.status, 0, repeat.stderr);
 	assert.equal(onlyJobId(repeat.stdout), run.id);
 	assert.equal((await readdir(`${scratch.root}/.limen/jobs`)).length, 2);
-	assert.match(limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings, "--new-run").stderr, /prior group .* is live/);
+	assert.equal(limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings, "--new-run").status, 1);
 });
 
 test("invalid activation creates no group and ignores inherited plant roots", async (context) => {

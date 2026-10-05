@@ -41,6 +41,8 @@ limen open <id|suffix|label>
 - `Needs a decision` (failed or stopped jobs with commits that are not landed)
 - coordinator tabs
 
+Open groups replace individual member candidates with one line: `group <feature>: N member branches; the lead decides (limen group status <id>)`. Closed groups leave the inbox. Work outside groups keeps its ordinary candidate or decision row.
+
 In a terminal, `jobs` shows an aligned table for people. Through a pipe, it prints the compact format that tools read. `LIMEN_VIEW=human|compact` selects a view. `NO_COLOR` removes the color.
 
 ### Control running jobs
@@ -87,7 +89,8 @@ Start a team group, and show the status of, publish, wait for, stop, or close it
 
 ```text
 limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
-limen group status|publish|wait|stop|close [GROUP-ID]
+limen group status [GROUP-ID] [--json]
+limen group publish|wait|stop|close [GROUP-ID]
 ```
 
 Members get their group from their recorded membership. The group lead gives the group ID.
