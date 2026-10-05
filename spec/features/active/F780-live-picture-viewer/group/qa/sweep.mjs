@@ -53,6 +53,7 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const failures = [];
 let checkedLinks = 0;
+let pageScroll = 0;
 const fail = (hash, test, got) => failures.push(`${hash} ${test}: ${String(got).slice(0, 280)}`);
 let currentHash = "#plant";
 page.on("pageerror", (error) => fail(currentHash, "browser script error", error.message));
@@ -174,6 +175,13 @@ try {
 			const jumped = await page.evaluate(() => location.hash);
 			if (decodeURI(jumped) !== decodeURI(`#plant~${segments[0]}`)) fail(fullHash, "trail depth 1 jump", jumped);
 		}
+		const pageTrail = page.locator('.layers-root [data-layer-jump="0"]');
+		if (!(await pageTrail.count())) fail(fullHash, "stack trail Page link missing", '.layers-root [data-layer-jump="0"]');
+		else {
+			await pageTrail.first().click();
+			const jumpedHome = await page.evaluate(() => location.hash);
+			if (jumpedHome !== "#plant") fail(fullHash, "trail Page jump", jumpedHome);
+		}
 		await page.goto(`${base}#plant~${segments[0]}`, { waitUntil: "load" });
 		const before = await page.evaluate(() => ({ hash: location.hash, scroll: window.scrollY, active: document.activeElement?.tagName }));
 		await page.keyboard.press("ArrowRight");
@@ -235,9 +243,29 @@ try {
 			if (layerOverflow > 1) fail(layerHash, `horizontal overflow with layer at ${width}px`, layerOverflow);
 		}
 	}
+	if (firstWork) {
+		currentHash = "#plant";
+		await page.goto(`${base}#plant`, { waitUntil: "load" });
+		const pageY = await page.evaluate(() => {
+			window.scrollTo(0, 700);
+			return window.scrollY;
+		});
+		pageScroll = pageY;
+		if (pageY < 600) fail("#plant", "900px page cannot exercise scroll restoration", pageY);
+		else {
+			const layerHash = `#plant~work/${encode(firstWork.id)}`;
+			currentHash = layerHash;
+			await page.evaluate((id) => PictureLayers.open("work", id), firstWork.id);
+			if ((await page.evaluate(() => window.scrollY)) !== pageY) fail(layerHash, "opening layer lost page position", await page.evaluate(() => window.scrollY));
+			await page.reload({ waitUntil: "load" });
+			if ((await page.evaluate(() => window.scrollY)) !== pageY) fail(layerHash, "reload lost page position", await page.evaluate(() => window.scrollY));
+			await page.goBack();
+			if ((await page.evaluate(() => window.scrollY)) !== pageY) fail(layerHash, "Back lost page position", await page.evaluate(() => window.scrollY));
+		}
+	}
 } finally {
 	await browser.close();
 }
-console.log(`routes=${uniqueRoutes.length} checked_links=${checkedLinks} layer_depths=3 widths=1440,1240,900 failures=${failures.length}`);
+console.log(`routes=${uniqueRoutes.length} checked_links=${checkedLinks} layer_depths=3 scroll_y=${pageScroll} widths=1440,1240,900 failures=${failures.length}`);
 for (const message of failures) console.error(`FAIL ${message}`);
 process.exitCode = failures.length ? 1 : 0;
