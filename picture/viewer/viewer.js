@@ -909,7 +909,10 @@
 				return `<section class="sec"><div class="sec-h"><h2>${label}<small>${ws.length}</small></h2><span>${ws.length ? note : "Nothing waits for you."}</span></div>${ws
 					.map((w) => {
 						const open = workOf(r) === w.id;
-						const meta = [w.date, w.code, w.board ? `${boardText(w.board)} on the board` : null, w.lit.length ? plural(w.lit.length, "place") : null].filter(Boolean).map(esc).join(" · ");
+						const meta = [w.date, w.code, w.board ? `${boardText(w.board)} on the board` : null, w.lit.length ? plural(w.lit.length, "place") : null]
+							.filter(Boolean)
+							.map(esc)
+							.join(" · ");
 						return `<div class="entry${open ? " open" : ""}">${row(`work:${w.id}`, open ? "#plant/work" : `#work/${esc(w.id)}`, open, "Feature", esc(w.title) + tag(w), esc(w.purpose), meta, w.lit)}${open ? workMid(w, r) : ""}</div>`;
 					})
 					.join("")}</section>`;
