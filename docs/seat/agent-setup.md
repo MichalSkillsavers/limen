@@ -39,7 +39,7 @@ PEM_SOURCE=/root/limen-app.pem     # root-only file; never in a worker home
 7. Do not push, and do not merge into `main`, in any repository. Only the human does that, after the human says "land".
 8. Never run `limen github poll`. Never enable `limen-github.timer` while `limen github doctor` shows a `FIX` other than the timer row.
 
-HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.1, and Limen ([setup](../setup.md)). Limen runs on the Mac and, from phase 4 on, on the seat too. The laptop has three different key pairs, each a private key file and a matching `.pub` file, at the paths in `ADMIN_KEY`, `BREAK_GLASS_KEY`, and `WORKER_KEY`. To make a missing pair, the HUMAN runs `ssh-keygen -t ed25519 -f <path>`. The phone has Tailscale and Moshi (or the ntfy app). Check: mac$ `herdr --version` prints `herdr 0.9.1`; `command -v limen` prints a path; `ssh-keygen -lf $ADMIN_KEY.pub; ssh-keygen -lf $BREAK_GLASS_KEY.pub; ssh-keygen -lf $WORKER_KEY.pub` prints three different `SHA256:` fingerprints; `test -f $ADMIN_KEY && test -f $BREAK_GLASS_KEY && test -f $WORKER_KEY` exits 0. STOP if not.
+HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.3, and Limen ([setup](../setup.md)). Limen runs on the Mac and, from phase 4 on, on the seat too. The laptop has three different key pairs, each a private key file and a matching `.pub` file, at the paths in `ADMIN_KEY`, `BREAK_GLASS_KEY`, and `WORKER_KEY`. To make a missing pair, the HUMAN runs `ssh-keygen -t ed25519 -f <path>`. The phone has Tailscale and Moshi (or the ntfy app). Check: mac$ `herdr --version` prints `herdr 0.9.3`; `command -v limen` prints a path; `ssh-keygen -lf $ADMIN_KEY.pub; ssh-keygen -lf $BREAK_GLASS_KEY.pub; ssh-keygen -lf $WORKER_KEY.pub` prints three different `SHA256:` fingerprints; `test -f $ADMIN_KEY && test -f $BREAK_GLASS_KEY && test -f $WORKER_KEY` exits 0. STOP if not.
 
 ## 1 · CPU, box, and break-glass SSH
 
@@ -69,37 +69,46 @@ HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.1, and
 ## 4 · Tools
 
 - root$ one root-owned Limen release, for the worker now and the poller later. Never `npm link` a worker clone. `git clone $LIMEN_REPO /opt/limen && git -C /opt/limen checkout --detach $LIMEN_REV && chown -R root:root /opt/limen && chmod -R go-w /opt/limen && ln -sfnT /opt/limen/bin/limen /usr/local/bin/limen`
-- root$ stage and install root-owned Node 24.19.0, Herdr 0.9.1, and omp 18.4.4 (the last known-good versions in [setup](../setup.md)). The `case` picks the file and checksum for this CPU. Each checksum is checked before the file runs.
+- root$ stage and install root-owned Node 24.21.0 and Herdr 0.9.3. The `case` picks the file and checksum for this CPU. Each checksum is checked before the file runs. Do not install omp as root.
 ```sh
 case $(uname -m) in
-  x86_64)  node_arch=x64 herdr_arch=x86_64 omp_arch=x64
-           node_sha=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647
-           herdr_sha=2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7
-           omp_sha=24c830fceb0bd6884bf5bf2c7a2b7407bc23fafe655e924c695ef9be308e46f3 ;;
-  aarch64) node_arch=arm64 herdr_arch=aarch64 omp_arch=arm64
-           node_sha=01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc
-           herdr_sha=f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e
-           omp_sha=602eefddc0fd87043f8f08d8628d72592e5802c003a05f203f1ecbc63a8fdd30 ;;
+  x86_64)  node_arch=x64 herdr_arch=x86_64
+           node_sha=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+           herdr_sha=18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7 ;;
+  aarch64) node_arch=arm64 herdr_arch=aarch64
+           node_sha=6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2
+           herdr_sha=4de7aa3e25678812e92960de64f7c2aaa1bca1f0f80a3c5e559837e231e1f5c0 ;;
   *) echo "unsupported CPU $(uname -m)" >&2; exit 1 ;;
 esac
 install -d -o root -g root -m 0700 /root/install
-curl -fsSL https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-$node_arch.tar.xz -o /root/install/node.tar.xz
+curl -fsSL https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-$node_arch.tar.xz -o /root/install/node.tar.xz
 echo "$node_sha  /root/install/node.tar.xz" | sha256sum -c -
-tar -xJf /root/install/node.tar.xz -C /root/install --strip-components=2 node-v24.19.0-linux-$node_arch/bin/node
-curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.9.1/herdr-linux-$herdr_arch -o /root/install/herdr
+tar -xJf /root/install/node.tar.xz -C /root/install --strip-components=2 node-v24.21.0-linux-$node_arch/bin/node
+curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-$herdr_arch -o /root/install/herdr
 echo "$herdr_sha  /root/install/herdr" | sha256sum -c -
-curl -fsSL https://github.com/can1357/oh-my-pi/releases/download/v18.4.4/omp-linux-$omp_arch -o /root/install/omp
-echo "$omp_sha  /root/install/omp" | sha256sum -c -
-chown root:root /root/install/node /root/install/herdr /root/install/omp
-chmod 0755 /root/install/node /root/install/herdr /root/install/omp
+chown root:root /root/install/node /root/install/herdr
+chmod 0755 /root/install/node /root/install/herdr
 install -o root -g root -m 0755 /root/install/node /usr/bin/node
 install -o root -g root -m 0755 /root/install/node /usr/local/bin/node
 install -o root -g root -m 0755 /root/install/herdr /usr/local/bin/herdr
-install -o root -g root -m 0755 /root/install/omp /usr/local/bin/omp
 ```
-- Checksum sources: Node [SHASUMS256.txt](https://nodejs.org/dist/v24.19.0/SHASUMS256.txt); Herdr and omp, the `sha256:` digest of each asset on the [Herdr v0.9.1](https://github.com/herdrdev/herdr/releases/tag/v0.9.1) and [omp v18.4.4](https://github.com/can1357/oh-my-pi/releases/tag/v18.4.4) release pages. STOP if a `sha256sum -c` line does not end in `OK`.
+- Checksum sources: Node [SHASUMS256.txt](https://nodejs.org/dist/v24.21.0/SHASUMS256.txt); Herdr, the `sha256:` digest of each asset on the [Herdr v0.9.3](https://github.com/herdrdev/herdr/releases/tag/v0.9.3) release page. STOP if a `sha256sum -c` line does not end in `OK`.
+- worker$ install worker-owned omp 18.6.1 into `~/.local/bin` (no sudo). Checksum before it runs. Never install a root-owned `/usr/local/bin/omp`.
+```sh
+case $(uname -m) in
+  x86_64)  omp_arch=x64   omp_sha=c92a6846d02984e84f07c6362d18add3783f528f494ffcf1e0f26e594f327463 ;;
+  aarch64) omp_arch=arm64 omp_sha=cb7815330bb117877e4e133562ea82e3001ee470e47393552507b5a7f0407f4a ;;
+  *) echo "unsupported CPU $(uname -m)" >&2; exit 1 ;;
+esac
+mkdir -p ~/.local/bin
+curl -fsSL https://github.com/can1357/oh-my-pi/releases/download/v18.6.1/omp-linux-$omp_arch -o ~/.local/bin/omp.new
+echo "$omp_sha  $HOME/.local/bin/omp.new" | sha256sum -c -
+chmod 0755 ~/.local/bin/omp.new && mv ~/.local/bin/omp.new ~/.local/bin/omp
+grep -qF '.local/bin' ~/.bashrc 2>/dev/null || printf '\n[ -d "$HOME/.local/bin" ] && PATH="$HOME/.local/bin:$PATH"\n' >> ~/.bashrc
+```
+- Checksum source: omp [SHA256SUMS.txt](https://github.com/can1357/oh-my-pi/releases/download/v18.6.1/SHA256SUMS.txt) (same digests as the [v18.6.1](https://github.com/can1357/oh-my-pi/releases/tag/v18.6.1) asset list). STOP if a `sha256sum -c` line does not end in `OK`.
 - HUMAN: `ssh -t $SEAT_HOST`, then `gh auth login` (GitHub.com, HTTPS), `gh auth setup-git`, and `omp` to log in to the model provider.
-- Check: worker$ `node -v` is `v24.19.0`; `command -v limen` is `/usr/local/bin/limen`; `git -C /opt/limen -c safe.directory=/opt/limen rev-parse HEAD` is `LIMEN_REV`; `test -f /opt/limen/docs/seat/agent-setup.md` exits 0; `herdr --version` is `herdr 0.9.1`; `command -v omp` is `/usr/local/bin/omp`; `omp --version` is `omp/18.4.4`; `gh auth status` exits 0. STOP on any mismatch.
+- Check: worker$ `node -v` is `v24.21.0`; `command -v limen` is `/usr/local/bin/limen`; `git -C /opt/limen -c safe.directory=/opt/limen rev-parse HEAD` is `LIMEN_REV`; `test -f /opt/limen/docs/seat/agent-setup.md` exits 0; `herdr --version` is `herdr 0.9.3`; `command -v omp` is `$HOME/.local/bin/omp`; `omp --version` is `omp/18.6.1`; `test ! -e /usr/local/bin/omp` exits 0; `gh auth status` exits 0. STOP on any mismatch.
 
 ## 5 · Project and `limen init`
 
