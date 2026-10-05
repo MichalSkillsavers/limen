@@ -1053,7 +1053,8 @@
 	let route = null;
 	let anchor = null;
 	let lastBase = null;
-	const baseOf = (h) => String(h).split("~")[0];
+	// An empty hash is the plant: a layer closed after a reload lands on the bare entry and must not redraw the page.
+	const baseOf = (h) => String(h).split("~")[0] || "#plant";
 	const headH = () => {
 		const m = document.getElementById("mast");
 		return (getComputedStyle(m).position === "sticky" ? m.offsetHeight : 0) + document.querySelector("#read .crumbs").offsetHeight;
