@@ -1,4 +1,6 @@
 ---
+touches:
+  - limen.picture.viewer
 opened: 2026-10-04
 needs-adam: Count each place's code changes when the map refreshes, or read them from Git at every build?
 needs-adam-on: 2026-10-04

@@ -1,4 +1,6 @@
 ---
+touches:
+  - limen.integrations.seat
 opened: 2026-10-05
 ---
 
