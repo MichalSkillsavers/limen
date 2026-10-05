@@ -1,3 +1,8 @@
+---
+opened: 2026-10-05
+landed: 2026-10-05
+---
+
 # F772 · The seat setup guide avoids every snag from the live limen-test cold run
 
 ## Outcome

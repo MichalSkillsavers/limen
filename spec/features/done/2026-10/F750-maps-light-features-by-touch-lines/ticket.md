@@ -1,3 +1,7 @@
+---
+opened: 2026-10-03
+---
+
 # F750 · The Limen and Alice maps light features through explicit touch lines
 
 ## Outcome

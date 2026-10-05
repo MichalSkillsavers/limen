@@ -1,3 +1,7 @@
+---
+opened: 2026-10-05
+---
+
 # F775 · Adam sees the broad architecture picture and can dig down to decide fast
 
 ## Outcome

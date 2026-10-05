@@ -1,3 +1,7 @@
+---
+opened: 2026-10-04
+---
+
 # F756 · A feature spec shows its decision, effect, evidence, and open questions
 
 ## Outcome

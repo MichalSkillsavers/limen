@@ -1,3 +1,10 @@
+---
+touches:
+  - limen.integrations.github
+opened: 2026-10-04
+landed: 2026-10-04
+---
+
 # F761 · An issue body rings the GitHub doorbell like an issue comment
 
 ## Outcome
