@@ -16,7 +16,9 @@ The picture shows the plant atlas beside a quiet column of work and dated decisi
 
 Select a feature or journey to reveal its `touches` or `steps`, including places inside different modules. Only named places light; nested places keep their parent captions.
 
-Follow a journey through its ordered steps, including repeated visits and stops at the whole project. The URL preserves a selected place, work item, or day on reload. Opening another item as a layer adds to the visible stack; Esc and browser Back close one layer. The map never uses Git history to guess places.
+Follow a journey through its ordered steps, including repeated visits and stops at the whole project. The URL preserves a selected place, work item, or day on reload. The map never uses Git history to guess places.
+
+Pins, places, modules, work, journeys, and days open larger as layers over the page. An item opened inside a layer stacks one more layer. The trail above the layers names each one and jumps to any of them. Esc and browser Back close the top layer; the Left and Right arrow keys move the top layer to the previous or next item of the same kind. The URL holds the whole stack, so a reload or a shared link opens the same layers.
 
 **Map features are not the live work list.** They show where specified features cross the code, not their state. The board (`spec/build.md`) owns feature state. The live picture also reads tickets and the board to show current work.
 
