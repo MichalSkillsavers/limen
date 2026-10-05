@@ -118,7 +118,8 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	preflightEngine(profile, model, options.provider);
 	const notificationSession = currentNotificationSession();
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
-	const coordinatorPane = herdrWakePane(notificationSession);
+	// A group member never subscribes a session, so its pane stays recorded even under Pi: it is the lead's route when the group hook is not running.
+	const coordinatorPane = herdrWakePane(group ? undefined : notificationSession);
 	const workspace = group ? undefined : workspaceRoot(cwd);
 	const currentRoot = workspace ?? repoRoot(cwd);
 	// A job that spawns from its own worktree keeps its canonical root, recorded planning source, and repository.

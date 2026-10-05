@@ -135,6 +135,17 @@ export async function leadSession(root: string): Promise<string | undefined> {
 		pid = parent.process.ppid;
 	}
 }
+/** How long a lead registration stays live after the group-peer hook last finished a delivery sweep. The hook sweeps every second. */
+const LEAD_HEARTBEAT_MS = 30_000;
+/**
+ * The lead hook is live when its registration names a live process and the hook refreshed it recently.
+ * A process alone is not proof: a pane can run without hook/group-peer.ts, and a hand-written registration never refreshes.
+ */
+export async function leadHookLive(root: string, session: string, now = Date.now()): Promise<boolean> {
+	const path = `${root}/.limen/group-leads/${session}`;
+	const [pid, info] = await Promise.all([readFile(path, "utf8").then(Number, () => 0), stat(path).catch(() => undefined)]);
+	return Boolean(info && now - info.mtimeMs < LEAD_HEARTBEAT_MS && Number.isSafeInteger(pid) && pid > 1 && processAlive(pid));
+}
 export async function commandRoot(cwd: string): Promise<string> {
 	return (await groupIdentity(cwd))?.run.root ?? limenRoot(cwd);
 }

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { deliverLeadStepWebhook } from "../src/integrations/finish-webhook.ts";
 import type { GroupIdentity, GroupRun } from "../src/job/group-cabinet.ts";
 import { groupIdentity, groupPath, runs } from "../src/job/group-cabinet.ts";
@@ -74,8 +74,9 @@ export default function groupPeer(pi: PiApi): void {
 		}
 		leadSession = context.sessionManager.getSessionId();
 		if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(leadSession)) return;
+		const registration = `${leadRoot}/.limen/group-leads/${leadSession}`;
 		await mkdir(`${leadRoot}/.limen/group-leads`, { recursive: true });
-		await writeFile(`${leadRoot}/.limen/group-leads/${leadSession}`, `${process.pid}\n`, { flush: true });
+		await writeFile(registration, `${process.pid}\n`, { flush: true });
 		await leadSteps();
 		timer = setInterval(() => {
 			if (sweeping) return;
@@ -96,6 +97,9 @@ export default function groupPeer(pi: PiApi): void {
 					}
 				}
 			})()
+				// The registration's mtime is the heartbeat that `group start` and the finish path read; only a completed sweep refreshes it.
+				// A removed registration stays removed: its absence is the signal that this pane is not the lead.
+				.then(() => utimes(registration, new Date(), new Date()).catch(() => {}))
 				.catch((error: unknown) => context.ui.notify(`group delivery requires inspection: ${String(error)}`, "warning"))
 				.finally(() => {
 					sweeping = false;
