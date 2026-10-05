@@ -862,7 +862,8 @@
 		return `<div class="mid">${asLayer("day", d.id, `#day/${esc(d.id)}`)}${d.items
 			.map((it) => {
 				const w = W[it.work];
-				return `<a class="ditem" data-key="go:${esc(w.id)}" href="#work/${esc(w.id)}"><b>${esc(w.code)} · ${esc(w.title)}</b>${tag(w)}<span><span class="kd">${esc(KIND_LABEL[it.kind] || it.kind)}</span> ${esc(it.text)}</span></a>`;
+				/* Opened and landed items carry the title as text; say it once. */
+				return `<a class="ditem" data-key="go:${esc(w.id)}" href="#work/${esc(w.id)}"><b>${esc(w.code)} · ${esc(w.title)}</b>${tag(w)}<span><span class="kd">${esc(KIND_LABEL[it.kind] || it.kind)}</span>${it.text && it.text !== w.title ? ` ${esc(it.text)}` : ""}</span></a>`;
 			})
 			.join("")}
     <p class="note">Dates come from ticket front matter. A day lists what was opened, landed, asked, or found wrong on it.</p></div>`;
