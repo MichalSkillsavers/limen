@@ -31,7 +31,7 @@ PEM_SOURCE=/root/limen-app.pem     # root-only file; never in a worker home
 ## Rules for the agent
 
 1. Never ask for, read, print, or store a secret: the App PEM, a Moshi pairing token, a provider login, a `gh` token, an ntfy topic. The HUMAN types them in their own terminal.
-2. At a HUMAN step, say what the human must do, then wait until the human says it is done. Then run the Check.
+2. At a HUMAN step, say what the human must do, with the fill-in values in each command. Then wait until the human says it is done. Then run the Check.
 3. Run every Check. A Check states the expected result; some expected results are a non-zero exit. If the result differs, STOP: show the command and its output, and ask the human. Do not invent a repair. `ExperimentalWarning` lines on stderr are not failures.
 4. Before you send a command, replace each `$NAME` from the fill-in block with its value. Lower-case variables, such as `$node_arch`, belong to the block; leave them. `root$` runs `ssh $ADMIN_SSH bash -ls <<'EOF'`, then `set -euo pipefail`, the commands, and `EOF`, so a failed line stops the block. `worker$` runs the same through `ssh $SEAT_HOST`. Run each Check in its own call without `set -e`. Each call starts in the home directory. `mac$` is the laptop. `pane$` is the seat coordinator pane in Herdr; the HUMAN types there.
 5. Public inbound: port 22 only, for break-glass SSH with `BREAK_GLASS_KEY`. Admin and worker SSH run over the tailnet only. Tailnet inbound: allowed. Never run `tailscale up --ssh` (this guide uses OpenSSH keys on the tailnet), `tailscale funnel`, an unattended reboot, or Docker `-p` without `127.0.0.1:`.
@@ -51,9 +51,9 @@ HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.1, and
 
 ## 2 · Tailscale and admin SSH over the tailnet
 
-- root$ `curl -fsSL https://tailscale.com/install.sh | sh && tailscale up --hostname=$SEAT_NAME && ufw allow in on tailscale0` (the script adds the signed Tailscale apt repository; apt picks the CPU type).
-- HUMAN: open the URL that `tailscale up` prints while it waits, and approve the node.
-- root$ `tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'`. Write the output into `SEAT_HOST`.
+- root$ `curl -fsSL https://tailscale.com/install.sh | sh` (the script adds the signed Tailscale apt repository; apt picks the CPU type).
+- HUMAN, in their own terminal: `ssh -t $BREAK_GLASS_SSH tailscale up --hostname=$SEAT_NAME`. Open the URL that it prints and approve the node. The command returns after the approval.
+- root$ `ufw allow in on tailscale0 && tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'`. Write the output into `SEAT_HOST`.
 - mac$ `{ printf 'from="100.64.0.0/10,fd7a:115c:a1e0::/48" '; cat $ADMIN_KEY.pub; } | ssh $BREAK_GLASS_SSH 'cat >> /root/.ssh/authorized_keys'`. With the `from=` prefix, sshd accepts `ADMIN_KEY` only from tailnet addresses ([100.x](https://tailscale.com/kb/1015/100.x-addresses), [IPv6](https://tailscale.com/kb/1033/ip-and-dns-addresses)).
 - HUMAN: add two hosts to the laptop `~/.ssh/config`. `Host $ADMIN_SSH`: `HostName $SEAT_HOST`, `User root`, `IdentityFile $ADMIN_KEY`, `IdentitiesOnly yes`. `Host $SEAT_HOST`: `User $WORKER`, `IdentityFile $WORKER_KEY`, `IdentitiesOnly yes`.
 - Check: mac$ `ssh -o StrictHostKeyChecking=accept-new $ADMIN_SSH 'echo ${SSH_CONNECTION%% *}'` prints an address that starts with `100.` or `fd7a:115c:a1e0:`; `ssh -o HostName=$PUBLIC_IP $ADMIN_SSH true` exits 255 with `Permission denied (publickey)`. root$ `tailscale status` lists the laptop and the phone; `ufw status verbose` shows `Default: deny (incoming)` and only `22/tcp (OpenSSH)`, `Anywhere on tailscale0`, and their `(v6)` rules. STOP if any differs.
