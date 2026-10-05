@@ -2,9 +2,17 @@
 .layers-root {
 	--layer-w: min(760px, calc(100vw - 2 * var(--gap)));
 	--trail-h: 32px;
+	--scrim: rgb(28 30 34 / 0.24);
 	position: fixed;
 	inset: 0;
 	z-index: 40;
+}
+/* Two columns: the sheet covers only the reading column, so the atlas it lights stays in view. */
+@media (min-width: 1241px) {
+	.layers-root {
+		--layer-w: 470px;
+		--scrim: rgb(28 30 34 / 0.08);
+	}
 }
 .layers-root[hidden] {
 	display: none;
@@ -18,41 +26,43 @@ html.layers-open body {
 .layers-scrim {
 	position: absolute;
 	inset: 0;
-	background: rgb(28 30 34 / 0.24);
+	background: var(--scrim);
 	animation: layers-fade 0.16s ease-out;
 }
+/* Announces a context switch to screen readers; not drawn. */
+.layers-live {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
 
-/* Stack trail: one button per lower depth, the top layer named last. */
+/* Stack trail: one button per lower depth, the top layer named last. It joins the top sheet and scrolls sideways when deep. */
 .layers-trail {
 	position: absolute;
 	top: var(--sp-3);
-	right: var(--gap);
+	right: calc(var(--gap) + var(--layers-bar, 0px));
 	width: var(--layer-w);
 	height: var(--trail-h);
 	display: flex;
 	align-items: center;
 	gap: var(--sp-2);
-	padding: 0 var(--sp-3);
+	padding: 0 var(--sp-4);
 	background: var(--card);
 	border: 1px solid var(--line);
-	border-radius: var(--r-2);
+	border-bottom-color: var(--line2);
+	border-radius: var(--r-3) var(--r-3) 0 0;
 	font-size: 13px;
 	white-space: nowrap;
-	overflow: hidden;
-}
-.layers-trail-label {
-	font-size: 11.5px;
-	font-weight: 650;
-	letter-spacing: 0.09em;
-	text-transform: uppercase;
-	color: var(--mute);
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
 }
 .layers-trail button,
 .layers-trail [aria-current] {
-	min-width: 0;
-	max-width: 200px;
-	overflow: hidden;
-	text-overflow: ellipsis;
+	flex: none;
 	font: inherit;
 	color: var(--ink);
 }
@@ -75,18 +85,19 @@ html.layers-open body {
 	color: var(--faint);
 }
 .layers-trail-hint {
+	flex: none;
 	margin-left: auto;
 	padding-left: var(--sp-3);
 	font-size: 12px;
 	color: var(--mute);
 }
 
-/* Sheets: the top layer covers the reading column; each lower layer peeks out 16px on the left. */
+/* Sheets: the top layer sits under the trail; each lower layer peeks out 8px on the left, inside the column gap. */
 .layers-stack {
 	position: absolute;
-	top: calc(var(--sp-3) + var(--trail-h) + var(--sp-2));
-	right: var(--gap);
-	bottom: var(--sp-3);
+	top: calc(var(--sp-3) + var(--trail-h));
+	right: calc(var(--gap) + var(--layers-bar, 0px));
+	bottom: 0;
 	width: var(--layer-w);
 }
 .layer {
@@ -96,10 +107,12 @@ html.layers-open body {
 	flex-direction: column;
 	background: var(--card);
 	border: 1px solid var(--line);
-	border-radius: var(--r-3);
+	border-top: 0;
+	border-bottom: 0;
+	border-radius: 0;
 	box-shadow: 0 12px 32px rgb(28 30 34 / 0.16);
 	overflow: hidden;
-	transform: translateX(calc(var(--below, 0) * -1 * var(--sp-4)));
+	transform: translateX(calc(var(--below, 0) * -1 * var(--sp-2)));
 	transition: transform 0.16s ease-out;
 }
 .layer[inert] {
@@ -133,6 +146,7 @@ html.layers-open body {
 
 .layer-head {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: var(--sp-4);
@@ -140,6 +154,7 @@ html.layers-open body {
 	border-bottom: 1px solid var(--line2);
 }
 .layer-titles {
+	flex: 1 1 260px;
 	min-width: 0;
 }
 .layer-eyebrow {

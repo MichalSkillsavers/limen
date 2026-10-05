@@ -91,7 +91,7 @@ export default function limenWake(pi: PiApi): void {
 		if (!herdr) return;
 		const jobs = `${pulses.length} RUNNING · ${watched} watched · ${pulses.length - watched} unwatched`;
 		const label = `${jobs} · ${body}`;
-		const agent = herdrDisplayAgent(pulses);
+		const agent = herdrDisplayAgent(pulses, session?.isIdle() === true);
 		const signature = `${title}\0${label}\0${agent}`;
 		if (signature === herdrMetadata && Date.now() - herdrMetadataAt < 60_000) return;
 		herdrMetadata = signature;
@@ -954,15 +954,12 @@ function herdrTarget(): HerdrPane | undefined {
 	if (binary === "0" || process.env.HERDR_ENV !== "1" || !pane) return undefined;
 	return { binary, pane };
 }
-function herdrDisplayAgent(pulses: readonly Pulse[]): string {
+// The display agent names the lead pane, so it describes the lead: an idle lead waits on its jobs; a working lead only counts them.
+function herdrDisplayAgent(pulses: readonly Pulse[], leadIdle: boolean): string {
 	if (!pulses.length) return "Limen coordinator";
 	if (pulses.includes("dead")) return `⚠ Limen · ${pulses.length} needs attention`;
-	const states = [...new Set(pulses)];
-	const glyph = (pulse: Pulse): string => ({ starting: "✦", think: "◌", tool: "⚙", wait: "◴", dead: "⚠" })[pulse];
-	if (states.length > 1) return `${states.map(glyph).join("")} Limen · ${pulses.length} active`;
-	const state = states[0] as Pulse;
-	const description: Record<Pulse, string> = { starting: "waking", think: "thinking", tool: "working", wait: "waiting", dead: "needs attention" };
-	return `${glyph(state)} Limen · ${pulses.length} ${description[state]}`;
+	const jobs = `${pulses.length} ${pulses.length === 1 ? "job" : "jobs"}`;
+	return leadIdle ? `Limen · waiting on ${jobs}` : `Limen · ${jobs}`;
 }
 function shortLabel(label: string): string {
 	return /\bF\d{3,}\b/i.exec(label)?.[0]?.toUpperCase() ?? label.split(/\s+/, 1)[0]?.slice(0, 12) ?? "job";
