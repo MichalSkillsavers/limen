@@ -68,10 +68,13 @@ test("board reader ignores missing board and malformed or misplaced feature line
 			"- `F208-last-work` (🟢 PROVEN): valid",
 		].join("\n"),
 		async (root) => {
-			assert.deepEqual(await readBoard(root), new Map([
-				["f200", { section: "NOW", state: "ACTIVE", line: 2 }],
-				["f208", { section: "PROVEN", state: "PROVEN", line: 13 }],
-			]));
+			assert.deepEqual(
+				await readBoard(root),
+				new Map([
+					["f200", { section: "NOW", state: "ACTIVE", line: 2 }],
+					["f208", { section: "PROVEN", state: "PROVEN", line: 13 }],
+				]),
+			);
 		},
 	);
 });

@@ -147,9 +147,9 @@ export interface PictureModel {
 // A missing child file is a gap; nothing is invented.
 
 import { basename } from "node:path";
+import type { BoardEntry } from "./board.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 import { inlineText, proseBlocks, renderMarkdown } from "./markdown.ts";
-import type { BoardEntry } from "./board.ts";
 import { checkTickets, type TicketRecord } from "./tickets.ts";
 
 export const INPUT_SCHEMA = "architecture-map/1";
@@ -270,28 +270,32 @@ export function buildModel({
 	}));
 	const featureById = new Map(featureModels.map((feature) => [feature.id, feature]));
 	const nodeTitles = new Map(ordered.map((node) => [node.id, node.title]));
-	const work: PictureWork[] = [...tickets].sort((a, b) => cmp(a.id, b.id) || cmp(a.path, b.path)).map((ticket) => {
-		const feature = featureById.get(`limen.feature.${ticket.id}`);
-		const touches = ticket.touches.length ? ticket.touches.filter((id) => places.has(id)) : (feature?.touches ?? []);
-		return {
-			id: ticket.id,
-			code: ticket.code,
-			slug: ticket.slug,
-			title: ticket.title,
-			lane: ticket.lane,
-			board: board?.get(ticket.id) ?? null,
-			purpose: ticket.purpose,
-			outcome: ticket.outcome,
-			touches,
-			touchSource: ticket.touches.length ? "ticket" : feature?.touches.length ? "map" : "none",
-			opened: ticket.opened,
-			landed: ticket.landed,
-			needsAdam: ticket.needsAdam,
-			wrong: ticket.wrong,
-			path: ticket.path,
-			mapFeature: feature?.id ?? null,
-		};
-	});
+	const topModule = new Map<string, string>();
+	for (const node of ordered) topModule.set(node.id, node.parent ? (topModule.get(node.parent) ?? node.parent) : node.id);
+	const work: PictureWork[] = [...tickets]
+		.sort((a, b) => cmp(a.id, b.id) || cmp(a.path, b.path))
+		.map((ticket) => {
+			const feature = featureById.get(`limen.feature.${ticket.id}`);
+			const touches = ticket.touches.length ? ticket.touches.filter((id) => places.has(id)) : (feature?.touches ?? []);
+			return {
+				id: ticket.id,
+				code: ticket.code,
+				slug: ticket.slug,
+				title: ticket.title,
+				lane: ticket.lane,
+				board: board?.get(ticket.id) ?? null,
+				purpose: ticket.purpose,
+				outcome: ticket.outcome,
+				touches,
+				touchSource: ticket.touches.length ? "ticket" : feature?.touches.length ? "map" : "none",
+				opened: ticket.opened,
+				landed: ticket.landed,
+				needsAdam: ticket.needsAdam,
+				wrong: ticket.wrong,
+				path: ticket.path,
+				mapFeature: feature?.id ?? null,
+			};
+		});
 	const pins: PictureModel["pins"] = { changed: [], wrong: [], needs: [] };
 	const dayItems = new Map<string, PictureDay["items"]>();
 	const addDay = (date: string, item: PictureDay["items"][number]): void => {
@@ -300,7 +304,12 @@ export function buildModel({
 		dayItems.set(date, items);
 	};
 	for (const item of work) {
-		const scope = item.touches.length === 1 ? (nodeTitles.get(item.touches[0]!) ?? plant?.title ?? "") : item.touches.length ? `${item.touches.length} places` : (plant?.title ?? "");
+		let scope = "";
+		if (item.touches.length === 1) scope = nodeTitles.get(item.touches[0]!) ?? plant?.title ?? "";
+		else if (item.touches.length > 1) {
+			const modules = new Set(item.touches.map((id) => topModule.get(id) ?? id));
+			scope = modules.size === 1 ? (nodeTitles.get(modules.values().next().value!) ?? "") : `${item.touches.length} places in ${modules.size} modules`;
+		}
 		if (item.opened) addDay(item.opened, { work: item.id, kind: "opened", text: item.title });
 		if (item.landed) {
 			pins.changed.push({ work: item.id, date: item.landed, text: item.title, scope });
@@ -319,10 +328,12 @@ export function buildModel({
 	pins.changed.sort(newest);
 	pins.wrong.sort(newest);
 	pins.needs.sort(newest);
-	const days: PictureDay[] = [...dayItems].sort(([a], [b]) => cmp(b, a)).map(([date, items]) => ({
-		date,
-		items: items.sort((a, b) => cmp(a.work, b.work) || cmp(a.kind, b.kind)),
-	}));
+	const days: PictureDay[] = [...dayItems]
+		.sort(([a], [b]) => cmp(b, a))
+		.map(([date, items]) => ({
+			date,
+			items: items.sort((a, b) => cmp(a.work, b.work) || cmp(a.kind, b.kind)),
+		}));
 	const newestDate = days[0]?.date;
 
 	diags.sort(diagCmp);
