@@ -8,7 +8,14 @@
 	"use strict";
 
 	const KINDS = ["work", "place", "module", "day", "journey"];
-	const NOUNS = { work: "feature", place: "place", module: "module", day: "day", journey: "journey" };
+	const NOUNS = {
+		work: ["feature", "features"],
+		feature: ["map feature", "map features"],
+		place: ["place", "places"],
+		module: ["module", "modules"],
+		day: ["day", "days"],
+		journey: ["journey", "journeys"],
+	};
 	const LANES = { planned: "Planned", active: "Active", done: "Done", dropped: "Dropped" };
 	const DAY_KINDS = { opened: "Opened", landed: "Landed", "needs-adam": "Needs Adam", wrong: "Wrong" };
 	const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -17,9 +24,13 @@
 	const same = (a, b) => a.kind === b.kind && a.id === b.id;
 	const keyOf = (layer) => `${layer.kind}/${layer.id}`;
 	const cut = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+	const word = (s) => String(s ?? "").toLowerCase();
+	const capital = (s) => word(s).replace(/^./, (c) => c.toUpperCase());
+	// "6 Oct", like the pins and the column; the year only when it differs from the build year (from the model, not the clock).
 	const date = (iso) => {
 		const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
-		return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : String(iso ?? "");
+		if (!m) return String(iso ?? "");
+		return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}${index?.year === m[1] ? "" : ` ${m[1]}`}`;
 	};
 
 	/* URL: split a hash into the page route and the layer stack, and join it back. */
@@ -45,6 +56,15 @@
 	const join = (base, layers) => base + layers.map((layer) => `~${layer.kind}/${enc(layer.id)}`).join("");
 
 	/* Model lookups. A place is a child node or a top module with no children; a module is a top node. */
+	const ticketNumber = (w) => Number(String(w.code ?? "").replace(/\D/g, "")) || 0;
+	function lanesOf(work) {
+		const lanes = new Map();
+		for (const w of [...work].sort((a, b) => ticketNumber(b) - ticketNumber(a))) {
+			if (!lanes.has(w.lane)) lanes.set(w.lane, []);
+			lanes.get(w.lane).push(w);
+		}
+		return lanes;
+	}
 	let index = null;
 	function build(model) {
 		const nodes = new Map((model.nodes ?? []).map((n) => [n.id, n]));
@@ -54,6 +74,8 @@
 			nodes,
 			isPlace,
 			work: new Map((model.work ?? []).map((w) => [w.id, w])),
+			lanes: lanesOf(model.work ?? []),
+			year: String(model.generatedAt ?? "").slice(0, 4),
 			features: new Map((model.features ?? []).map((f) => [f.id, f])),
 			days: new Map((model.days ?? []).map((d) => [d.date, d])),
 			journeys: new Map((model.journeys ?? []).map((j) => [j.id, j])),
@@ -76,12 +98,25 @@
 		if (kind === "journey") return index.journeys.get(id) ?? null;
 		return null;
 	}
+	// Context switch siblings. Work: the same lane, newest ticket first, like the decide column. Map features, places,
+	// modules and journeys: model order, as the atlas lists them. Days: newest first, as the model lists them.
 	function siblings(layer) {
-		if (layer.kind === "work") return index.work.has(layer.id) ? [...index.work.keys()] : [...index.features.keys()];
+		if (layer.kind === "work") {
+			const w = index.work.get(layer.id);
+			return w ? (index.lanes.get(w.lane) ?? [w]).map((other) => other.id) : [...index.features.keys()];
+		}
 		if (layer.kind === "place") return index.places;
 		if (layer.kind === "module") return index.modules;
 		if (layer.kind === "day") return [...index.days.keys()];
 		return [...index.journeys.keys()];
+	}
+	const noun = (layer) => NOUNS[layer.kind === "work" && !index.work.has(layer.id) ? "feature" : layer.kind];
+	// "3 of 22 active features", "5 of 18 places".
+	function count(layer) {
+		const all = siblings(layer);
+		const [one, many] = noun(layer);
+		const lane = layer.kind === "work" ? word(index.work.get(layer.id)?.lane) : "";
+		return `${all.indexOf(layer.id) + 1} of ${all.length} ${lane ? `${lane} ` : ""}${all.length === 1 ? one : many}`;
 	}
 	// A link inside a layer names a base route; turn it into a layer when it names an item.
 	function target(href) {
@@ -100,11 +135,12 @@
 	const nodeLink = (id) => {
 		const n = index.nodes.get(id);
 		if (!n) return `<span>${esc(id)}</span>`;
-		return link(index.isPlace(n) ? "place" : "module", id, n.title);
+		return link(index.isPlace(n) ? "place" : "module", id, n.title || id);
 	};
+	const workName = (w) => (w.code ? `${w.code} · ${w.title || ""}` : w.title || w.id);
 	const workLink = (id) => {
 		const w = index.work.get(id) ?? index.features.get(id);
-		return w ? link("work", id, w.code ? `${w.code} · ${w.title}` : w.title) : `<span>${esc(id)}</span>`;
+		return w ? link("work", id, workName(w)) : `<span>${esc(id)}</span>`;
 	};
 	const section = (title, body) => (body ? `<section class="layer-part"><h3>${esc(title)}</h3>${body}</section>` : "");
 	const list = (items) => (items.length ? `<ul class="layer-list">${items.map((item) => `<li>${item}</li>`).join("")}</ul>` : "");
@@ -117,26 +153,38 @@
 	const moduleTitle = (n) => (n.parent ? (index.nodes.get(n.parent)?.title ?? "") : "");
 	const touching = (ids) => [...index.work.values()].filter((w) => (w.touches ?? []).some((t) => ids.includes(t)));
 	const featuresTouching = (ids) => [...index.features.values()].filter((f) => (f.touches ?? []).some((t) => ids.includes(t)));
+	// "PARKED · PLANNED" reads "Parked · planned"; "PROVEN · PROVEN" reads "Proven".
+	const boardText = (b) => (word(b.section) === word(b.state) || !b.state ? capital(b.section) : `${capital(b.section)} · ${word(b.state)}`);
+	// Journey bodies list one sentence per step; show it under the step when the counts agree.
+	function stepNotes(j) {
+		if (!j.bodyHtml || typeof document === "undefined") return [];
+		const t = document.createElement("template");
+		t.innerHTML = j.bodyHtml;
+		const notes = [...(t.content?.querySelectorAll("ol > li") ?? [])].map((li) => li.textContent.trim());
+		return notes.length === (j.steps ?? []).length ? notes : [];
+	}
 
 	function renderWork(w) {
-		const touchNote = w.touchSource === "map" ? "These places come from the map feature." : w.touchSource === "none" ? "The ticket names no places yet." : "";
-		const days = (index.model.days ?? []).flatMap((d) => d.items.filter((item) => item.work === w.id).map((item) => `${link("day", d.date, date(d.date))}${meta(DAY_KINDS[item.kind] ?? item.kind)}`));
+		const touchNote = w.touchSource === "map" ? "The ticket names no places; these come from the map." : w.touchSource === "none" ? "The ticket names no places yet." : "";
+		const days = (index.model.days ?? []).flatMap((d) =>
+			(d.items ?? []).filter((item) => item.work === w.id).map((item) => `${esc(DAY_KINDS[item.kind] ?? capital(item.kind))} ${link("day", d.date, date(d.date))}`),
+		);
 		const places = (w.touches ?? []).map((id) => `${nodeLink(id)}${meta(index.nodes.get(id) ? moduleTitle(index.nodes.get(id)) : "")}`);
 		const flags = [w.needsAdam ? "Needs Adam" : "", w.wrong ? "Wrong" : ""].filter(Boolean).join(" · ");
 		return {
-			eyebrow: [`Feature ${w.code}`, LANES[w.lane] ?? w.lane, flags].filter(Boolean).join(" · "),
-			title: w.title,
+			eyebrow: [w.code ? `Feature ${w.code}` : "Feature", LANES[w.lane] ?? capital(w.lane), flags].filter(Boolean).join(" · "),
+			title: w.title || w.code || w.id,
 			html:
 				(w.needsAdam ? flag("needs", "Needs Adam", w.needsAdam.on, w.needsAdam.ask) : "") +
 				(w.wrong ? flag("wrong", "Wrong", w.wrong.on, w.wrong.problem) : "") +
 				(w.outcome ? `<p class="layer-lead">${esc(w.outcome)}</p>` : "") +
 				facts([
-					["Board", w.board ? esc(`${w.board.section} · ${w.board.state}`) : ""],
+					["On the board", w.board?.section ? esc(boardText(w.board)) : ""],
 					["Opened", w.opened ? esc(date(w.opened)) : ""],
 					["Landed", w.landed ? esc(date(w.landed)) : ""],
 					["Ticket", w.path ? `<code>${esc(w.path)}</code>` : ""],
 				]) +
-				section("Places it touches", (touchNote ? `<p class="layer-note">${esc(touchNote)}</p>` : "") + list(places)) +
+				section("Places it touches", places.length ? (touchNote ? `<p class="layer-note">${esc(touchNote)}</p>` : "") + list(places) : `<p class="layer-note">${esc(touchNote || "The ticket names no places yet.")}</p>`) +
 				section("Map feature", w.mapFeature && index.features.has(w.mapFeature) ? list([workLink(w.mapFeature)]) : "") +
 				section("Days", list(days)),
 		};
@@ -145,7 +193,7 @@
 		const work = [...index.work.values()].filter((w) => w.mapFeature === f.id).map((w) => workLink(w.id));
 		return {
 			eyebrow: "Map feature",
-			title: f.title,
+			title: f.title || f.id,
 			html:
 				(f.summary ? `<p class="layer-lead">${esc(f.summary)}</p>` : "") +
 				section("Places it touches", list((f.touches ?? []).map((id) => nodeLink(id)))) +
@@ -154,15 +202,19 @@
 	}
 	function renderPlace(n) {
 		const edges = (index.model.edges ?? []).filter((e) => e.from === n.id || e.to === n.id);
-		const lines = edges.map((e) => (e.from === n.id ? `${esc(e.title)}: to ${nodeLink(e.to)}` : `${esc(e.title)}: from ${nodeLink(e.from)}`) + meta(e.kind.replace(/-/g, " ")));
-		const journeys = (index.model.journeys ?? []).filter((j) => j.steps.includes(n.id)).map((j) => `${link("journey", j.id, j.title)}${meta(`step ${j.steps.indexOf(n.id) + 1}`)}`);
+		// "<a>X</a> generates this place" or "This place depends on <a>X</a>", with the edge title as small text.
+		const verb = (e) => String(e.kind || "connects to").replace(/-/g, " ");
+		const lines = edges.map((e) => (e.from === n.id ? `This place ${esc(verb(e))} ${nodeLink(e.to)}` : `${nodeLink(e.from)} ${esc(verb(e))} this place`) + meta(e.title));
+		const journeys = (index.model.journeys ?? [])
+			.filter((j) => (j.steps ?? []).includes(n.id))
+			.map((j) => `${link("journey", j.id, j.title || j.id)}${meta(`step ${j.steps.indexOf(n.id) + 1}`)}`);
 		return {
 			eyebrow: ["Place", moduleTitle(n)].filter(Boolean).join(" · "),
-			title: n.title,
+			title: n.title || n.id,
 			html:
 				(n.summary ? `<p class="layer-lead">${esc(n.summary)}</p>` : "") +
 				(n.parent ? facts([["Module", nodeLink(n.parent)]]) : "") +
-				section("Work that names it", list(touching([n.id]).map((w) => workLink(w.id)))) +
+				section("Work that touches this place", list(touching([n.id]).map((w) => workLink(w.id)))) +
 				section("Map features", list(featuresTouching([n.id]).map((f) => workLink(f.id)))) +
 				section("Connections", list(lines)) +
 				section("Journeys", list(journeys)),
@@ -172,25 +224,32 @@
 		const ids = [n.id, ...(n.children ?? [])];
 		return {
 			eyebrow: "Module",
-			title: n.title,
+			title: n.title || n.id,
 			html:
 				(n.summary ? `<p class="layer-lead">${esc(n.summary)}</p>` : "") +
 				section("Places", list((n.children ?? []).map((id) => `${nodeLink(id)}${meta(index.nodes.get(id)?.summary ?? "")}`))) +
-				section("Work that names it", list(touching(ids).map((w) => workLink(w.id)))),
+				section("Work that touches this module", list(touching(ids).map((w) => workLink(w.id)))),
 		};
 	}
 	function renderDay(d) {
+		// Opened and Landed items carry the ticket title, which the link already shows; Needs Adam and Wrong carry the ask or problem.
+		const line = (item) =>
+			`<span class="layer-kind ${esc(item.kind)}">${esc(DAY_KINDS[item.kind] ?? item.kind)}</span> ${workLink(item.work)}${item.kind === "needs-adam" || item.kind === "wrong" ? meta(item.text) : ""}`;
 		return {
 			eyebrow: "Day",
 			title: date(d.date),
-			html: section("What changed", list(d.items.map((item) => `<span class="layer-kind ${esc(item.kind)}">${esc(DAY_KINDS[item.kind] ?? item.kind)}</span> ${workLink(item.work)}${meta(item.text)}`))),
+			html: section("What changed", list((d.items ?? []).map(line))),
 		};
 	}
 	function renderJourney(j) {
+		const steps = j.steps ?? [];
+		const notes = stepNotes(j);
 		return {
 			eyebrow: "Journey",
-			title: j.title,
-			html: (j.summary ? `<p class="layer-lead">${esc(j.summary)}</p>` : "") + section("Steps", j.steps.length ? `<ol class="layer-list">${j.steps.map((id) => `<li>${nodeLink(id)}</li>`).join("")}</ol>` : ""),
+			title: j.title || j.id,
+			html:
+				(j.summary ? `<p class="layer-lead">${esc(j.summary)}</p>` : "") +
+				section("Steps", steps.length ? `<ol class="layer-list">${steps.map((id, i) => `<li>${nodeLink(id)}${notes[i] ? `<br><small>${esc(notes[i])}</small>` : ""}</li>`).join("")}</ol>` : ""),
 		};
 	}
 	function render(layer) {
@@ -201,11 +260,12 @@
 		if (layer.kind === "day") return renderDay(item);
 		return renderJourney(item);
 	}
-	function label(layer) {
+	// Trail names. The top layer gets a longer name; lower layers get a short one so three or four fit beside it.
+	function label(layer, short = false) {
 		const item = find(layer.kind, layer.id);
-		if (layer.kind === "work" && item.code) return `${item.code} · ${cut(item.title, 28)}`;
 		if (layer.kind === "day") return date(layer.id);
-		return cut(item.title, 32);
+		if (layer.kind === "work" && item.code) return short ? item.code : `${item.code} · ${cut(item.title || "", 28)}`;
+		return cut(item.title || layer.id, short ? 20 : 32);
 	}
 
 	/* DOM: one root after the page; the page and the lower layers are inert. */
@@ -219,17 +279,17 @@
 		root = document.createElement("div");
 		root.className = "layers-root";
 		root.hidden = true;
-		root.innerHTML = `<div class="layers-scrim" data-layer-close></div><nav class="layers-trail" aria-label="Open layers"></nav><div class="layers-stack"></div><p class="layers-live" aria-live="polite"></p>`;
+		root.innerHTML = `<div class="layers-scrim" data-layer-close></div><nav class="layers-trail" aria-label="Open items"></nav><div class="layers-stack"></div><p class="layers-live" aria-live="polite"></p>`;
 		document.body.append(root);
 	}
 	function layerElement(layer, depth) {
 		const view = render(layer);
 		const all = siblings(layer);
 		const at = all.indexOf(layer.id);
-		const noun = NOUNS[layer.kind];
+		const [one] = noun(layer);
 		const steps =
 			all.length > 1
-				? `<button type="button" data-layer-step="-1"${at <= 0 ? " disabled" : ""} title="Previous ${noun} (←)">← Previous</button><span class="layer-count">${at + 1} of ${all.length}</span><button type="button" data-layer-step="1"${at >= all.length - 1 ? " disabled" : ""} title="Next ${noun} (→)">Next →</button>`
+				? `<button type="button" data-layer-step="-1"${at <= 0 ? " disabled" : ""} title="Previous ${one} (←)">← Previous</button><span class="layer-count">${esc(count(layer))}</span><button type="button" data-layer-step="1"${at >= all.length - 1 ? " disabled" : ""} title="Next ${one} (→)">Next →</button>`
 				: "";
 		const el = document.createElement("section");
 		el.className = "layer";
@@ -248,8 +308,10 @@
 		for (const el of shown.slice(keep)) el.remove();
 		for (let depth = keep; depth < stack.length; depth++) {
 			const el = layerElement(stack[depth], depth);
-			el.classList.add(why === "switch" ? "switched" : "entering");
-			el.addEventListener("animationend", () => el.classList.remove("entering"), { once: true });
+			if (why !== "switch") {
+				el.classList.add("entering");
+				el.addEventListener("animationend", () => el.classList.remove("entering"), { once: true });
+			}
 			holder.append(el);
 		}
 		[...holder.children].forEach((el, depth) => {
@@ -257,10 +319,16 @@
 			el.style.setProperty("--below", String(stack.length - 1 - depth));
 		});
 		const crumbs = [`<button type="button" data-layer-jump="0">Page</button>`].concat(
-			stack.map((layer, depth) => (depth === stack.length - 1 ? `<span aria-current="location">${esc(label(layer))}</span>` : `<button type="button" data-layer-jump="${depth + 1}">${esc(label(layer))}</button>`)),
+			stack.map((layer, depth) =>
+				depth === stack.length - 1
+					? `<span aria-current="location">${esc(label(layer))}</span>`
+					: `<button type="button" data-layer-jump="${depth + 1}" title="${esc(find(layer.kind, layer.id).title || label(layer))}">${esc(label(layer, true))}</button>`,
+			),
 		);
-		root.querySelector(".layers-trail").innerHTML =
-			`<span class="layers-trail-label">Layers</span>${crumbs.join('<span class="layers-sep" aria-hidden="true">/</span>')}<span class="layers-trail-hint">Esc closes one layer</span>`;
+		const trail = root.querySelector(".layers-trail");
+		trail.innerHTML = `${crumbs.join('<span class="layers-sep" aria-hidden="true">/</span>')}<span class="layers-trail-hint">Esc closes the top one</span>`;
+		// A deep stack scrolls the trail; keep the newest crumb in view.
+		trail.scrollLeft = trail.scrollWidth;
 	}
 	// Lock the page without a width jump: the lost scrollbar width becomes body padding.
 	function hold(on) {
@@ -275,9 +343,19 @@
 			}
 		} else {
 			for (const el of inerted.splice(0)) el.inert = false;
+			// Back on the page: later page routes get the browser's own scroll restoration again.
+			history.scrollRestoration = "auto";
 		}
 		html.classList.toggle("layers-open", on);
 		root.hidden = !on;
+	}
+	// After a close, focus goes back to what opened the layer; after a reload, to the page control for the closed item.
+	function refocus(closed, top) {
+		const back = openers[stack.length];
+		openers.length = stack.length;
+		const fallback = top ? null : document.querySelector(`[data-layer="${CSS.escape(keyOf(closed))}"]`);
+		const to = back?.isConnected && !back.closest("[inert]") ? back : (fallback ?? top?.querySelector("h2"));
+		to?.focus({ preventScroll: true });
 	}
 	function show(next, why) {
 		const before = stack;
@@ -287,24 +365,20 @@
 		paint(why);
 		hold(stack.length > 0);
 		const top = root.querySelector(".layers-stack").lastElementChild;
-		if (stack.length < before.length) {
-			const back = openers[stack.length];
-			openers.length = stack.length;
-			if (back?.isConnected && !back.closest("[inert]")) back.focus({ preventScroll: true });
-			else top?.querySelector("h2")?.focus({ preventScroll: true });
-		} else if (why === "switch" && stepping) {
+		if (stack.length < before.length) refocus(before[stack.length], top);
+		else if (why === "switch" && stepping) {
 			const button = top.querySelector(`[data-layer-step="${stepping}"]:not([disabled])`) ?? top.querySelector("[data-layer-step]:not([disabled])");
 			(button ?? top.querySelector("h2")).focus({ preventScroll: true });
 		} else top?.querySelector("h2")?.focus({ preventScroll: true });
-		if (why === "switch") {
-			const layer = stack[stack.length - 1];
-			const all = siblings(layer);
-			root.querySelector(".layers-live").textContent = `${label(layer)}, ${all.indexOf(layer.id) + 1} of ${all.length}`;
-		}
+		if (why === "switch") root.querySelector(".layers-live").textContent = `${label(stack[stack.length - 1])}, ${count(stack[stack.length - 1])}`;
 		onChange?.(stack.slice());
 	}
 
-	/* Stack moves. The history entry of depth n carries state { pictureLayers: n }. */
+	/* Stack moves. The history entry of depth n carries state { pictureLayers: n, pageY }.
+	   Layer entries use manual scroll restoration, so Back and Forward leave the locked page where it is.
+	   pageY is the page scroll under the lock; only a page load (reload or shared link) scrolls back to it. */
+	let pageY = 0;
+	const entry = (depth) => ({ pictureLayers: depth, pageY });
 	function open(kind, id) {
 		if (!find(kind, id)) return false;
 		const at = stack.findIndex((layer) => same(layer, { kind, id }));
@@ -312,9 +386,15 @@
 			jump(at + 1);
 			return true;
 		}
+		// The base is the page route now in the URL; viewer.js may have moved it since the last restore.
+		if (!stack.length) {
+			base = split(location.hash).base;
+			history.scrollRestoration = "manual";
+		}
+		pageY = window.scrollY;
 		const next = [...stack, { kind, id }];
 		openers[stack.length] = document.activeElement;
-		history.pushState({ pictureLayers: next.length }, "", join(base, next));
+		history.pushState(entry(next.length), "", join(base, next));
 		show(next, "open");
 		return true;
 	}
@@ -326,7 +406,7 @@
 			return;
 		}
 		const next = stack.slice(0, keep);
-		history.replaceState({ pictureLayers: keep }, "", join(base, next));
+		history.replaceState(entry(keep), "", join(base, next));
 		show(next, "close");
 	}
 	function close() {
@@ -341,26 +421,31 @@
 		while (at >= 0 && at < all.length && below.some((layer) => same(layer, { kind: top.kind, id: all[at] }))) at += delta;
 		if (at < 0 || at >= all.length) return;
 		const next = [...below, { kind: top.kind, id: all[at] }];
-		history.replaceState({ pictureLayers: next.length }, "", join(base, next));
+		history.replaceState(entry(next.length), "", join(base, next));
 		show(next, "switch");
 	}
 	// A link or reload gives a hash with no layer history: rebuild one entry per layer so Back closes them one by one.
-	function restore(hash) {
+	// Unknown kinds, dead ids and repeats are dropped, and the URL is corrected.
+	function restore(hash, load = false) {
 		if (!index) return;
 		const parsed = split(hash);
 		base = parsed.base;
 		const next = parsed.layers.filter((layer, i, all) => find(layer.kind, layer.id) && all.findIndex((other) => same(other, layer)) === i);
+		const saved = history.state?.pageY;
+		pageY = load && typeof saved === "number" ? saved : window.scrollY;
 		if (next.length && history.state?.pictureLayers !== next.length) {
-			history.replaceState({ pictureLayers: 0 }, "", base);
-			next.forEach((_, i) => history.pushState({ pictureLayers: i + 1 }, "", join(base, next.slice(0, i + 1))));
-		} else if (next.length !== parsed.layers.length) history.replaceState({ pictureLayers: next.length }, "", join(base, next));
+			history.scrollRestoration = "manual";
+			history.replaceState(entry(0), "", base);
+			next.forEach((_, i) => history.pushState(entry(i + 1), "", join(base, next.slice(0, i + 1))));
+		} else if (next.length || String(hash).includes("~")) history.replaceState(entry(next.length), "", join(base, next));
 		show(next, "restore");
+		if (load && next.length && Math.round(window.scrollY) !== Math.round(pageY)) window.scrollTo(0, pageY);
 	}
 	function init(options) {
 		index = build(options.model);
 		onChange = options.onChange ?? null;
 		if (!root) mount();
-		restore(location.hash);
+		restore(location.hash, true);
 	}
 
 	/* Events. Capture phase, so viewer.js handlers never see a layer click or key. */
@@ -405,22 +490,15 @@
 		},
 		true,
 	);
-	// Tab stays inside the trail and the top layer.
+	// Tab cycles through the trail and the top layer only, in that order.
 	function trap(e) {
 		const top = root.querySelector(".layers-stack").lastElementChild;
-		const items = [...root.querySelectorAll(".layers-trail button"), ...top.querySelectorAll("a[href], button:not([disabled])")];
+		const items = [...root.querySelectorAll(".layers-trail button"), ...top.querySelectorAll("h2, a[href], button:not([disabled])")];
+		if (!items.length) return;
 		const at = items.indexOf(document.activeElement);
-		if (!items.length || (at === -1 && top.contains(document.activeElement) && !e.shiftKey)) return;
-		if (at === -1) {
-			e.preventDefault();
-			(e.shiftKey ? items[items.length - 1] : items[0]).focus();
-		} else if (e.shiftKey && at === 0) {
-			e.preventDefault();
-			items[items.length - 1].focus();
-		} else if (!e.shiftKey && at === items.length - 1) {
-			e.preventDefault();
-			items[0].focus();
-		}
+		e.preventDefault();
+		if (at === -1) (e.shiftKey ? items[items.length - 1] : items[0]).focus();
+		else items[(at + (e.shiftKey ? -1 : 1) + items.length) % items.length].focus();
 	}
 	window.addEventListener("popstate", () => restore(location.hash));
 	window.addEventListener("hashchange", () => restore(location.hash));
