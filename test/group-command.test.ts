@@ -172,6 +172,24 @@ test("group start refuses a hosted job and points at the Herdr coordinator lead 
 	assert.deepEqual(await readdir(`${scratch.root}/.limen/jobs`).catch(() => []), []);
 });
 
+test("group start refuses a lead registration that no running hook refreshes, and names the reload fix", async (context) => {
+	const scratch = await fixture();
+	context.after(scratch.cleanup);
+	// The process is alive, but a registration the hook stopped refreshing (or that was written by hand) is not a lead.
+	const registration = `${scratch.root}/.limen/group-leads/group-lead`;
+	const old = new Date(Date.now() - 60_000);
+	await utimes(registration, old, old);
+	const refused = limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings);
+	assert.equal(refused.status, 1);
+	assert.match(refused.stderr, /group lead hook is not running in this pane/);
+	assert.match(refused.stderr, /Reload this interactive Herdr coordinator .*hook\/group-peer\.ts/);
+	assert.match(refused.stderr, /Do not write \.limen\/group-leads by hand/);
+	assert.equal(existsSync(`${scratch.root}/.limen/groups`), false);
+	const now = new Date();
+	await utimes(registration, now, now);
+	assert.equal(limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings).status, 0);
+});
+
 test("duplicate and concurrent activation start one fixed roster, never repair or add agents", async (context) => {
 	const scratch = await fixture();
 	context.after(scratch.cleanup);
