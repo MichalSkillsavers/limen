@@ -18,9 +18,9 @@
 
 | Pin | Tag | x86_64 / x64 sha256 | arm64 / aarch64 sha256 | Source |
 |---|---|---|---|---|
-| Node | v24.21.0 (latest v24 LTS) | `fd8e59d5…cb2d6` | `6ad1325e…89ad2` | nodejs.org SHASUMS256.txt |
-| Herdr | v0.9.3 (latest) | `18a8dc65…4dba7` | `4de7aa3e…1f5c0` | GitHub asset digest |
-| omp | v18.6.1 (latest) | `c92a6846…7463` | `cb781533…07f4a` | SHA256SUMS.txt / asset digest |
+| Node | v24.21.0 (latest v24 LTS) | `fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6` | `6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2` | nodejs.org SHASUMS256.txt |
+| Herdr | v0.9.3 (latest) | `18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7` | `4de7aa3e25678812e92960de64f7c2aaa1bca1f0f80a3c5e559837e231e1f5c0` | GitHub asset digest |
+| omp | v18.6.1 (latest) | `c92a6846d02984e84f07c6362d18add3783f528f494ffcf1e0f26e594f327463` | `cb7815330bb117877e4e133562ea82e3001ee470e47393552507b5a7f0407f4a` | SHA256SUMS.txt / asset digest |
 
 Docker `ubuntu:24.04` download+checksum+install blocks: arm64 ELF `b7`, x86_64 ELF `3e`; `node -v` `v24.21.0`; `herdr --version` `herdr 0.9.3`; worker `omp --version` `omp/18.6.1` at `~/.local/bin/omp`; `test ! -e /usr/local/bin/omp` OK. Logs: lead cold paper files below.
 
