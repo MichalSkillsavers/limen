@@ -61,7 +61,8 @@ Published to the group in the first 15 minutes. Line numbers are draft lines.
 
 - **Used, team-2:** `limen init` guard and code lines; `no jobs` on a fresh seat (`src/commands/jobs.ts:24-26`); new-entry precision (`seat.ts:15-20`); one Upgrade order; omp installer Bun path and run-before-checksum; script fix `5f1318c` keeps the `Setup installed` prefix.
 - **Used, team-3:** separate break-glass key and `from=` on the admin key, with the refusal Check; pinned omp 18.4.4 and its digests; lock-down end-state Check; `herdr_arch` for SC2046; rule 5 text; `ufw status verbose` lines; key-pair fingerprint Check.
-- **Used, team-4:** every guess from cold run 1 on `2b1f400` (arm64 G1–G4, x86_64 G1–G5) is fixed in `9199116`.
+- **Used, team-4:** every guess from cold run 1 on `2b1f400` (arm64 G1–G4, x86_64 G1–G5) is fixed in `9199116`. Cold run 2 on `9199116` found one guess in both runs (arm64 G5, x86_64 G6: the doctor rerun after a junk-line fix named no folder). Fixed in `358ce75` (line 110 names the first phase 14 Check and its command). The x86_64 run 2 found no guess on the new-seat path.
+- **Own review after run 2 input:** `tailscale up` waits for approval, so a non-interactive `root$` call could not pass the login URL to the human. The human now runs it in their own terminal (lines 54–56). HUMAN commands carry the fill-in values (rule 2).
 - **Rejected, team-3:** keep omp worker-owned in `~/.local/bin`. Root-owned removes the login-shell PATH dependency that team-3 itself found (non-login shells and units do not see `~/.local/bin`; Herdr pane shells were not checked). It matches Node and Herdr. Cost: the worker cannot self-update omp; Upgrade step 3 covers new pins.
 - **Not adopted, team-3:** `from=` on the worker key. `AllowUsers` in the root-owned sshd drop-in does the same job, and a job, which runs as `WORKER`, cannot weaken it by adding its own key.
 
@@ -74,4 +75,4 @@ Published to the group in the first 15 minutes. Line numbers are draft lines.
 
 ## Verdict
 
-Pending the second cold runs on `9199116`.
+Frozen candidate: `358ce75` (`docs/seat/agent-setup.md`, 205 lines, SHA-256 `c5054f55c1c1f4f7034dc09b79112ad539b646a923fbd2a09a00d004922bd7ba`). Land it together with team-2's script fix `5f1318c`; the guide's phase 12 Check needs it. Drop the F766 draft `53a195a` and the F766 owner-decisions patch for this file. team-2 passed the source review of `4890d3b` (only line 110 changed since). team-3 passed locks 4 and 5 on `9199116` and `916db78` (the download blocks and lock-5 SSH lines did not change after). The final cold run on `358ce75` is team-4's check.
