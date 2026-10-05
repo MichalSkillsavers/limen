@@ -21,11 +21,12 @@ import {
 	commitHasFile,
 	headCommit,
 	repoRoot,
+	spawnBaseCommit,
 	workspaceRepository,
 	workspaceRoot,
 	worktreeForBranch,
 } from "../project/git.ts";
-import { inheritedPlanning, planningSource, privatePlanningFile, privatePlanningTask } from "../project/planning.ts";
+import { inheritedPlanning, planningSource, privatePlanningFile, privatePlanningTask, ticketPointers } from "../project/planning.ts";
 import { signalProcessGroup, waitForProcessGroup } from "../runtime/contain.ts";
 import { type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { liveJob } from "../runtime/reap.ts";
@@ -81,7 +82,7 @@ export async function spawnCommand(args: readonly string[], cwd: string, coordin
 async function spawnJob(args: readonly string[], cwd: string, group?: { run: GroupRun; team: string; role: "coordinator" | "worker" }): Promise<void> {
 	const parsed = parseSpawnArgs(args);
 	if (!group) {
-		const roleClaim = claimsOwnerFacingLead("", parsed.role, false);
+		const roleClaim = claimsOwnerFacingLead(parsed.role);
 		if (roleClaim) throw new Error(roleClaim);
 	}
 	if (group) {
@@ -108,10 +109,6 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	if (tab && !herdr) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
 	const loaded = await readSpawnTask(parsed.task, parsed.taskFile, cwd);
 	const options = { ...parsed, tab, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
-	if (!group) {
-		const leadClaim = claimsOwnerFacingLead(options.label, options.role, tab);
-		if (leadClaim) throw new Error(leadClaim);
-	}
 	const profile = resolveSpawnEngine(options.engine);
 	const engine = profile.id;
 	const model = options.model ?? (process.env[options.review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
@@ -172,10 +169,10 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		...(options.branch ? { requestedBranch: options.branch } : {}),
 	});
 	if (options.head && branchCommit(repository, branch) !== options.head) throw new Error("pinned review head moved before spawn");
-	const baseCommit = plan.kind === "add-new" ? headCommit(repository) : branchCommit(repository, branch);
+	const baseCommit = plan.kind === "add-new" ? spawnBaseCommit(repository) : branchCommit(repository, branch);
 	if (source === "committed") {
-		for (const [, ticket] of task.matchAll(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g))
-			if (ticket && !commitHasFile(repository, baseCommit, ticket)) throw new Error(`ticket ${ticket} is missing from the base commit`);
+		for (const { path } of ticketPointers(task))
+			if (path.startsWith("spec/") && !commitHasFile(repository, baseCommit, path)) throw new Error(`ticket ${path} is missing from the base commit`);
 	}
 	const member = group ? await claimMember(group.run, group.team, group.role, id) : undefined;
 	const jobDir = `${jobsRoot}/${id}`;
@@ -370,11 +367,9 @@ function executeWorktree(root: string, plan: WorktreePlan): string {
 	if (plan.kind === "add-new") addNewWorktree(root, plan.path, plan.branch);
 	return plan.path;
 }
-function claimsOwnerFacingLead(label: string, role: string | undefined, hosted: boolean): string | undefined {
+function claimsOwnerFacingLead(role: string | undefined): string | undefined {
 	if (role === "coordinator" || role === "lead")
 		return "refusing spawn --role coordinator/lead: managed team coordinators come only from limen group start; the owner-facing lead is the interactive Herdr coordinator pane (LIMEN_COORDINATOR=1) with hook/group-peer.ts loaded (export LIMEN_PACKAGE to a package that ships group-peer, then reload that pane) — never limen spawn a substitute lead job";
-	if (hosted && /\b(?:group[\s_-]+)?lead\b/i.test(label))
-		return "refusing hosted spawn labeled as lead: a limen job (LIMEN_JOB=1) cannot register group-peer or run limen group start; use the plant Herdr coordinator pane (LIMEN_COORDINATOR=1) with group-peer loaded instead";
 }
 
 function parseSpawnArgs(args: readonly string[]): SpawnOptions {
@@ -481,8 +476,11 @@ export async function capturedVersions(profile: EngineProfile): Promise<string> 
 	return `${profile.id} ${version}\n${extra ? `herdr ${extra}\n` : ""}${hunkVersion ? `hunk ${hunkVersion}\n` : ""}`;
 }
 function workspaceTask(task: string, root: string, repo: string): string {
-	const pointer = task.replace(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g, (_all, path: string) => `Ticket: ${root}/${path}`);
-	return `Repository: ${repo}. Work only in this repository.\n\n${pointer}`;
+	let rewritten = task;
+	for (const { pointer, path } of ticketPointers(task)) {
+		if (path.startsWith("spec/")) rewritten = rewritten.replace(pointer, pointer.replace(path, `${root}/${path}`));
+	}
+	return `Repository: ${repo}. Work only in this repository.\n\n${rewritten}`;
 }
 const once = <T>(current: T | undefined, flag: string, value: T): T => {
 	if (current !== undefined) throw new Error(`${flag} may be supplied only once`);

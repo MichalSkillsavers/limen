@@ -81,13 +81,13 @@ usage:
   limen planning [committed|private]                # inspect or persist the project planning source; default committed
   limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
   limen group status|publish|wait|stop|close [GROUP-ID]  # members inherit verified membership; lead supplies ID
-  limen spawn "Implement FNNN: <outcome>. Start by writing <slice>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--engine pi|omp] [--model X] [--branch B] [--role NAME] [--timeout 20m; default 90m] [--task-file F|-] [--prepare CMD]
-  limen spawn "Short title" --task-file F|-         # the file is the task; the positional words become the label
-  limen spawn "…" [--label L] [--provider P] [--model X] [--thinking T]  # selected engine's flags; in Herdr: hosted, else detached
-  limen spawn --tab "…"                            # force hosted (requires Herdr; no --timeout)
-  limen spawn --detached "…"                       # force background worker + log-tail tab
-  limen spawn --repo R "Implement FNNN: <outcome>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--model X]
-  limen spawn --review --branch B --label L "Review the FNNN candidate against spec/features/active/FNNN-slug/ticket.md"
+  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "Implement FNNN: <outcome>. Start by writing <slice>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--branch B] [--role NAME] [--timeout 20m; default 90m] [--task-file F|-] [--prepare CMD]
+  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "Short title" --task-file F|-  # the file is the task; the positional words become the label
+  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "…" [--label L]  # selected engine's flags; in Herdr: hosted, else detached
+  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --tab "…"  # force hosted (requires Herdr; no --timeout)
+  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --detached "…"  # force background worker + log-tail tab
+  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --repo R "Implement FNNN: <outcome>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L]
+  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L "Review the FNNN candidate against spec/features/active/FNNN-slug/ticket.md"
   limen continue <id|suffix|label> "follow-up instruction" [--review] [--label L] [--engine pi|omp] [--provider P] [--model X] [--thinking T] [--tab|--detached]
                                   # resume a finished job in its own engine session — full context, same worktree; Herdr default is hosted
   limen steer <id|suffix|label> | --running "correction"

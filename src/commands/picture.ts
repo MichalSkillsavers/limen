@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { buildPicture } from "../picture/picture-build.ts";
 import { headCommit, repoRoot } from "../project/git.ts";
-import { pictureTick } from "../project/picture-tick.ts";
+import { firstPictureHint, pictureTick } from "../project/picture-tick.ts";
 import { pictureWatch } from "../project/picture-watch.ts";
 
 const HELP =
@@ -51,7 +51,10 @@ export async function pictureCommand(args: readonly string[], cwd: string): Prom
 	}
 	const out = resolve(cwd, values.get("--out") ?? `${picture}/map.html`);
 	const json = values.get("--json");
-	const model = await buildPicture(picture, out, json ? resolve(cwd, json) : undefined, headCommit(root), root);
+	const model = await buildPicture(picture, out, json ? resolve(cwd, json) : undefined, headCommit(root), root).catch((error: NodeJS.ErrnoException) => {
+		if (error.code === "ENOENT" && error.path === picture) throw new Error(firstPictureHint(picture));
+		throw error;
+	});
 	for (const d of model.diagnostics) console.error(`${d.level} ${d.code}${d.source ? ` ${d.source}` : ""}: ${d.message}`);
 	console.log(`picture: ${model.nodes.length} places, ${model.edges.length} edges; wrote ${out}`);
 	if (strict && model.diagnostics.some((d) => d.level === "error")) process.exitCode = 1;

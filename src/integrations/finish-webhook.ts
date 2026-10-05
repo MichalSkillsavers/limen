@@ -5,6 +5,7 @@ import { basename, delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendLimenLog, atomicWrite, textFile } from "../job/record.ts";
 import { currentBranch, listWorktrees, ticketAuthor, workspaceRoot } from "../project/git.ts";
+import { ticketPointers } from "../project/planning.ts";
 import { finishEvent, parseFinishReceipt, parseFinishSelection } from "./finish-receipt.ts";
 
 const SENDER = fileURLToPath(new URL("../../bin/tony-finish-ping.sh", import.meta.url));
@@ -19,8 +20,8 @@ export function finishWebhookEnv(root: string, cwd: string, explicit = process.e
 }
 export function captureFinishAuthor(cwd: string, task: string, workspace = false): string {
 	if (workspace) return "unavailable\nnon-Git workspace ticket";
-	const tickets = [...task.matchAll(/\bTicket: (spec\/\S*[^\s.,;:!?)\]'"`])/g)].flatMap((match) => (match[1] ? [match[1]] : []));
-	const ticket = tickets.length === 1 ? tickets[0] : undefined;
+	const tickets = ticketPointers(task);
+	const ticket = tickets.length === 1 ? tickets[0]?.path : undefined;
 	if (!ticket) return `unavailable\n${tickets.length ? "ambiguous Ticket: pointer" : "missing Ticket: pointer"}`;
 	try {
 		const author = ticketAuthor(cwd, ticket);

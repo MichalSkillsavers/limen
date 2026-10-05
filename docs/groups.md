@@ -58,7 +58,7 @@ The group has a fixed wall-clock deadline. Each worker's deadline is the shorter
 
 ## Delivery evidence
 
-The cabinet contains `run.json`, immutable event files and `receipts/RECIPIENT/EVENT.json`. Job records remain authoritative for job state. `group status` shows both the roster-derived state and receipt evidence.
+The cabinet contains `run.json`, immutable event files and `receipts/RECIPIENT/EVENT.json`. Job records remain authoritative for job state. `limen group status GROUP-ID` shows the feature, local deadline and minutes left, stopped and closed flags, and one state row per member. A reserved member without a published job state reads `no job record yet`. Use `limen group status GROUP-ID --json` for the full run, roster-derived states, events and receipt evidence. Members omit `GROUP-ID` in both forms.
 
 Lifecycle updates identify each observed transition, not just its text: an unchanged advisory produces no new event, but the same advisory after an observed clear is a new occurrence. A pending occurrence is recorded before publication; after interruption, synchronization finishes its event and missing recipient receipts before observing the next value. Existing accepted or processed receipts are preserved.
 

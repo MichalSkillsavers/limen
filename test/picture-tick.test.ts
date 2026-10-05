@@ -30,6 +30,35 @@ async function noJob(scratch: Scratch): Promise<void> {
 	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")).catch(() => []), []);
 }
 
+test("missing picture build and tick explain how to start without creating a job", async (context) => {
+	const s = await scratchRepo();
+	context.after(s.cleanup);
+	const dir = join(s.root, ".limen/picture");
+	for (const mode of ["build", "tick"]) {
+		const result = limen(s, "picture", mode);
+		assert.equal(result.status, mode === "build" ? 1 : 0);
+		const output = result.stdout + result.stderr;
+		assert.ok(output.includes(`no map yet in ${dir}.`), output);
+		assert.match(output, /limen spawn --role picture --tab/);
+		assert.match(output, /docs\/picture\.md/);
+		assert.doesNotMatch(output, /ENOENT/);
+		await noJob(s);
+	}
+});
+
+test("picture preserves an invalid dataset directory error instead of the first-map hint", async (context) => {
+	const s = await scratchRepo();
+	context.after(s.cleanup);
+	const dir = join(s.root, "not-a-directory");
+	await writeFile(dir, "not a dataset\n");
+	for (const mode of ["build", "tick"]) {
+		const result = limen(s, "picture", mode, "--dir", dir);
+		assert.equal(result.status, 1);
+		assert.ok(result.stderr.includes(`picture directory ${dir} is not a directory`), result.stderr);
+		assert.doesNotMatch(result.stderr, /no map yet/);
+	}
+});
+
 test("tick stays silent for current, uncited edits and documentation even when cited", async () => {
 	const s = await scratchRepo();
 	try {
@@ -122,7 +151,8 @@ test("tick requires a known researched revision and never creates an initial job
 		await code(s);
 		await dataset(s, undefined);
 		const args = ["picture", "tick", "--engine", "omp", "--provider", "unused", "--model", "unused", "--thinking", "high"];
-		assert.match(limen(s, ...args).stdout, /start the first picture by hand/);
+		assert.equal(limen(s, ...args).status, 0);
+		await noJob(s);
 		await dataset(s, "a".repeat(40));
 		assert.match(limen(s, ...args).stdout, /not a known commit/);
 		await noJob(s);

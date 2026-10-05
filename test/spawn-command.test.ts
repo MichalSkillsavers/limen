@@ -22,14 +22,14 @@ test("planning source is persistent, defaults to committed, and private ordinary
 	await writeFile(`${scratch.root}/.gitignore`, "/spec/\n/.limen/\n");
 	git(scratch.root, "add", ".");
 	git(scratch.root, "commit", "-m", "ignore private planning");
-	const input = `Read the ticket. Ticket: ${ticket}\n`;
+	const input = `Read the ticket. (Ticket:  ${ticket}).\n`;
 	const launched = limenWithInput(scratch, input, "spawn", "--task-file", "-", "--engine", "pi", "--detached");
 	assert.equal(launched.status, 0, launched.stderr);
 	const id = onlyJobId(launched.stdout);
 	await waitForState(scratch.root, id, "done");
 	const job = `${scratch.root}/.limen/jobs/${id}`;
 	const worktree = (await readFile(`${job}/worktree`, "utf8")).trim();
-	assert.equal(await readFile(`${job}/task.md`, "utf8"), `Read the ticket. Ticket: ${scratch.root}/${ticket}\n`);
+	assert.equal(await readFile(`${job}/task.md`, "utf8"), `Read the ticket. (Ticket:  ${scratch.root}/${ticket}).\n`);
 	assert.equal(await readFile(`${job}/planning-source`, "utf8"), "private\n");
 	assert.equal(existsSync(`${worktree}/spec`), false);
 	assert.equal(git(scratch.root, "ls-tree", "-r", "--name-only", "HEAD", "--", "spec"), "");
@@ -535,7 +535,7 @@ test("spawn refuses a ticket missing from the base commit and starts when it is 
 	context.after(scratch.cleanup);
 	assert.equal(limen(scratch, "init").status, 0);
 	const path = "spec/features/active/F714-spawn-fails-closed-without-ticket/ticket.md";
-	const task = `do work Ticket: ${path}`;
+	const task = `do work (Ticket:  ${path}).`;
 	const missing = limen(scratch, "spawn", task);
 	assert.equal(missing.status, 1);
 	assert.match(missing.stderr, /ticket spec\/features\/active\/F714-spawn-fails-closed-without-ticket\/ticket\.md is missing from the base commit/);

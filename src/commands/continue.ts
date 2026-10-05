@@ -7,7 +7,7 @@ import { resolveJob } from "../job/lookup.ts";
 import { publishJob } from "../job/publication.ts";
 import { atomicWrite, finalizeJob } from "../job/record.ts";
 import { addBranchWorktree, branchCommit, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
-import { inheritedPlanning, privatePlanningFile, privatePlanningTask, recordedPlanningSource } from "../project/planning.ts";
+import { inheritedPlanning, privatePlanningFile, privatePlanningTask, recordedPlanningSource, ticketPointers } from "../project/planning.ts";
 import { engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { launchWrapper } from "../runtime/wrapper.ts";
 import {
@@ -106,8 +106,8 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	const source = recordedPlanningSource(parentDir);
 	let followUp = instruction;
 	if (source === "private") {
-		const parentTicket = (await readFile(`${parentDir}/task.md`, "utf8")).match(/\bTicket:\s+(\S+)/)?.[1];
-		if (parentTicket && !/\bTicket:/.test(followUp)) followUp += `\n\nTicket: ${parentTicket}`;
+		const parentTicket = ticketPointers(await readFile(`${parentDir}/task.md`, "utf8"))[0]?.path;
+		if (parentTicket && ticketPointers(followUp).length === 0) followUp += `\n\nTicket: ${parentTicket}`;
 		followUp = await privatePlanningTask(root, followUp);
 		if (membership?.member) {
 			const feature = membership.run.feature;

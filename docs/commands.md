@@ -15,13 +15,15 @@ The coordinator runs these from its Herdr pane during ordinary work.
 Start a worker, a reviewer, or a job in one child repository, or continue a finished job.
 
 ```text
-limen spawn "instruction" [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD]
-limen spawn --repo R "instruction" [--label L] [--model M]
-limen spawn --review --branch B --label L "instruction"
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "instruction" [--label L] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD]
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --repo R "instruction" [--label L]
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L "instruction"
 limen continue <id|suffix|label> "follow-up instruction" [--review] [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--tab|--detached]
 ```
 
 ### Inspect jobs
+
+Run job commands from the project repository or Limen workspace. Outside either location, Limen names the current directory and tells you where to run. A new repository needs its first commit before `spawn`.
 
 Read the plant inbox, the job records, and the diff of a job, or open a job in Herdr.
 
