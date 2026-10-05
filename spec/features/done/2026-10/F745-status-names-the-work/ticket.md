@@ -1,3 +1,12 @@
+---
+touches:
+  - limen.commands
+  - limen.cabinet.records
+  - limen.integrations.herdr
+opened: 2026-10-02
+landed: 2026-10-02
+---
+
 # F745 · Status names the work before its addresses
 
 ## Outcome

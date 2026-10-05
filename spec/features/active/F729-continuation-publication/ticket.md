@@ -1,3 +1,10 @@
+---
+touches:
+  - limen.commands
+  - limen.cabinet.records
+opened: 2026-10-02
+---
+
 # F729 · Continuation survives concurrent pruning
 
 ## Outcome

@@ -52,7 +52,7 @@ export async function pictureCommand(args: readonly string[], cwd: string): Prom
 	const out = resolve(cwd, values.get("--out") ?? `${picture}/map.html`);
 	const json = values.get("--json");
 	const model = await buildPicture(picture, out, json ? resolve(cwd, json) : undefined, headCommit(root), root);
-	for (const d of model.diagnostics) console.error(`${d.level} ${d.code}${d.source ? ` ${d.source}` : ""}: ${d.message}`);
+	for (const d of model.diagnostics) console.error(`${d.level} ${d.code}${d.source ? ` ${d.source}${d.line === null ? "" : `:${d.line}`}` : ""}: ${d.message}`);
 	console.log(`picture: ${model.nodes.length} places, ${model.edges.length} edges; wrote ${out}`);
 	if (strict && model.diagnostics.some((d) => d.level === "error")) process.exitCode = 1;
 }

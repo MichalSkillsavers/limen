@@ -1,3 +1,8 @@
+---
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F746 · The guides use the names the status command prints
 
 ## Outcome
