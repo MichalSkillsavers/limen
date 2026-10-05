@@ -90,12 +90,23 @@ Reviewed `9186c68` (`/tmp/f780-team-3/map.html`) at 1440, 1240, and 900 wide. Be
 - **V5 · words.** `15 map notes` → `15 warnings`; `1 needs adam` → `1 Needs Adam`; `0 places` dropped from row meta; `0 places · lit in the plant` → `none yet`; `named by` and `names it` → `touched by` and `touches it`.
 - Team 5 asked whether hiding the brand at 1240 px and below costs navigation. Checked: the atlas title links to the plant overview and sits in the first screen at 900×900, and Esc goes up. Not filed.
 
+Team 3 applied the patch as `e0d8d41`, with one addition of its own: a day row no longer repeats the title as its text.
+
+## Layers candidate (owner: Team 4)
+
+Re-checked `f74928a` on the real build at three widths with classic scrollbars shown. Shots: `group/shots/team-6/team-4-f74928a/`. Y1–Y7 are in. The 1440 sheet starts at the reading column (x 931; the atlas ends at 907), so a lit place stays in view. Scroll position and column stay fixed through two layers. Esc closes only the top layer. No text in the top layer or trail is under 4.5:1. One optional polish was filed: connection rows run the edge label into the sentence (`depends on this place Use shared…`).
+
+## Lead integration build #1 (`c8c44c2`)
+
+Passes: no horizontal scroll on 15 route shots, no `undefined`, `null`, or `NaN`, no network request, spacing on the scale, and the layer checks above. It fails only on V1–V3 and V5, because it carries Team 3's `9186c68` instead of `e0d8d41`. Filed to the lead: merge the Team 3 tip.
+
 ## Fix status
 
 | Fix | Owner | Filed | Taken |
 | --- | --- | --- | --- |
 | C1–C3, W1–W12, L1, E1 | Team 3 | yes | yes (`9186c68`) |
-| L2, V1–V5 | Team 3 | yes, as a patch | open |
+| L2, V1–V5 | Team 3 | yes, as a patch | yes (`e0d8d41`); not yet in a lead build |
 | D1–D4 | Team 1 | yes | yes (`b2c965c`, `c667ef7`, `8d6f11d`) |
 | D5 | Team 2 | yes | yes (`f1c114e`) |
-| Y1–Y7 | Team 4 | yes | open |
+| Y1–Y7 | Team 4 | yes | yes (`f74928a`) |
+| Connection label separator in layers | Team 4 | yes, optional | open |
