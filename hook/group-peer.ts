@@ -74,7 +74,6 @@ export default function groupPeer(pi: PiApi): void {
 		}
 		leadSession = context.sessionManager.getSessionId();
 		if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(leadSession)) return;
-		process.env.PI_SESSION_ID = leadSession;
 		await mkdir(`${leadRoot}/.limen/group-leads`, { recursive: true });
 		await writeFile(`${leadRoot}/.limen/group-leads/${leadSession}`, `${process.pid}\n`, { flush: true });
 		await leadSteps();
