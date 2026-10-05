@@ -220,6 +220,21 @@ try {
 			if ((await page.evaluate(() => window.scrollY)) !== before.scroll) fail(hash, "closing layer moved page", await page.evaluate(() => window.scrollY));
 		}
 	}
+	// Open from a page with no hash, reload, then close the last layer: the bare entry is the plant, so the page must not redraw.
+	{
+		await page.goto(base, { waitUntil: "load" });
+		await page.evaluate(() => window.scrollTo(0, 300));
+		const before = await page.evaluate(() => window.scrollY);
+		const pin = page.locator("#mast [data-layer]").last();
+		if (!(await pin.count())) fail("(no hash)", "pin layer control missing", "#mast [data-layer]");
+		else {
+			await pin.click();
+			await page.reload({ waitUntil: "load" });
+			await page.keyboard.press("Escape");
+			const closed = await page.evaluate(() => ({ hash: location.hash, scroll: window.scrollY, focus: document.activeElement?.tagName }));
+			if (closed.scroll !== before || closed.focus === "BODY") fail("(no hash)", "closing the last layer after a reload redrew the page", JSON.stringify({ before, closed }));
+		}
+	}
 	await page.goto(`${base}#plant`, { waitUntil: "load" });
 	const order = [];
 	for (let n = 0; n < 3; n++) {
