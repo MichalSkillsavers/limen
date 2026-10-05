@@ -69,7 +69,7 @@ async function directories(path: string): Promise<string[]> {
 	return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 }
 
-function parseTicket(text: string, path: string, lane: Lane, code: string, slug: string, diagnostics: Diagnostic[]): TicketRecord {
+function parseTicket(text: string, path: string, lane: TicketRecord["lane"], code: string, slug: string, diagnostics: Diagnostic[]): TicketRecord {
 	const id = code.toLowerCase();
 	const report = (level: Diagnostic["level"], code: string, message: string, line: number): void => {
 		diagnostics.push({ level, code, message, source: path, id, line });
