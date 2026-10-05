@@ -161,6 +161,14 @@ try {
 			const escaped = await page.evaluate(() => location.hash);
 			const expected = `#plant${n > 1 ? `~${segments.slice(0, n - 1).join("~")}` : ""}`;
 			if (decodeURI(escaped) !== decodeURI(expected)) fail(hash, "Esc should close only top layer", escaped);
+			if (n === 1) {
+				const focus = await page.evaluate(() => {
+					const el = document.activeElement;
+					const style = getComputedStyle(el);
+					return { node: el?.outerHTML.slice(0, 110), visible: el?.matches(":focus-visible"), marked: style.outlineStyle !== "none" || style.boxShadow !== "none" };
+				});
+				if (!focus.visible || !focus.marked) fail(hash, "closing a restored layer lost visible focus", JSON.stringify(focus));
+			}
 			await page.goto(`${base}${hash}`, { waitUntil: "load" });
 			await page.goBack();
 			const backed = await page.evaluate(() => location.hash);
