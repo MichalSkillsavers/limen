@@ -2,7 +2,7 @@
 
 The approved merged picture (F775 reference) is now the real viewer. `picture/viewer/template.html`, `viewer.css`, and `viewer.js` render it from the embedded `architecture-map-model/3`, with no hand data. `src/picture/html.ts` inlines Team 4's `layers.css` after `viewer.css` and `layers.js` before `viewer.js`; it checks the template before it reads the other four files, and a missing file fails the build.
 
-Candidate branch: `limen/2026-10-05-f780-live-picture-viewer-team-3--9d1d0c59`. It contains Team 2 `c50ed30`, Team 4 `122f394`, the lead tips `44a9247` and `c8c44c2`, and the Team 3 worker branch (`b1bc40d`: new `test/picture-viewer.test.ts`, reference and live shots).
+Candidate branch: `limen/2026-10-05-f780-live-picture-viewer-team-3--9d1d0c59`. It contains Team 2 `c50ed30`, Team 4 `1ff1c4f` (layers with the focus fix), the lead tips `44a9247` and `c8c44c2`, two hand-applied Team 6 patches, and the Team 3 worker branch (`b1bc40d`: new `test/picture-viewer.test.ts`, reference shots).
 
 ## What works
 
@@ -17,19 +17,20 @@ Candidate branch: `limen/2026-10-05-f780-live-picture-viewer-team-3--9d1d0c59`. 
 
 - `node bin/limen picture build --dir …/.limen/picture --out /tmp/f780-team-3/map.html --json /tmp/f780-team-3/map.json --strict`: exit 0, 4 warnings (old map source paths), 0 errors.
 - `npm run typecheck`: exit 0. `npx biome check picture/viewer/viewer.js picture/viewer/viewer.css src/picture/html.ts test/picture-viewer.test.ts`: exit 0.
-- `env -u LIMEN_OMP … node --test test/picture-*.test.ts`: 56/56 pass (before the last two viewer commits); `node --test test/picture-viewer.test.ts`: 12/12 pass on the tip. The worker confirmed three viewer mutations each fail exactly one test.
-- Route sweep (`/tmp/f780-team-3/pw/sweep.mjs`, copy in `shots/team-3/live/sweep.txt`): 563 routes after reload, 0 failures, no horizontal scroll at 1440, 1240, and 900.
+- `env -u LIMEN_OMP -u LIMEN_JOB -u LIMEN_JOB_ID -u LIMEN_CONTEXT_ROOT node --test --test-concurrency=1 test/picture-*.test.ts test/structure.test.ts`: 57/57 pass. The worker confirmed three viewer mutations each fail exactly one viewer test.
+- Route sweep (`/tmp/f780-team-3/pw/sweep.mjs`, output in `shots/team-3/live/sweep.txt`): 563 routes after reload, 0 failures, no horizontal scroll at 1440, 1240, and 900.
 - Atlas fit: 236 routes at 1440×900, the atlas never needs its own scroll.
+- Layer open does not move the page: page at scrollY 300, open the Wrong pin as a layer; scrollY, the atlas top, and the stage top are unchanged at 1440, 1240, and 900.
 - Layers smoke on the real build: open as a layer, open a place inside it, reload restores both, Esc closes one, Back closes one, Esc with none goes up one step. `scrollY` and the open row stayed fixed through every step; the atlas lights the top layer's item; no page errors.
 
 ## Deliberate changes from the reference
 
 - Pins show two lines (three at 1000 px and below), so the Needs Adam question reads whole; the masthead is 88 px (108 px narrow).
 - Dimmed places change colour, not opacity, so their names keep 4.5:1 contrast (Team 6). The lens is a little softer than the reference.
-- The selection line wraps to two lines instead of cutting a work title.
+- The selection line under the plant title is always two lines tall and wraps a long work title instead of cutting it (Team 6), so lighting never changes its height.
 
 ## Open risks
 
 - With a different map, many middle modules (8+) skip the order search and keep model order.
-- Focus after Esc on a restored stack lands on the page body (Team 5 found it; Team 4 owns `layers.js`).
+- After a reload, a closed restored layer sends focus to the matching page link (Team 4 `1ff1c4f`); Team 5 verified it, Team 3 did not re-test it.
 - `--head` grows at 1000 px; a pin text longer than three lines is still cut (full text is in its title and its layer).
