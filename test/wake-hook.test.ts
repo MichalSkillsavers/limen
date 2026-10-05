@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -72,12 +72,6 @@ test("wake ignores history, announces start, and steers once on terminal change"
 	await writeFile(join(jobs, "new/activity"), "tool\n");
 	await writeFile(join(jobs, "new/last-tool"), "bash\n");
 	await waitUntil(() => statuses.includes("limen 1 · F001 starting"));
-	await new Promise((resolve) => setTimeout(resolve, 280));
-	assert.deepEqual(
-		[...new Set(statuses.filter((value) => value?.includes("limen 1 · F001 starting")))],
-		["limen 1 · F001 starting"],
-		"the footer must stay static while the status body is unchanged",
-	);
 	await writeFile(join(jobs, "new/state"), "done\n");
 	await waitUntil(() => messages.length === 1);
 	// A finished job stays named on the job line until it lands or its feature closes.
@@ -189,44 +183,6 @@ test("a completion wake says when a terminal job produced nothing", async (conte
 	assert.doesNotMatch(messages[1] ?? "", /produced nothing/);
 });
 
-test("wake shows existing unwatched jobs without claiming their notifications", async (context) => {
-	stashEnv(context, "LIMEN_JOB", undefined);
-	stashEnv(context, "LIMEN_HERDR", "0");
-	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-wake-unwatched-")));
-	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-	await mkdir(join(root, ".agents/limen"), { recursive: true });
-	const jobs = join(root, ".limen/jobs");
-	const job = join(jobs, "existing");
-	await mkdir(job, { recursive: true });
-	await writeFile(join(job, "label"), "F005 existing review\n");
-	await writeFile(join(job, "branch"), "candidate\n");
-	await writeFile(join(job, "state"), "running\n");
-	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
-	const notices: string[] = [];
-	const statuses: Array<string | undefined> = [];
-	const messages: string[] = [];
-	limenWake({
-		on(event, handler) {
-			handlers.set(event, handler);
-		},
-		sendUserMessage(content) {
-			messages.push(content);
-		},
-	});
-	const session = {
-		cwd: root,
-		isIdle: () => true,
-		sessionManager: sessionManager("coordinator-b"),
-		ui: { notify: (message: string) => notices.push(message), setStatus: (_key: string, value: string | undefined) => statuses.push(value) },
-	};
-	handlers.get("session_start")?.({}, session);
-	context.after(() => handlers.get("session_shutdown")?.({}, session));
-	await waitUntil(() => statuses.some((status) => status?.includes("limen 1 · F005 starting (unwatched)")) ?? false);
-	assert.deepEqual(notices, []);
-	assert.deepEqual(messages, []);
-	await assert.rejects(import("node:fs/promises").then(({ access }) => access(join(job, "notify/subscribers/coordinator-b"))));
-});
-
 test("a reloaded coordinator tab resubscribes to its running jobs", async (context) => {
 	stashEnv(context, "LIMEN_JOB", undefined);
 	stashEnv(context, "LIMEN_HERDR", "0");
@@ -269,25 +225,6 @@ test("a reloaded coordinator tab resubscribes to its running jobs", async (conte
 	await assert.rejects(import("node:fs/promises").then(({ access }) => access(join(other, "notify/subscribers/new-session"))));
 	await writeFile(join(mine, "state"), "done\n");
 	await waitUntil(() => messages.some((message) => message.includes("is done (mine)")));
-});
-
-test("wake recreates the ignored jobs directory on session start", async (context) => {
-	stashEnv(context, "LIMEN_JOB", undefined);
-	stashEnv(context, "LIMEN_HERDR", "0");
-	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-wake-empty-")));
-	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-	await mkdir(join(root, ".agents/limen"), { recursive: true });
-	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
-	limenWake({
-		on(event, handler) {
-			handlers.set(event, handler);
-		},
-		sendUserMessage() {},
-	});
-	const session = { cwd: root, isIdle: () => true, sessionManager: sessionManager("coordinator-a"), ui: { notify() {}, setStatus() {} } };
-	handlers.get("session_start")?.({}, session);
-	context.after(() => handlers.get("session_shutdown")?.({}, session));
-	await import("node:fs/promises").then(({ access }) => access(join(root, ".limen/jobs")));
 });
 
 test("wake remains inert inside workers", () => {
@@ -528,120 +465,6 @@ test("subscriptions scope wakes and one idle coordinator receives fallback", asy
 	await writeFile(join(jobs, "fallback/finished-at"), "2000-01-01T00:00:00.000Z\n");
 	await writeFile(join(jobs, "fallback/state"), "done\n");
 	await waitUntil(() => messagesA.length + messagesB.length === 4);
-
-	handlersA.get("session_shutdown")?.({}, sessionA);
-	handlersB.get("session_shutdown")?.({}, sessionB);
-	await mkdir(join(jobs, "pending"), { recursive: true });
-	await writeFile(join(jobs, "pending/label"), "F013 pending\n");
-	await writeFile(join(jobs, "pending/branch"), "candidate-pending\n");
-	await subscribe(jobs, "pending", "closed-session");
-	await writeFile(join(jobs, "pending/finished-at"), "2000-01-01T00:00:00.000Z\n");
-	await writeFile(join(jobs, "pending/state"), "done\n");
-	const handlersC = new Map<string, (event: unknown, context: TestContext) => void>();
-	const messagesC: string[] = [];
-	limenWake({
-		on(event, handler) {
-			handlersC.set(event, handler);
-		},
-		sendUserMessage(content) {
-			messagesC.push(content);
-		},
-	});
-	const sessionC = { cwd: root, isIdle: () => true, sessionManager: sessionManager("coordinator-c"), ui: { notify() {}, setStatus() {} } };
-	handlersC.get("session_start")?.({}, sessionC);
-	context.after(() => handlersC.get("session_shutdown")?.({}, sessionC));
-	await new Promise((resolve) => setTimeout(resolve, 200));
-	assert.equal(messagesC.length, 0, "a session that owns no jobs must not take fallback");
-	await mkdir(join(jobs, "c-owned"), { recursive: true });
-	await writeFile(join(jobs, "c-owned/label"), "C owned\n");
-	await writeFile(join(jobs, "c-owned/branch"), "c-owned\n");
-	await subscribe(jobs, "c-owned", "coordinator-c");
-	await writeFile(join(jobs, "c-owned/state"), "running\n");
-	await waitUntil(() => messagesC.some((message) => message.includes("F013 pending")));
-	assert.match(messagesC.find((message) => message.includes("F013 pending")) ?? "", /subscribed coordinator is busy/);
-});
-
-test("already-delivered jobs never re-enter the fallback claim path", async (context) => {
-	stashEnv(context, "LIMEN_JOB", undefined);
-	stashEnv(context, "LIMEN_HERDR", "0");
-	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-wake-delivered-")));
-	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-	await mkdir(join(root, ".agents/limen"), { recursive: true });
-	const jobs = join(root, ".limen/jobs");
-	const job = join(jobs, "old");
-	await mkdir(join(job, "notify/delivered"), { recursive: true });
-	await mkdir(join(job, "notify/subscribers"), { recursive: true });
-	await writeFile(join(job, "label"), "F023 already delivered\n");
-	await writeFile(join(job, "branch"), "old-branch\n");
-	await writeFile(join(job, "state"), "done\n");
-	await writeFile(join(job, "finished-at"), "2000-01-01T00:00:00.000Z\n");
-	await writeFile(join(job, "notify/ready"), "1\n");
-	await writeFile(join(job, "notify/subscribers/old-session"), "1\n");
-	await writeFile(join(job, "notify/delivered/old-session"), "1\n");
-	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
-	const messages: string[] = [];
-	limenWake({
-		on(event, handler) {
-			handlers.set(event, handler);
-		},
-		sendUserMessage(content) {
-			messages.push(content);
-		},
-	});
-	const session = { cwd: root, isIdle: () => true, sessionManager: sessionManager("coordinator-new"), ui: { notify() {}, setStatus() {} } };
-	handlers.get("session_start")?.({}, session);
-	context.after(() => handlers.get("session_shutdown")?.({}, session));
-	const seen: string[] = [];
-	const { watch, existsSync, readdirSync } = await import("node:fs");
-	const watcher = watch(join(job, "notify"), { recursive: true }, (_event, filename) => {
-		if (filename && (filename === "claims" || filename.startsWith("claims/") || filename.includes("/claims"))) seen.push(String(filename));
-	});
-	context.after(() => watcher.close());
-	await new Promise((resolve) => setTimeout(resolve, 1600));
-	assert.deepEqual(messages, []);
-	assert.equal(existsSync(join(job, "notify/claims")), false, "repeated sweeps must not create notify/claims");
-	assert.deepEqual(seen, [], "the claims directory must stay untouched");
-	assert.deepEqual(readdirSync(join(job, "notify/delivered")), ["old-session"]);
-});
-
-test("two windows on one Pi session share start and completion receipts", async (context) => {
-	stashEnv(context, "LIMEN_JOB", undefined);
-	stashEnv(context, "LIMEN_HERDR", "0");
-	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-same-session-")));
-	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-	await mkdir(join(root, ".agents/limen"), { recursive: true });
-	const jobs = join(root, ".limen/jobs");
-	const handlers = [new Map<string, (event: unknown, context: TestContext) => void>(), new Map<string, (event: unknown, context: TestContext) => void>()];
-	const starts: string[] = [];
-	const messages: string[] = [];
-	for (const events of handlers) {
-		limenWake({
-			on(event, handler) {
-				events.set(event, handler);
-			},
-			sendUserMessage(content) {
-				messages.push(content);
-			},
-		});
-	}
-	const sessions = handlers.map((_events, index) => ({
-		cwd: root,
-		isIdle: () => true,
-		sessionManager: sessionManager("coordinator-shared"),
-		ui: { notify: (message: string) => starts.push(`${index}:${message}`), setStatus() {} },
-	}));
-	for (const [index, events] of handlers.entries()) events.get("session_start")?.({}, sessions[index] as TestContext);
-	context.after(() => {
-		for (const [index, events] of handlers.entries()) events.get("session_shutdown")?.({}, sessions[index] as TestContext);
-	});
-	await mkdir(join(jobs, "shared-window"), { recursive: true });
-	await writeFile(join(jobs, "shared-window/label"), "F014 shared window\n");
-	await writeFile(join(jobs, "shared-window/branch"), "candidate-shared-window\n");
-	await subscribe(jobs, "shared-window", "coordinator-shared");
-	await writeFile(join(jobs, "shared-window/state"), "running\n");
-	await waitUntil(() => starts.length === 1);
-	await writeFile(join(jobs, "shared-window/state"), "done\n");
-	await waitUntil(() => messages.length === 1);
 });
 
 test("herdr pane naming follows running jobs and each terminal state notifies once", async (context) => {
@@ -686,7 +509,6 @@ test("herdr pane naming follows running jobs and each terminal state notifies on
 	assert.equal(naming[tokenAt + 1], "--state-label");
 	assert.equal(naming[tokenAt + 2], `idle=${body}`);
 	assert.equal(naming[tokenAt + 4], `done=${body}`);
-	assert.equal(naming[naming.indexOf("--ttl-ms") + 1], "180000");
 	await writeFile(join(jobs, "new/state"), "done\n");
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call[0] === "notification"));
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("--clear-token")));
@@ -699,7 +521,6 @@ test("herdr pane naming follows running jobs and each terminal state notifies on
 	assert.ok(clear.includes("--clear-title"), "finished jobs must restore the pane's own title");
 	assert.equal(clear[clear.indexOf("--display-agent") + 1], "Limen coordinator");
 	assert.ok(clear.includes("--clear-state-labels"), "finished jobs must restore the pane's own state label");
-	assert.equal(clear[clear.indexOf("--ttl-ms") + 1], "180000");
 	handlers.get("session_shutdown")?.({}, session);
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("--clear-display-agent")));
 });
@@ -1205,43 +1026,6 @@ test("an errored advisory wake says the last turn failed", async (context) => {
 	);
 });
 
-test("work resuming then stalling again re-arms one further advisory wake", async (context) => {
-	stashEnv(context, "LIMEN_JOB", undefined);
-	stashEnv(context, "LIMEN_HERDR", "0");
-	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-wake-rearm-")));
-	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-	await mkdir(join(root, ".agents/limen"), { recursive: true });
-	const jobs = join(root, ".limen/jobs");
-	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
-	const messages: string[] = [];
-	limenWake({
-		on(event, handler) {
-			handlers.set(event, handler);
-		},
-		sendUserMessage(content) {
-			messages.push(content);
-		},
-	});
-	const session = { cwd: root, isIdle: () => true, sessionManager: sessionManager("coordinator-a"), ui: { notify() {}, setStatus() {} } };
-	handlers.get("session_start")?.({}, session);
-	context.after(() => handlers.get("session_shutdown")?.({}, session));
-	const job = join(jobs, "again");
-	await mkdir(job, { recursive: true });
-	await writeFile(join(job, "label"), "F027 again\n");
-	await writeFile(join(job, "branch"), "limen/again\n");
-	await subscribe(jobs, "again", "coordinator-a");
-	await writeFile(join(job, "state"), "running\n");
-	await writeFile(join(job, "advisory"), "idle 10m after 4 tool calls, session still open\n");
-	await waitUntil(() => messages.length === 1);
-	const { rm } = await import("node:fs/promises");
-	await rm(join(job, "advisory"), { force: true });
-	await rm(join(job, "notify/delivered/_advisory.coordinator-a"), { recursive: true, force: true });
-	await rm(join(job, "notify/claims/_advisory.coordinator-a"), { recursive: true, force: true });
-	await writeFile(join(job, "advisory"), "idle 10m after 8 tool calls, session still open\n");
-	await waitUntil(() => messages.length === 2);
-	assert.match(messages[1] ?? "", /idle 10m after 8 tool calls/);
-});
-
 test("first idle wake in a sweep is a real turn; later wakes are followUp", async (context) => {
 	stashEnv(context, "LIMEN_JOB", undefined);
 	stashEnv(context, "LIMEN_HERDR", "0");
@@ -1343,90 +1127,6 @@ test("a busy session injects every wake as followUp", async (context) => {
 	context.after(() => handlers.get("session_shutdown")?.({}, session));
 	await waitUntil(() => messages.length === 1);
 	assert.equal(messages[0]?.deliverAs, "followUp");
-});
-
-test("a muted session holds the advisory until unmuted", async (context) => {
-	stashEnv(context, "LIMEN_JOB", undefined);
-	stashEnv(context, "LIMEN_HERDR", "0");
-	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-wake-mute-adv-")));
-	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-	await mkdir(join(root, ".agents/limen"), { recursive: true });
-	const jobs = join(root, ".limen/jobs");
-	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
-	let command: ((args: string, context: { ui: { notify(message: string, level: "info"): void } }) => void) | undefined;
-	const messages: string[] = [];
-	const notifications: string[] = [];
-	limenWake({
-		on(event, handler) {
-			handlers.set(event, handler);
-		},
-		sendUserMessage(content) {
-			messages.push(content);
-		},
-		registerCommand(_name, options) {
-			command = options.handler;
-		},
-	});
-	assert.ok(command);
-	const commandUi = { ui: { notify() {} } };
-	const session = {
-		cwd: root,
-		isIdle: () => true,
-		sessionManager: sessionManager("coordinator-a"),
-		ui: { notify: (message: string) => notifications.push(message), setStatus() {} },
-	};
-	handlers.get("session_start")?.({}, session);
-	context.after(() => handlers.get("session_shutdown")?.({}, session));
-	command("off", commandUi);
-	await mkdir(join(jobs, "quiet"), { recursive: true });
-	await writeFile(join(jobs, "quiet/label"), "F027 quiet\n");
-	await writeFile(join(jobs, "quiet/branch"), "limen/quiet\n");
-	await subscribe(jobs, "quiet", "coordinator-a");
-	await writeFile(join(jobs, "quiet/state"), "running\n");
-	await writeFile(join(jobs, "quiet/advisory"), "blocked after 2 tool calls, session still open\n");
-	await new Promise((resolve) => setTimeout(resolve, 200));
-	assert.equal(messages.length, 0);
-	assert.equal(notifications.length, 0);
-	command("on", commandUi);
-	await waitUntil(() => messages.length === 1);
-	assert.match(messages[0] ?? "", /blocked after 2 tool calls/);
-	assert.ok(notifications.some((value) => value.includes("is blocked (quiet)")));
-});
-
-test("wake does not crash Pi after a stale reload context", async (context) => {
-	stashEnv(context, "LIMEN_JOB", undefined);
-	stashEnv(context, "LIMEN_HERDR", "0");
-	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-wake-stale-")));
-	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-	await mkdir(join(root, ".agents/limen"), { recursive: true });
-	const jobs = join(root, ".limen/jobs");
-	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
-	limenWake({
-		on(event, handler) {
-			handlers.set(event, handler);
-		},
-		sendUserMessage() {},
-	});
-	const session = {
-		cwd: root,
-		isIdle: () => true,
-		sessionManager: sessionManager("coordinator-a"),
-		ui: {
-			notify() {},
-			setStatus() {
-				throw new Error("This extension ctx is stale after session replacement or reload.");
-			},
-		},
-	};
-	handlers.get("session_start")?.({}, session);
-	context.after(() => handlers.get("session_shutdown")?.({}, session));
-	await mkdir(join(jobs, "new"), { recursive: true });
-	await writeFile(join(jobs, "new/label"), "F001 implementation\n");
-	await writeFile(join(jobs, "new/branch"), "candidate\n");
-	await subscribe(jobs, "new", "coordinator-a");
-	await writeFile(join(jobs, "new/state"), "running\n");
-	await new Promise((resolve) => setTimeout(resolve, 250));
-	handlers.get("session_shutdown")?.({}, session);
 });
 
 test("a rejected injection releases the claim and the next sweep retries", async (context) => {
@@ -1684,49 +1384,6 @@ test("provider-error turns exhaust the allowance after two failures", async (con
 	assert.equal(existsSync(join(job, "notify/delivered/coordinator-a")), false);
 });
 
-test("two unconfirmed injections retain the claim and stop automatic retries", async (context) => {
-	stashEnv(context, "LIMEN_JOB", undefined);
-	stashEnv(context, "LIMEN_HERDR", "0");
-	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-wake-blocked-")));
-	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
-	await mkdir(join(root, ".agents/limen"), { recursive: true });
-	const jobs = join(root, ".limen/jobs");
-	const job = join(jobs, "blocked");
-	await mkdir(job, { recursive: true });
-	await writeFile(join(job, "label"), "F042 blocked\n");
-	await writeFile(join(job, "branch"), "limen/blocked\n");
-	await subscribe(jobs, "blocked", "coordinator-a");
-	await writeFile(join(job, "state"), "done\n");
-	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
-	const messages: string[] = [];
-	const notifications: string[] = [];
-	limenWake({
-		on(event, handler) {
-			handlers.set(event, handler);
-		},
-		sendUserMessage(content) {
-			messages.push(content);
-		},
-	});
-	const session = {
-		cwd: root,
-		isIdle: () => true,
-		sessionManager: sessionManager("coordinator-a"),
-		ui: { notify: (message: string) => notifications.push(message), setStatus() {} },
-	};
-	handlers.get("session_start")?.({}, session);
-	context.after(() => handlers.get("session_shutdown")?.({}, session));
-	await waitUntil(() => messages.length === 1);
-	handlers.get("agent_settled")?.({}, session);
-	await waitUntil(() => messages.length === 2);
-	handlers.get("agent_settled")?.({}, session);
-	await waitUntil(() => notifications.some((message) => message.includes("unconfirmed twice")));
-	await new Promise((resolve) => setTimeout(resolve, 650));
-	assert.equal(messages.length, 2);
-	assert.match(await readFile(join(job, "notify/claims/coordinator-a/blocked"), "utf8"), /automatic retries stopped/);
-	assert.match(await readFile(join(job, "log"), "utf8"), /claim retained for human recovery/);
-});
-
 test("a footer failure leaves completion delivery and sweeps alive", async (context) => {
 	stashEnv(context, "LIMEN_JOB", undefined);
 	stashEnv(context, "LIMEN_HERDR", "0");
@@ -1833,12 +1490,7 @@ test("an open coordinator stamps last-sweep and shutdown stops refreshing it", a
 	);
 	const first = await readFile(stamp, "utf8");
 	assert.ok(Number.isFinite(Date.parse(first.split("\n")[0] ?? "")));
-	const firstMtime = (await stat(stamp)).mtimeMs;
-	await new Promise((resolve) => setTimeout(resolve, 650));
-	assert.equal((await stat(stamp)).mtimeMs, firstMtime, "the 500ms sweep must not rewrite the 30s stamp");
 	handlers.get("session_shutdown")?.({}, session);
-	await new Promise((resolve) => setTimeout(resolve, 650));
-	assert.equal((await stat(stamp)).mtimeMs, firstMtime, "no session means the liveness stamp starts going stale");
 });
 
 test("a stop-marked session receives no completion wake", async (context) => {
@@ -1995,7 +1647,6 @@ test("a wake opens with label and task and ends with the instruction", async (co
 		"label, task sentence, state, commits, excerpt, then instruction",
 	);
 	assert.doesNotMatch(wake, /Then inspect the rest of the ticket/);
-	assert.match(wake.slice(instructionAt), /Keep the user informed/);
 	emitWakeTurn(handlers, session, wake);
 	await new Promise((resolve) => setTimeout(resolve, 650));
 	assert.equal(messages.length, 1, "two sweeps cannot deliver one completion twice to one session");

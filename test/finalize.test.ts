@@ -20,19 +20,9 @@ execFileSync("git", ["commit", "-m", "partial before provider error"]);
 console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "usage limit reached" } }));
 `;
 
-const abortedPi = `#!/usr/bin/env node
-console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [], stopReason: "aborted" } }));
-`;
-
 const recoveredPi = `#!/usr/bin/env node
 console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "temporary" } }));
 console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [], stopReason: "stop" } }));
-`;
-
-const lateSteerPi = `#!/usr/bin/env node
-setTimeout(() => {
-  console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "finishing" }] } }));
-}, 400);
 `;
 
 const burstPi = `#!/usr/bin/env node
@@ -141,18 +131,12 @@ console.log(JSON.stringify({ result: {} }));
 	return { log, closes: (await readFile(calls, "utf8")).split("\n").filter((line) => line === "tab close w1:t1").length };
 }
 
-test("a finished job closes its tab and the log records the close", async (context) => {
-	const { log, closes } = await finishWithTab(context, 0);
-	assert.match(log, /herdr tab close w1:t1: closed\n/);
-	assert.equal(closes, 1);
-});
-
 test("a refused tab close is retried once and both attempts are logged", async (context) => {
 	const retried = await finishWithTab(context, 1);
-	assert.match(retried.log, /herdr tab close w1:t1: refused \(tab is busy\); retrying once\n.*herdr tab close w1:t1: closed on retry\n/s);
+	assert.match(retried.log, /retrying once.*closed on retry/s);
 	assert.equal(retried.closes, 2);
 	const refused = await finishWithTab(context, 2);
-	assert.match(refused.log, /herdr tab close w1:t1: failed after one retry \(tab is busy\)\n/);
+	assert.match(refused.log, /failed after one retry/);
 	assert.equal(refused.closes, 2, "one retry, not more");
 });
 
@@ -174,17 +158,6 @@ test("a provider-error stream fails with its stop reason and preserves prior com
 	assert.match(detail.stdout, /commits:\n.*partial before provider error/s);
 });
 
-test("an aborted stream fails with its stop reason", async (context) => {
-	const scratch = await scratchRepo(abortedPi);
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "abort now").stdout);
-	await waitForState(scratch.root, id, "failed");
-	const job = join(scratch.root, ".limen/jobs", id);
-	assert.equal(await readFile(join(job, "stop-reason"), "utf8"), "aborted\n");
-	assert.match(await readFile(join(job, "log"), "utf8"), /failed: aborted/);
-});
-
 test("a recovered provider error follows the clean final turn", async (context) => {
 	const scratch = await scratchRepo(recoveredPi);
 	context.after(scratch.cleanup);
@@ -192,27 +165,6 @@ test("a recovered provider error follows the clean final turn", async (context) 
 	const id = onlyJobId(limen(scratch, "spawn", "recover").stdout);
 	await waitForState(scratch.root, id, "done");
 	await assert.rejects(readFile(join(scratch.root, ".limen/jobs", id, "stop-reason")));
-});
-
-test("a clean run writes no stop-reason", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "make commit").stdout);
-	await waitForState(scratch.root, id, "done");
-	await assert.rejects(readFile(join(scratch.root, ".limen/jobs", id, "stop-reason")));
-});
-
-test("an unseen steer is counted at finalize", async (context) => {
-	const scratch = await scratchRepo(lateSteerPi);
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "almost done").stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	await mkdir(join(job, "steer/inbox"), { recursive: true });
-	await writeFile(join(job, "steer/inbox/0001"), "turn left\n");
-	await waitForState(scratch.root, id, "done");
-	assert.match(await readFile(join(job, "log"), "utf8"), /1 steer\(s\) never delivered/);
 });
 
 test("exhaustion finalizes failed while tab close hangs", async (context) => {

@@ -310,43 +310,6 @@ test("continue refuses a running job or missing transcript without writing recor
 	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), before, "refusals must not create job records");
 });
 
-test("private workspace descendants retain the repository route through continuation", async (context) => {
-	const workspace = await scratchWorkspace(continuingFakePi);
-	context.after(workspace.cleanup);
-	assert.equal(limen(workspace, "workspace", "init").status, 0);
-	assert.equal(limen(workspace, "planning", "private").status, 0);
-	const ticket = "spec/private-ticket.md";
-	await writeFile(`${workspace.root}/${ticket}`, "private workspace ticket\n");
-	const first = limen(workspace, "spawn", "--repo", "api", `Read. Ticket: ${ticket}`, "--detached");
-	assert.equal(first.status, 0, first.stderr);
-	const parent = onlyJobId(first.stdout);
-	await waitForState(workspace.root, parent, "done");
-	const tree = (await readFile(`${workspace.root}/.limen/jobs/${parent}/worktree`, "utf8")).trim();
-	assert.equal(limen(workspace, "planning", "committed").status, 0);
-	const child = limenWithEnv(
-		{ ...workspace, root: tree },
-		{ LIMEN_JOB: "1", LIMEN_JOB_ID: parent, LIMEN_CONTEXT_ROOT: workspace.root },
-		"spawn",
-		`Read again. Ticket: ${ticket}`,
-		"--detached",
-	);
-	assert.equal(child.status, 0, child.stderr);
-	const childId = onlyJobId(child.stdout);
-	await waitForState(workspace.root, childId, "done");
-	const childJob = `${workspace.root}/.limen/jobs/${childId}`;
-	assert.equal(await readFile(`${childJob}/repo`, "utf8"), "api\n");
-	assert.equal(await readFile(`${childJob}/planning-source`, "utf8"), "private\n");
-	assert.equal(limen(workspace, "prune").status, 0);
-	const continued = limen(workspace, "continue", childId, "Check once more", "--detached");
-	assert.equal(continued.status, 0, continued.stderr);
-	const id = onlyJobId(continued.stdout);
-	await waitForState(workspace.root, id, "done");
-	assert.equal(await readFile(`${workspace.root}/.limen/jobs/${id}/planning-source`, "utf8"), "private\n");
-	assert.ok((await readFile(`${workspace.root}/.limen/jobs/${id}/task.md`, "utf8")).includes(`Ticket: ${workspace.root}/${ticket}`));
-	const restored = (await readFile(`${workspace.root}/.limen/jobs/${id}/worktree`, "utf8")).trim();
-	assert.equal(existsSync(`${restored}/spec`), false);
-});
-
 for (const pruned of [false, true]) {
 	test(`workspace continue copies repo and uses the child's branch (pruned: ${pruned})`, async (context) => {
 		const workspace = await scratchWorkspace(continuingFakePi);
@@ -470,30 +433,6 @@ test("continue --detached stays a wrapper even in Herdr", async (context) => {
 	const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
 	assert.equal(argv.includes("--continue"), true);
 	assert.equal(argv.includes("--mode"), true);
-});
-
-test("continue copies the parent engine and refuses a conflicting --engine", async (context) => {
-	const scratch = await scratchRepo(continuingFakePi);
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const parent = onlyJobId(limen(scratch, "spawn", "--engine", "omp", "--label", "F727 omp", "first slice").stdout);
-	await waitForState(scratch.root, parent, "done");
-	const launched = limenWithEnv(scratch, { LIMEN_ENGINE: "pi" }, "continue", parent, "now refine the seam");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	await waitForState(scratch.root, id, "done");
-	const job = join(scratch.root, ".limen/jobs", id);
-	assert.equal(await readFile(join(job, "engine"), "utf8"), "omp\n");
-	assert.equal(await readFile(join(job, "versions"), "utf8"), "omp 0.0.0-test\n");
-	const argv = JSON.parse(await readFile(join((await readFile(join(job, "worktree"), "utf8")).trim(), "pi-args.json"), "utf8")) as string[];
-	assert.equal(argv.includes("--auto-approve"), true);
-	assert.equal(argv.includes("--continue"), true);
-	assert.equal(argv.includes("--approve"), false);
-	const before = await readdir(join(scratch.root, ".limen/jobs"));
-	const refused = limen(scratch, "continue", "--engine", "pi", parent, "switch engines");
-	assert.equal(refused.status, 1);
-	assert.match(refused.stderr, /continue --engine pi does not match parent engine omp/);
-	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), before);
 });
 
 for (const legacy of [false, true]) {

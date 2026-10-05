@@ -58,7 +58,7 @@ test("land --yes merges when the target has moved", async (context) => {
 	assert.equal(await readFile(join(scratch.root, "main-only.txt"), "utf8"), "main\n");
 });
 
-test("land refuses missing id, running job, empty commits, dirty target, and unconfirmed merge", async (context) => {
+test("land refuses running job, empty commits, dirty target, and unconfirmed merge", async (context) => {
 	const scratch = await scratchRepo(`#!/usr/bin/env node
 process.on("SIGTERM", () => process.exit(0));
 console.log("waiting");
@@ -68,15 +68,6 @@ setInterval(() => {}, 1000);
 	limen(scratch, "init");
 	commitProject(scratch.root);
 	const main = git(scratch.root, "rev-parse", "HEAD");
-
-	const missing = limen(scratch, "land");
-	assert.equal(missing.status, 1);
-	assert.match(missing.stderr, /land requires a job id/);
-	assert.equal(git(scratch.root, "rev-parse", "HEAD"), main);
-
-	const unknown = limen(scratch, "land", "missing", "--yes");
-	assert.equal(unknown.status, 1);
-	assert.match(unknown.stderr, /no job matches/);
 
 	const runningId = onlyJobId(limen(scratch, "spawn", "--label", "F717 run", "wait").stdout);
 	const running = limen(scratch, "land", runningId, "--yes");

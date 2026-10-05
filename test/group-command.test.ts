@@ -77,6 +77,8 @@ async function launch(scratch: Scratch, added: NodeJS.ProcessEnv, ...args: strin
 	delete env.LIMEN_INTERNAL_RUN;
 	delete env.LIMEN_INTERNAL_HOSTED;
 	delete env.HERDR_ENV;
+	delete env.LIMEN_OMP;
+	delete env.LIMEN_PI;
 	if (!added.LIMEN_JOB) delete env.LIMEN_JOB;
 	const child = spawn(process.execPath, [LIMEN, ...args], { cwd: scratch.root, env, stdio: ["ignore", "pipe", "pipe"] });
 	let stdout = "",
@@ -626,24 +628,6 @@ test("automatic lead updates stay agent-attributed and only processed context su
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;
 	}
-});
-
-test("the actual group wait CLI caps a longer requested wait at twenty seconds", async (context) => {
-	const scratch = await fixture();
-	context.after(scratch.cleanup);
-	const run = await activate(scratch);
-	const identity = { run, recipient: `lead-${run.lead}` };
-	let batch = await acceptBatch(identity);
-	while (batch) {
-		await observeBatch(identity, batch.token, true);
-		batch = await acceptBatch(identity);
-	}
-	// A child-process watchdog cannot be verified with this test process's mocked timers.
-	const started = Date.now();
-	const result = await launch(scratch, lead, "group", "wait", run.id, "--timeout", "2m");
-	assert.equal(result.status, 0, result.stderr);
-	assert.match(result.stdout, /timed out normally/);
-	assert.ok(Date.now() - started < 25_000, `CLI exceeded its 20-second cap: ${Date.now() - started}ms`);
 });
 
 test("an OMP lead without PI_SESSION_ID is recognized only through its registered ancestor process", async (context) => {

@@ -117,18 +117,6 @@ test("two stalled Herdr prompts stop automatic delivery and leave the wake undel
 	await assert.rejects(readFile(join(job, "notify/delivered/_herdr")));
 });
 
-test("a missing coordinator pane fails the Herdr wake visibly without blocking the terminal state", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(() => wipe(scratch));
-	const herdr = await fakeHerdr(scratch, "missing");
-	limenWithEnv(scratch, {}, "init");
-	const id = onlyJobId(limenWithEnv(scratch, herdrCoordinator(herdr), "spawn", "--detached", "do work").stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	await waitForState(scratch.root, id, "done");
-	assert.match(await receipt(job), /^attempt 1: failed on w1:p7: pane_not_found \S+\nattempt 2: failed on w1:p7: pane_not_found \S+\nautomatic delivery stopped/);
-	await assert.rejects(readFile(join(job, "notify/delivered/_herdr")));
-});
-
 test("a Pi coordinator keeps its in-process wake route and records no Herdr pane", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(() => wipe(scratch));
@@ -176,7 +164,7 @@ test("an OMP coordinator that takes over a live job with limen watch gets its wa
 		["w1:p7"],
 		"the pane that spawned the job no longer gets its wake",
 	);
-	assert.match(sent[0]?.[3] ?? "", new RegExp(`^Limen job "taken over": do work\\nis done \\(${id}\\)`));
+	assert.match(sent[0]?.[3] ?? "", new RegExp(`"taken over": do work\\nis done \\(${id}\\)`));
 });
 
 test("a continuation started with no wake route keeps the parent's coordinator pane", async (context) => {

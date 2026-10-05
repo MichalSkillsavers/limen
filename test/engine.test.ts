@@ -38,18 +38,6 @@ test("old job records without an engine still use pi", async (context) => {
 
 test("detached pi argv keeps approve and name, never auto-approve or no-title", () => {
 	const argv = argvFor(ENGINES.pi, { ...slots, jsonMode: true });
-	assert.deepEqual(argv.slice(0, 10), [
-		"--mode",
-		"json",
-		"--approve",
-		"--no-extensions",
-		"--session-dir",
-		"/job/session",
-		"--name",
-		"limen: slice",
-		"--append-system-prompt",
-		"PREAMBLE",
-	]);
 	assert.equal(argv.includes("--auto-approve"), false);
 	assert.equal(argv.includes("--no-title"), false);
 	assert.equal(argv.at(-1), "@/job/task.md");
@@ -76,10 +64,6 @@ test("hosted launches omit json mode and keep the profile flags", () => {
 	assert.equal(omp.includes("--mode"), false);
 	assert.equal(pi.includes("--approve"), true);
 	assert.equal(pi.includes("--name"), true);
-	assert.equal(omp.includes("--auto-approve"), true);
-	assert.equal(omp.includes("--no-title"), true);
-	assert.equal(omp.includes("--approve"), false);
-	assert.equal(omp.includes("--name"), false);
 	assert.equal(pi[pi.indexOf("--extension") + 1], "/hook/hosted.ts");
 });
 

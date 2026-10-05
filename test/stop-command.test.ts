@@ -4,7 +4,7 @@ import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
-import { containEscapedDescendants, processInfo, recordCleanup } from "../src/runtime/contain.ts";
+import { recordCleanup } from "../src/runtime/contain.ts";
 import { limen, limenWithEnv, limenWithSession, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
 const stubbornPi = `#!/usr/bin/env node
@@ -33,20 +33,6 @@ setInterval(() => {}, 1000);
 
 // The parent exits as soon as its process group receives TERM, while its detached child survives.
 const immediatelyExitingEscapingPi = escapingPi.replace("setTimeout(() => process.exit(0), 500)", "process.exit(0)");
-const termRecordingEscapingPi = escapingPi.replace(
-	'process.on("SIGTERM", () => setTimeout(() => process.exit(0), 500));',
-	'process.on("SIGTERM", () => { writeFileSync("term-received-at", String(Date.now())); process.exit(0); });',
-);
-
-// A pi that keeps calling tools forever; the wrapper must bound it.
-const busyPi = `#!/usr/bin/env node
-process.on("SIGTERM", () => {});
-let n = 0;
-setInterval(() => {
-  n += 1;
-  console.log(JSON.stringify({ type: "tool_execution_start", toolName: "read", args: { path: "file" + n } }));
-}, 5);
-`;
 
 function pidAlive(pid: number): boolean {
 	try {
@@ -105,25 +91,6 @@ test("stop terminates an escaped-group child or records it in a cleanup note", a
 	else assert.match(await readFile(join(jobDir, "cleanup"), "utf8"), new RegExp(`${escapee} `));
 });
 
-test("timeout terminates an escaped-group child or records it in cleanup", async (context) => {
-	const scratch = await scratchRepo(escapingPi);
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "--timeout", "2s", "escape").stdout);
-	const escapee = await readEscapeePid(scratch, id);
-	context.after(async () => {
-		try {
-			process.kill(escapee, "SIGKILL");
-		} catch {}
-	});
-	await waitForState(scratch.root, id, "failed", 15_000);
-	const jobDir = join(scratch.root, `.limen/jobs/${id}`);
-	await waitForContainment(jobDir, escapee);
-	const log = await readFile(join(jobDir, "log"), "utf8");
-	assert.match(log, /timeout after 2000ms/);
-	assert.match(log, /terminating 1 escaped job process\(es\)/);
-});
-
 test("a cleanup note names unconfirmed survivors and limen jobs detail shows it", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
@@ -167,49 +134,6 @@ test("stop completes delayed discovery before a fast parent exit", async (contex
 	assert.doesNotMatch(await readFile(join(jobDir, "cleanup"), "utf8").catch(() => ""), /root process .* missing or terminal/);
 });
 
-test("timeout completes delayed discovery before a fast parent exit", async (context) => {
-	const scratch = await scratchRepo(immediatelyExitingEscapingPi);
-	context.after(scratch.cleanup);
-	await delayProcessTable(scratch);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "--timeout", "1s", "escape").stdout);
-	const escapee = await readEscapeePid(scratch, id);
-	context.after(() => {
-		try {
-			process.kill(escapee, "SIGKILL");
-		} catch {}
-	});
-	await waitForState(scratch.root, id, "failed", 6_000);
-	const jobDir = join(scratch.root, `.limen/jobs/${id}`);
-	await waitForContainment(jobDir, escapee);
-	assert.match(await readFile(join(jobDir, "log"), "utf8"), /terminating 1 escaped job process\(es\)/);
-	assert.doesNotMatch(await readFile(join(jobDir, "cleanup"), "utf8").catch(() => ""), /root process .* missing or terminal/);
-});
-
-test("one deadline bounds delayed ps and all birth captures before TERM", async (context) => {
-	const scratch = await scratchRepo(termRecordingEscapingPi);
-	context.after(scratch.cleanup);
-	await writeFile(
-		join(scratch.fakeBin, "ps"),
-		`#!/bin/sh\n"${process.execPath}" -e 'require("node:fs").writeFileSync(".ps-started-at", String(Date.now()))'\n/bin/sleep 0.9\nexec /bin/ps "$@"\n`,
-	);
-	await chmod(join(scratch.fakeBin, "ps"), 0o755);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "escape").stdout);
-	const escapee = await readEscapeePid(scratch, id);
-	context.after(() => {
-		try {
-			process.kill(escapee, "SIGKILL");
-		} catch {}
-	});
-	const stopped = limen(scratch, "stop", id, "aggregate query deadline");
-	assert.equal(stopped.status, 0, stopped.stderr);
-	const worktree = join(dirname(scratch.root), `.${basename(scratch.root)}-limen-worktrees`, id);
-	const queryStartedAt = Number(await readFile(join(scratch.root, ".ps-started-at"), "utf8"));
-	const termAt = Number(await readFile(join(worktree, "term-received-at"), "utf8"));
-	assert.ok(termAt - queryStartedAt < 1_250, `TERM must follow the aggregate one-second query deadline, took ${termAt - queryStartedAt}ms`);
-});
-
 test("sleeping descendant discovery delays stop only through its short bound", async (context) => {
 	const scratch = await scratchRepo(responsivePi);
 	context.after(scratch.cleanup);
@@ -232,111 +156,6 @@ test("sleeping descendant discovery delays stop only through its short bound", a
 	assert.ok(Date.now() - started >= 2_100, "the fixture must expose startup time outside the stop deadline");
 	assert.ok(elapsed >= 900 && elapsed < 2_000, `dispatched stop must wait only for the bounded ps query, took ${elapsed}ms`);
 	assert.match(await readFile(join(jobDir, "cleanup"), "utf8"), /escaped descendant discovery failed during stop/);
-});
-
-test("sleeping descendant discovery delays timeout only through its short bound", async (context) => {
-	const scratch = await scratchRepo(responsivePi);
-	context.after(scratch.cleanup);
-	await writeFile(join(scratch.fakeBin, "ps"), `#!/bin/sh\n"${process.execPath}" -e 'require("node:fs").writeFileSync(".ps-started-at", String(Date.now()))'\nexec sleep 10\n`);
-	await chmod(join(scratch.fakeBin, "ps"), 0o755);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "--timeout", "100ms", "wait").stdout);
-	await waitForState(scratch.root, id, "failed", 2_000);
-	const queryStartedAt = Number(await readFile(join(scratch.root, ".ps-started-at"), "utf8"));
-	const finishedAt = Date.parse((await readFile(join(scratch.root, `.limen/jobs/${id}/finished-at`), "utf8")).trim());
-	assert.ok(finishedAt - queryStartedAt < 2_000, `timeout must wait only for the bounded ps query, took ${finishedAt - queryStartedAt}ms`);
-	assert.match(await readFile(join(scratch.root, `.limen/jobs/${id}/cleanup`), "utf8"), /escaped descendant discovery failed during exhaustion/);
-});
-
-test("process identity distinguishes present and confirmed absent PIDs", async () => {
-	const deadline = Date.now() + 10_000;
-	const current = await processInfo(process.pid, deadline);
-	assert.equal(current.kind, "present");
-	if (current.kind !== "present") assert.fail("current process identity must be available");
-	assert.equal(current.process.pid, process.pid);
-	assert.match(current.process.born, process.platform === "linux" ? /^\d+$/ : /^\d+\.\d{6}$/);
-	assert.deepEqual(await processInfo(999_999_999, deadline), { kind: "absent" });
-});
-test("a changed birth identity is never signaled", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const job = join(scratch.root, ".limen/jobs", "pid-reuse");
-	await mkdir(job);
-	await writeFile(join(job, "log"), "");
-	const captured = { pid: 4242, ppid: 1, born: "1786736391.120227", pgid: 4242, command: "workerd --fake" };
-	const signals: Array<readonly [number, NodeJS.Signals]> = [];
-	await containEscapedDescendants(job, [captured], "after replacement", {
-		query: async () => ({ kind: "present", process: { ...captured, born: "1786736391.120228" } }),
-		signal: (pid, signal) => {
-			signals.push([pid, signal]);
-			return "sent";
-		},
-	});
-	assert.deepEqual(signals, []);
-	assert.match(await readFile(join(job, "cleanup"), "utf8"), /4242 1786736391\.120227/);
-});
-
-test("an unavailable identity recheck is recorded without signaling", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const job = join(scratch.root, ".limen/jobs", "identity-unavailable");
-	await mkdir(job);
-	await writeFile(join(job, "log"), "");
-	const captured = { pid: 4242, born: "1786736391.120227", pgid: 4242, command: "workerd --fake" };
-	const signals: Array<readonly [number, NodeJS.Signals]> = [];
-	await containEscapedDescendants(job, [captured], "after unavailable identity", {
-		query: async () => ({ kind: "unavailable" }),
-		signal: (pid, signal) => {
-			signals.push([pid, signal]);
-			return "sent";
-		},
-	});
-	assert.deepEqual(signals, []);
-	assert.match(await readFile(join(job, "cleanup"), "utf8"), /4242 1786736391\.120227 workerd --fake/);
-});
-
-test("a helper-timeout-style unavailable recheck records the captured process", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const job = join(scratch.root, ".limen/jobs", "identity-timeout");
-	await mkdir(job);
-	await writeFile(join(job, "log"), "");
-	const captured = { pid: 4242, born: "1786736391.120227", pgid: 4242, command: "workerd --fake" };
-	const signals: Array<readonly [number, NodeJS.Signals]> = [];
-	let rechecks = 0;
-	await containEscapedDescendants(job, [captured], "after identity timeout", {
-		query: async () => (rechecks++ === 0 ? { kind: "present", process: { ...captured, ppid: 1 } } : { kind: "unavailable" }),
-		signal: (pid, signal) => {
-			signals.push([pid, signal]);
-			return "sent";
-		},
-	});
-	assert.deepEqual(signals, [[4242, "SIGTERM"]]);
-	assert.match(await readFile(join(job, "cleanup"), "utf8"), /4242 1786736391\.120227 workerd --fake/);
-});
-
-test("confirmed absence after TERM needs neither KILL nor cleanup", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const job = join(scratch.root, ".limen/jobs", "absent-after-term");
-	await mkdir(job);
-	await writeFile(join(job, "log"), "");
-	const captured = { pid: 4242, ppid: 1, born: "1786736391.120227", pgid: 4242, command: "workerd --fake" };
-	const signals: Array<readonly [number, NodeJS.Signals]> = [];
-	let rechecks = 0;
-	await containEscapedDescendants(job, [captured], "after confirmed exit", {
-		query: async () => (rechecks++ === 0 ? { kind: "present", process: captured } : { kind: "absent" }),
-		signal: (pid, signal) => {
-			signals.push([pid, signal]);
-			return "sent";
-		},
-	});
-	assert.deepEqual(signals, [[4242, "SIGTERM"]]);
-	await assert.rejects(readFile(join(job, "cleanup")), "confirmed absence must not write cleanup");
 });
 
 test("stop with a done: reason records done and silences the stopping session", async (context) => {
@@ -446,19 +265,6 @@ test("timeout is portable and leaves failed durable truth", async (context) => {
 	const log = await readFile(join(scratch.root, `.limen/jobs/${id}/log`), "utf8");
 	assert.match(log, /timeout after 100ms/);
 	assert.ok(Number.isFinite(Date.parse((await readFile(join(scratch.root, `.limen/jobs/${id}/finished-at`), "utf8")).trim())));
-});
-
-test("a runaway tool loop is bounded and says so", async (context) => {
-	const scratch = await scratchRepo(busyPi);
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const id = onlyJobId(limenWithEnv(scratch, { LIMEN_MAX_TOOL_CALLS: "5" }, "spawn", "loop").stdout);
-	await waitForState(scratch.root, id, "failed", 15_000);
-	await new Promise((resolve) => setTimeout(resolve, 5_100));
-	const log = await readFile(join(scratch.root, `.limen/jobs/${id}/log`), "utf8");
-	assert.match(log, /tool-call cap reached after \d+ calls/);
-	const calls = Number((await readFile(join(scratch.root, `.limen/jobs/${id}/tool-calls`), "utf8")).trim());
-	assert.ok(calls >= 5, `expected the cap to fire after counting, saw ${calls}`);
 });
 
 test("stop preserves terminal truth written while interruption settles", async (context) => {

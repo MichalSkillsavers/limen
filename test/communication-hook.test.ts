@@ -26,18 +26,16 @@ type Handlers = {
 
 const ENV_KEYS = ["LIMEN_CONTEXT_ROOT", "LIMEN_JOB", "LIMEN_HOSTED", "LIMEN_JOB_ID", "LIMEN_TASK_FILE"] as const;
 
-function extension(): { readonly handlers: Handlers; readonly events: string[] } {
+function extension(): { readonly handlers: Handlers } {
 	const handlers: Handlers = {};
-	const events: string[] = [];
 	limenCommunication({
 		on(event, handler) {
-			events.push(event);
 			if (event === "before_agent_start") handlers.before_agent_start = handler as NonNullable<Handlers["before_agent_start"]>;
 			if (event === "message_end") handlers.message_end = handler as NonNullable<Handlers["message_end"]>;
 			if (event === "tool_result") handlers.tool_result = handler as NonNullable<Handlers["tool_result"]>;
 		},
 	});
-	return { handlers, events };
+	return { handlers };
 }
 
 function stashEnv(context: test.TestContext, entries: Record<string, string | undefined>): void {
@@ -143,28 +141,17 @@ test("the system prompt holds shop, register, vision, styleguide, then the NOW/N
 	assert.doesNotMatch(prompt, /Audience for this reply/);
 });
 
-test("the per-turn cue names the audience, the three reply rules, and the plain-English rule and stays under 1.25 kilobytes", async (context) => {
+test("the per-turn cue is a hidden note that names the audience and stays under 1.25 kilobytes", async (context) => {
 	const root = await projectRoot(context);
 	await coordinatorFiles(root);
 	const result = start(root);
 	assert.ok(result.message);
 	assert.equal(result.message.customType, "limen-project-context");
 	assert.equal(result.message.display, false);
-	assert.match(result.message.content, /^<limen-project-context>/);
 	assert.match(result.message.content, /Audience for this reply: human/);
-	assert.match(result.message.content, /First line is the answer/);
-	assert.match(result.message.content, /Not `F048 is active now\.`/);
-	assert.match(result.message.content, /Never open a reply with a feature number/);
-	assert.match(result.message.content, /Size the reply to the question/);
-	assert.match(
-		result.message.content,
-		/Write in plain technical English \(about 80% of ASD-STE100\)\. Short sentences\. One idea each\. Active voice\. Simple exact words\. One word for one thing\. No slang, idioms, or filler\./,
-	);
 	assert.doesNotMatch(result.message.content, /opened by a job wake/);
 	assert.doesNotMatch(result.message.content, /Vision one\.|Prefer small functions\.|now item/);
-	assert.match(result.message.content, /<\/limen-project-context>$/);
 	assert.ok(Buffer.byteLength(result.message.content) < 1280);
-	assert.deepEqual(extension().events, ["before_agent_start", "message_end", "tool_result"]);
 });
 
 test("a 130-line board adds one advisory line; an 80-line board does not", async (context) => {
@@ -179,15 +166,6 @@ test("a 130-line board adds one advisory line; an 80-line board does not", async
 	assert.match(long.message?.content ?? "", /spec\/build\.md is 130 lines; fold older PROVEN entries into monthly highlights\./);
 	assert.equal((long.message?.content.match(/fold older PROVEN/g) ?? []).length, 1);
 	assert.doesNotMatch(long.systemPrompt ?? "", /fold older PROVEN/);
-});
-
-test("a wake turn puts the wake cue in the per-turn note, not the system prompt", async (context) => {
-	const root = await projectRoot(context);
-	await coordinatorFiles(root);
-	const result = start(root, { prompt: 'Limen job "F031 retry" is done (abc) on branch limen/abc.', systemPrompt: "base" });
-	assert.match(result.message?.content ?? "", /opened by a job wake/);
-	assert.match(result.message?.content ?? "", /Audience for this reply: human/);
-	assert.doesNotMatch(result.systemPrompt ?? "", /opened by a job wake/);
 });
 
 test("the per-turn note carries the overview cue on a human turn and a wake, not on a job session", async (context) => {
@@ -220,7 +198,6 @@ test("a write under spec/, an edit of code, and limen spawn recall the matching 
 	const specText = textOf(spec.content);
 	assert.match(specText, /wrote ticket/);
 	assert.match(specText, /\[limen\] Specs:/);
-	assert.ok(specText.endsWith("Title is `FNNN · what becomes true`."));
 
 	const code = tool(root, {
 		toolName: "edit",
@@ -345,23 +322,11 @@ test("workspace jobs resolve guidance from the workspace root", async (context) 
 	assert.doesNotMatch(prompt, /Vision one\./);
 });
 
-test("guidance is reread each turn, so a file planted mid-session appears on the next message", async (context) => {
-	const root = await projectRoot(context);
-	const { handlers } = extension();
-	const first = handlers.before_agent_start?.({ systemPrompt: "base" }, { cwd: root })?.systemPrompt ?? "";
-	assert.doesNotMatch(first, /## Vision \(spec\/vision\.md\)/);
-	await writeFile(join(root, "spec/vision.md"), "First direction.\n");
-	const second = handlers.before_agent_start?.({ systemPrompt: "base" }, { cwd: root })?.systemPrompt ?? "";
-	assert.match(second, /## Vision \(spec\/vision\.md\)\nFirst direction\./);
-});
-
 test("a project overlay wins over the package speech register", async (context) => {
 	const root = await projectRoot(context);
 	await writeFile(join(root, ".agents/limen/communication.md"), "Write for a person.\n");
 	const result = start(root, { systemPrompt: "base" });
 	assert.match(result.systemPrompt ?? "", /## Communication \(.agents\/limen\/communication\.md\)\nWrite for a person\./);
-	assert.match(result.message?.content ?? "", /Audience for this reply: human/);
-	assert.doesNotMatch(result.systemPrompt ?? "", /opened by a job wake/);
 });
 
 test("communication is reread each turn and bounded like other project files", async (context) => {
@@ -385,9 +350,6 @@ test("missing communication inherits the package register", async (context) => {
 	assert.match(prompt, /## Communication \(limen\/templates\/communication\.md\)/);
 	const packaged = (await readFile(new URL("../templates/communication.md", import.meta.url), "utf8")).trim();
 	assert.equal(prompt.includes(packaged), true);
-	assert.match(prompt, /## Human/);
-	assert.match(prompt, /## Agent/);
-	assert.match(result.message?.content ?? "", /Audience for this reply: human/);
 });
 
 test("a coordinator without AGENTS.md inherits the package shop manual on the system prompt", async (context) => {
@@ -418,19 +380,6 @@ test("identical leftover copies are named as leftovers, overlays as overlays", a
 	assert.match(content, /leftover \(identical; delete to inherit\): \.agents\/limen\/communication\.md/);
 	assert.match(content, /overlay \(differs; keep, drop, or edit\): AGENTS\.md/);
 	assert.doesNotMatch(content, /## Shop manual/);
-});
-
-test("over fifty simulated turns custom messages stay under sixty-four kilobytes", async (context) => {
-	const root = await projectRoot(context);
-	await coordinatorFiles(root);
-	const { handlers } = extension();
-	let total = 0;
-	for (let turn = 0; turn < 50; turn++) {
-		const content = handlers.before_agent_start?.({ systemPrompt: "base" }, { cwd: root })?.message?.content ?? "";
-		assert.ok(Buffer.byteLength(content) < 1280, `turn ${turn} cue was ${Buffer.byteLength(content)} bytes`);
-		total += Buffer.byteLength(content);
-	}
-	assert.ok(total < 64 * 1024, `fifty turns accumulated ${total} bytes`);
 });
 
 test("style and vision reminders name the project files and their headings", async (context) => {

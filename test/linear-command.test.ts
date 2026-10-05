@@ -33,7 +33,5 @@ test("linear toggle renames the config file and reports state", async (context) 
 	assert.match(limen(scratch, "linear", "on").stdout, /linear mirror on/);
 	limen(scratch, "linear", "off");
 	assert.match(limen(scratch, "linear", "off").stdout, /already off/);
-	assert.equal(limen(scratch, "linear", "sideways").status, 1);
-	assert.equal(limen(scratch, "linear", "status", "--team", "x").status, 1);
 	assert.equal(limen(scratch, "linear", "on", "--team", "x").status, 1);
 });

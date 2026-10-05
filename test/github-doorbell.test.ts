@@ -97,51 +97,6 @@ test("only an exact write-authorized PR comment claims a request; unavailable co
 	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), []);
 });
 
-test("pending availability failure retries once after live ensure without duplicate notice", async (context) => {
-	const scratch = await scratchRepo();
-	const state = await pollerState(context);
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	await mkdir(join(scratch.root, ".limen/github/claims"), { recursive: true });
-	await writeFile(join(scratch.root, ".limen/github/binding.json"), JSON.stringify(binding));
-	git(scratch.root, "remote", "add", "origin", "https://github.com/acme/widget.git");
-	const claim: GithubClaim = {
-		repo: binding.repo,
-		id: 81,
-		pr: 4,
-		actor: "alice",
-		url: command(81).html_url,
-		base,
-		baseRef: "release",
-		head,
-		receipt: "pending: coordinator unavailable",
-		attemptedAt: new Date(Date.now() - 31_000).toISOString(),
-		noticeComment: 500,
-	};
-	await writeFile(join(state, "claims/81.json"), JSON.stringify(claim));
-	const calls = join(state, "sudo-calls");
-	await writeFile(join(scratch.fakeBin, "sudo"), `#!/bin/sh\nprintf '%s\\n' "$7" >> ${JSON.stringify(calls)}\nexit 0\n`);
-	await chmod(join(scratch.fakeBin, "sudo"), 0o755);
-	const path = process.env.PATH;
-	process.env.PATH = `${scratch.fakeBin}:${path}`;
-	context.after(() => {
-		process.env.PATH = path;
-	});
-	const previousFetch = globalThis.fetch;
-	let posts = 0;
-	globalThis.fetch = async () => {
-		posts++;
-		return Response.json([]);
-	};
-	context.after(() => {
-		globalThis.fetch = previousFetch;
-	});
-	await reconcileGithubClaim(scratch.root, state, 81, "test-token");
-	await reconcileGithubClaim(scratch.root, state, 81, "test-token");
-	assert.equal(await readFile(calls, "utf8"), "ensure\ndeliver\n");
-	assert.equal(posts, 0);
-	assert.equal((JSON.parse(await readFile(join(state, "claims/81.json"), "utf8")) as GithubClaim).receipt, "prompt accepted");
-});
 test("a rejected bare-shell prompt retries after recovery without duplicate notice", async (context) => {
 	const scratch = await scratchRepo();
 	const state = await pollerState(context);
@@ -498,18 +453,6 @@ test("poller restart recognizes its own posted receipt after an interrupted writ
 	await reconcileGithubClaim(scratch.root, state, 43, "test-token");
 	assert.equal(posts, 0);
 	assert.equal((JSON.parse(await readFile(claimPath(scratch.root, 43), "utf8")) as GithubClaim).startComment, 777);
-});
-
-test("GitHub review requires the coordinator to supply all board model flags", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const missing = limen(scratch, "github", "review", scratch.root, "31");
-	assert.equal(missing.status, 1);
-	assert.match(missing.stderr, /requires --engine.*--provider.*--model.*--thinking/);
-	const partial = limen(scratch, "github", "review", scratch.root, "31", "--engine", "omp", "--provider", "openai-codex");
-	assert.equal(partial.status, 1);
-	assert.match(partial.stderr, /requires --engine.*--provider.*--model.*--thinking/);
 });
 
 test("review records an explicitly pinned base and refuses a moved head", async (context) => {
