@@ -39,7 +39,7 @@ PEM_SOURCE=/root/limen-app.pem     # root-only file; never in a worker home
 7. Do not push, and do not merge into `main`, in any repository. Only the human does that, after the human says "land".
 8. Never run `limen github poll`. Never enable `limen-github.timer` while `limen github doctor` shows a `FIX` other than the timer row.
 
-HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.1, and Limen ([setup](../setup.md)). Limen runs on the Mac and, from phase 4 on, on the seat too. The laptop has three key pairs, one per path in `ADMIN_KEY`, `BREAK_GLASS_KEY`, and `WORKER_KEY`; to make a missing pair, the HUMAN runs `ssh-keygen -t ed25519 -f <path>`. The phone has Tailscale and Moshi (or the ntfy app). Check: mac$ `herdr --version` prints `herdr 0.9.1`; `command -v limen` prints a path; `ls $ADMIN_KEY $ADMIN_KEY.pub $BREAK_GLASS_KEY $BREAK_GLASS_KEY.pub $WORKER_KEY $WORKER_KEY.pub` lists six files. STOP if not.
+HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.1, and Limen ([setup](../setup.md)). Limen runs on the Mac and, from phase 4 on, on the seat too. The laptop has three different key pairs, each a private key file and a matching `.pub` file, at the paths in `ADMIN_KEY`, `BREAK_GLASS_KEY`, and `WORKER_KEY`. To make a missing pair, the HUMAN runs `ssh-keygen -t ed25519 -f <path>`. The phone has Tailscale and Moshi (or the ntfy app). Check: mac$ `herdr --version` prints `herdr 0.9.1`; `command -v limen` prints a path; `ssh-keygen -lf $ADMIN_KEY.pub; ssh-keygen -lf $BREAK_GLASS_KEY.pub; ssh-keygen -lf $WORKER_KEY.pub` prints three different `SHA256:` fingerprints; `test -f $ADMIN_KEY && test -f $BREAK_GLASS_KEY && test -f $WORKER_KEY` exits 0. STOP if not.
 
 ## 1 · CPU, box, and break-glass SSH
 
@@ -162,7 +162,7 @@ systemctl daemon-reload && systemctl enable --now limen-prune.timer && systemctl
 - Prove later, not a gate: the Moshi phone ring. Ask the human if the phone rang, and write the answer in your report. A silent phone does not stop setup. Jobs start with `--no-extensions` (`src/runtime/engine.ts:136`), so only the coordinator's turn after the completion wake can ring Moshi.
 - Check (lock-down end state): mac$ `ssh $ADMIN_SSH 'echo ${SSH_CONNECTION%% *}'` prints a `100.` or `fd7a:115c:a1e0:` address; `ssh -o HostName=$PUBLIC_IP $ADMIN_SSH true` and `ssh -o IdentitiesOnly=yes -i $WORKER_KEY $WORKER@$PUBLIC_IP true` both exit 255 with `Permission denied (publickey)`; `ssh $BREAK_GLASS_SSH true` exits 0, so break-glass still works. STOP if any differs.
 
-The seat is ready after this phase. Phases 11–14 add the opt-in GitHub doorbell: a PR or issue comment with `@limen` or `/limen` from a writer wakes the coordinator.
+The seat is ready after this phase. HUMAN: decide whether this project uses the opt-in GitHub doorbell (phases 11–14): a PR or issue comment with `@limen` or `/limen` from a writer wakes the coordinator. If not, setup ends here.
 
 ## 11 · GitHub App (HUMAN)
 
@@ -188,15 +188,13 @@ WORKER=$WORKER APP_ID=$APP_ID PEM_SOURCE=$PEM_SOURCE LIMEN_REPO=$LIMEN_REPO LIME
 
 ## 13 · Doctor, then the timer
 
-- worker$ `cd $PROJECT_DIR && limen github doctor`
-- Check: exit 1 is expected here. The only `FIX` line starts `FIX enabled active GitHub timer`; stderr ends with `github doctor: 1 prerequisite need repair`; `SKIP` lines are fine. STOP on any other `FIX`. Doctor also checks every other project bound on this seat; a closed coordinator there is a `FIX` too.
+- Check: worker$ `cd $PROJECT_DIR && limen github doctor` exits 1; this is expected here. The only `FIX` line starts `FIX enabled active GitHub timer`; stderr ends with `github doctor: 1 prerequisite need repair`; `SKIP` lines are fine. STOP on any other `FIX`. Doctor also checks every other project bound on this seat; a closed coordinator there is a `FIX` too.
 - root$ `systemctl enable --now limen-github.timer`
 - Check: root$ `systemctl is-enabled limen-github.timer` is `enabled`; `systemctl is-active limen-github.timer` is `active`. STOP if not.
 
 ## 14 · Doctor again and live trial
 
-- worker$ `cd $PROJECT_DIR && limen github doctor && limen github status`
-- Check: exit 0, no `FIX`, and status prints `$PROJECT_REPO → Herdr <pane id>`. If not: root$ `systemctl disable --now limen-github.timer`, then STOP.
+- Check: worker$ `cd $PROJECT_DIR && limen github doctor && limen github status` exits 0, doctor prints no `FIX`, and status prints `$PROJECT_REPO → Herdr <pane id>`. If not: root$ `systemctl disable --now limen-github.timer`, then STOP.
 - HUMAN: on an open PR in `PROJECT_REPO`, in the **Conversation** tab (not a review or a line comment), comment `@limen please review this PR`. If no PR is open, the HUMAN opens one first.
 - Check: in about two minutes the coordinator pane gets the request; worker$ `cd $PROJECT_DIR && limen github status` names that PR; root$ `journalctl -u limen-github.service -n 50 --no-pager` shows no error. If not: root$ `systemctl disable --now limen-github.timer`, then STOP.
 
