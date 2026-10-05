@@ -2,7 +2,7 @@
 
 **Verdict:** the integration build at lead tip `3728b60` passes this review at 1440, 1240, and 900 px wide. Every finding below was filed to its owner, and every owner took it. No Team 6 finding is open.
 
-The checked file is `/tmp/f780-lead/build/map.html`, byte-identical to a strict build of `3728b60` from this worktree. Checks were headless Chromium (Playwright) only, never the hidden screen. Contrast ratios are WCAG 2.x, against the effective background with ancestor opacity applied. Scripts: `/tmp/f780-team-6/` (`shoot.mjs`, `audit.mjs`, `fit.mjs`, `spacing.mjs`, `layers-live.mjs`, `shift.mjs`, `atlasfit.mjs`). Shots: `group/shots/team-6/`.
+The checked file is `/tmp/f780-lead/build/map.html`, byte-identical to a strict build of `3728b60` from this worktree. Team 3's final `855c92d` and lead tip `5d1f1f6` differ from `3728b60` only in shots, result notes, and `templates/communication.md`, so the verdict holds for them. Checks were headless Chromium (Playwright) only, never the hidden screen. Contrast ratios are WCAG 2.x, against the effective background with ancestor opacity applied. Scripts: `/tmp/f780-team-6/` (`shoot.mjs`, `audit.mjs`, `fit.mjs`, `spacing.mjs`, `layers-live.mjs`, `shift.mjs`, `atlasfit.mjs`). Shots: `group/shots/team-6/`.
 
 ## Final checks on `3728b60`
 
