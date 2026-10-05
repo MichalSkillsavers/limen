@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";
 export type GitWorktree = { readonly path: string; readonly branch?: string; readonly detached: boolean };
 type GitResult = { readonly stdout: string; readonly stderr: string; readonly status: number };
@@ -97,7 +97,36 @@ export function commitHasFile(cwd: string, commit: string, path: string): boolea
 	return git(cwd, ["cat-file", "-t", `${commit}:${path}`]).stdout.trim() === "blob";
 }
 export function listWorktrees(cwd: string): readonly GitWorktree[] {
-	const fields = requireGit(cwd, ["worktree", "list", "--porcelain", "-z"]).stdout.split("\0");
+	const result = git(cwd, ["worktree", "list", "--porcelain", "-z"]);
+	let fields: string[];
+	if (result.status === 0) fields = result.stdout.split("\0");
+	else {
+		if (result.status !== 129 || !/unknown (?:switch|option) [`']z'/.test(result.stderr))
+			throw new Error(result.stderr.trim() || result.stdout.trim() || "git worktree list failed");
+		const output = requireGit(cwd, ["worktree", "list", "--porcelain"]).stdout;
+		// Legacy output leaves paths unescaped. Validate every identity against the
+		// registry too: a newline path can forge records even if its admin entry vanished.
+		const common = requireGit(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).stdout.slice(0, -1);
+		const admin = resolve(common, "worktrees");
+		const linked = existsSync(admin)
+			? readdirSync(admin).map((name) => {
+					const gitdir = readFileSync(resolve(admin, name, "gitdir"), "utf8");
+					if (!gitdir.endsWith("/.git\n")) throw new Error("old Git returned ambiguous worktree registry metadata");
+					return gitdir.slice(0, -6);
+				})
+			: [];
+		if (common.includes("\n") || linked.some((path) => path.includes("\n")))
+			throw new Error("old Git cannot safely list worktrees with newline paths; use Git with worktree list -z support");
+		const registered = new Set([basename(common) === ".git" ? dirname(common) : common, ...linked]);
+		if (!output.endsWith("\n\n")) throw new Error("old Git returned incomplete worktree output; use Git with worktree list -z support");
+		for (const record of output.split("\n\n").filter(Boolean)) {
+			if (!/^worktree \/[^\n]*\n(?:bare|HEAD [0-9a-f]+\n(?:branch refs\/heads\/[^\n]+|detached))(?:\n(?:locked|prunable)(?: [^\n]*)?)*\n?$/.test(record))
+				throw new Error("old Git returned ambiguous worktree output; use Git with worktree list -z support");
+			if (!registered.delete(record.slice(9, record.indexOf("\n")))) throw new Error("old Git worktree registry changed or returned ambiguous paths; retry listing");
+		}
+		if (registered.size) throw new Error("old Git worktree registry changed; retry listing");
+		fields = output.split("\n");
+	}
 	const worktrees: GitWorktree[] = [];
 	let path: string | undefined;
 	let branch: string | undefined;
