@@ -28,13 +28,14 @@ An ordinary ticket is about three hundred words and fits on one screen; a hard o
 - **Out of scope.** Two to four bullets naming only the nearby work someone would plausibly do by mistake.
 - **Acceptance.** Three to six bullets, each one observable behavior or check a reviewer can verify with a command or a look. Not scope restated, not "tests pass". A line holding several checks is several lines. A line a reviewer cannot cite whole is two lines.
 - **Notes.** Optional. Decisions and open questions only.
+- **Front matter.** The picture fields only, before the title: `touches`, `opened`, a dated `needs-adam` ask, a dated `wrong` problem, and `landed`. The picture contract (`templates/picture/CONTRACT.md`) defines them. They feed the owner's picture; they are not a status line.
 
 What never goes in a ticket:
 
-- A status line, date, or author tag. State lives in the lane and the board; a ticket that says ACTIVE lies the moment the folder moves.
+- A status line, date, or author tag in the body. State lives in the lane and the board; a ticket that says ACTIVE lies the moment the folder moves.
 - Tag lines or keyword badges. If a vision principle governs this feature, say so in one plain clause inside the outcome.
 - Another feature by number alone. *Consumes F373's landed vocabulary* means nothing to a stranger; *builds on the shared transcript renderer that landed earlier (F373)* does. Mention another feature only when it gates or bounds this one, and say what it is.
-- Prerequisites, delivery paths, phases, or landed / remaining markers. Progress lives in commits and the board; the end lives in `outcome.md`. A ticket is never edited to track its own progress.
+- Prerequisites, delivery paths, phases, or landed / remaining markers in the body. Progress lives in commits and the board; the end lives in `outcome.md`. A ticket body is never edited to track its own progress; only the picture front matter changes when an ask is answered, a problem is fixed, or the work lands.
 - Implementation shape, branch names, diagrams of internals, or an essay on the rationale. A diagram that is itself the decision earns four lines; everything else belongs in the worker's notes file.
 - Anything the worker will learn faster by editing than by reading.
 
