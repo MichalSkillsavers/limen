@@ -1,3 +1,8 @@
+---
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F753 · A reader can scan the README and jump to each part
 
 ## Outcome

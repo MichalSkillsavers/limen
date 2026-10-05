@@ -1,3 +1,13 @@
+---
+touches:
+  - limen.commands
+  - limen.cabinet.records
+  - limen.sessions.worker
+  - limen.integrations.herdr
+opened: 2026-09-29
+landed: 2026-10-03
+---
+
 # F740 · Teams solve one feature together without losing their different approaches
 
 ## Outcome

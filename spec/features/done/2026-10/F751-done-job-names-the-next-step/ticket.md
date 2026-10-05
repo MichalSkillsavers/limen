@@ -1,3 +1,12 @@
+---
+touches:
+  - limen.integrations.finish
+  - limen.sessions.wake
+  - limen.integrations.seat
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F751 · A done job says it is done and names the next step
 
 ## Outcome

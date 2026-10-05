@@ -1,3 +1,8 @@
+---
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F752 · The first map job starts as an interactive job
 
 ## Outcome
