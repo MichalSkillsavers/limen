@@ -222,6 +222,9 @@ The seat is ready after this phase. **HUMAN:** decide whether this project uses 
 - **HUMAN:** under the account that owns `PROJECT_REPO`: Settings → Developer settings → GitHub Apps → New GitHub App. Name: any unique name. Homepage URL: `https://github.com/$PROJECT_REPO`. Webhook: clear **Active**. Repository permissions: Metadata **Read-only**, Issues **Read & write**, Pull requests **Read-only**; all others **No access**. Where can this GitHub App be installed: **Only on this account**.
 - **HUMAN:** give the agent the App ID for `APP_ID`. Generate a private key. Install the App with **Only select repositories** → `PROJECT_REPO`. One App and one key per seat.
 - If GitHub shows an **Authorize** page, its scopes come from the App permissions above. You cannot change them on that page. Click **Authorize**. To change a permission, edit the App settings.
+- **MUST: the App is installed on `PROJECT_REPO` before connect, doctor, or any `@limen` test.** Without the install, the poller fails with **HTTP 404** on `GET /repos/$PROJECT_REPO/installation`, and no `@limen` comment reaches the coordinator.
+- **Doctor green is not proof.** `limen github doctor` checks the seat, not GitHub. It can pass while the App is not installed on the repository.
+- **Check:** HUMAN · laptop, browser: `https://github.com/$PROJECT_REPO/settings/installations` lists this App. **STOP** if not: install it, as in the last step.
 - **HUMAN · laptop:** copy the key to the seat. Type the real path of the downloaded file in place of `PEM_FILE`: `ssh $ADMIN_SSH "umask 077; cat > $PEM_SOURCE" < PEM_FILE`
 - **Check:** root$ `stat -c '%U %a' $PEM_SOURCE` is `root 600`. Never read the file. **STOP** if not. Then the HUMAN deletes the laptop copy. Keep `PEM_SOURCE`: every setup run reads it.
 
@@ -250,12 +253,13 @@ WORKER=$WORKER APP_ID=$APP_ID PEM_SOURCE=$PEM_SOURCE LIMEN_REPO=$LIMEN_REPO LIME
 - If the `live registered Herdr agent` row is a `FIX`: worker$ `herdr agent get PANE` with the pane id from the connect line. The coordinator is live when the pane matches, `agent_status` is idle, working, blocked, or done, and `interactive_ready` is `true` or absent (phase 7). If the field is `false` or the status is different, the HUMAN attaches, restarts the coordinator in that pane, and runs `limen github connect` again.
 - root$ `systemctl enable --now limen-github.timer`
 - **Check:** root$ `systemctl is-enabled limen-github.timer` is `enabled`; `systemctl is-active limen-github.timer` is `active`. **STOP** if not.
+- **Check (App install, after one poll):** wait 2 minutes. root$ `journalctl -u limen-github.service --since -3min --no-pager | grep -i 'installation\|404'` prints nothing. **STOP** if it prints `HTTP 404`: the App is not installed on `PROJECT_REPO` (phase 11 MUST). Doctor can stay green here.
 
 ## 14 · Doctor again and live trial
 
 - **Check:** worker$ `cd $PROJECT_DIR && limen github doctor && limen github status` exits 0, doctor prints no `FIX`, and status prints `$PROJECT_REPO → Herdr` and the pane id. If not: root$ `systemctl disable --now limen-github.timer`, then **STOP**.
 - **HUMAN:** on an open PR in `PROJECT_REPO`, in the **Conversation** tab (not a review or a line comment), comment `@limen please review this PR`. If no PR is open, the HUMAN opens one first.
-- **Check:** in about two minutes the coordinator pane gets the request; worker$ `cd $PROJECT_DIR && limen github status` names that PR; root$ `journalctl -u limen-github.service -n 50 --no-pager` shows no error. If not: root$ `systemctl disable --now limen-github.timer`, then **STOP**.
+- **Check:** in about two minutes the coordinator pane gets the request; worker$ `cd $PROJECT_DIR && limen github status` names that PR; root$ `journalctl -u limen-github.service -n 50 --no-pager` shows no error. An `installation` **HTTP 404** means the App is not installed on `PROJECT_REPO` (phase 11 MUST). If not: root$ `systemctl disable --now limen-github.timer`, then **STOP**.
 
 ## Upgrade
 
