@@ -46,7 +46,7 @@ HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.1, and
 - HUMAN: create an Ubuntu LTS VPS, x86_64 or arm64, with 8 GB RAM, 150 GB disk or more, 2+ vCPU, and the `BREAK_GLASS_KEY` public key. Add `Host $BREAK_GLASS_SSH` to the laptop `~/.ssh/config`: `HostName $PUBLIC_IP`, `User root`, `IdentityFile $BREAK_GLASS_KEY`, `IdentitiesOnly yes`.
 - Check, before any download: mac$ `ssh -o StrictHostKeyChecking=accept-new $BREAK_GLASS_SSH uname -m` prints `x86_64` or `aarch64`. STOP on any other value. Each later download picks its file from this value. Until phase 2 ends, `root$` runs through `$BREAK_GLASS_SSH`.
 - root$ `printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' > /etc/ssh/sshd_config.d/00-limen.conf && sshd -t && systemctl reload ssh && printf 'Unattended-Upgrade::Automatic-Reboot "false";\n' > /etc/apt/apt.conf.d/51-no-auto-reboot`
-- root$ `ufw allow OpenSSH && ufw --force enable && apt-get update && apt-get install -y git gh acl mosh python3`
+- root$ `ufw allow OpenSSH && ufw --force enable && apt-get update && apt-get install -y git gh acl mosh python3` (apt checks the signed Ubuntu archive and picks the CPU type).
 - Check: root$ `sshd -T | grep -E '^(port|passwordauthentication|kbdinteractiveauthentication|permitrootlogin) '` shows `port 22`, both authentications `no`, and `permitrootlogin without-password`; `ufw status verbose` shows `Status: active`, `Default: deny (incoming)`, and only `22/tcp (OpenSSH)` rules. STOP if not.
 
 ## 2 · Tailscale and admin SSH over the tailnet
