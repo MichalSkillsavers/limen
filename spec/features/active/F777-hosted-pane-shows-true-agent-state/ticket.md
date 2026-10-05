@@ -1,3 +1,10 @@
+---
+touches:
+  - limen.runtime.engine
+  - limen.integrations.herdr
+opened: 2026-10-05
+---
+
 # F777 · A hosted job's Herdr tab shows the agent's true state
 
 ## Outcome

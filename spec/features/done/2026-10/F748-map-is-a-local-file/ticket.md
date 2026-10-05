@@ -1,3 +1,8 @@
+---
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F748 · The guides say the map is a local file, not a live feature list
 
 ## Outcome

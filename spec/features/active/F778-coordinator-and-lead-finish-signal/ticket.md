@@ -1,3 +1,7 @@
+---
+opened: 2026-10-06
+---
+
 # F778 The shepherd learns when coordinators and group leads finish, block or stall
 
 Reported by Adam, 2026-10-06 00:12, from the Alice plant (F922 and F923 work).

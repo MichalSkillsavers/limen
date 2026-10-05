@@ -1,3 +1,10 @@
+---
+touches:
+  - limen.integrations.finish
+opened: 2026-10-04
+landed: 2026-10-04
+---
+
 # F758 · A finished group step by the lead sends the finish webhook
 
 ## Outcome

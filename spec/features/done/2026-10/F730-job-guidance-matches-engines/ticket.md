@@ -1,3 +1,11 @@
+---
+touches:
+  - limen.runtime.engine
+  - limen.runtime.hosted
+opened: 2026-09-22
+landed: 2026-10-02
+---
+
 # F730 · Job guidance matches the engine and available evidence
 
 ## Outcome

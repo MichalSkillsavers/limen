@@ -1,3 +1,11 @@
+---
+touches:
+  - limen.integrations.herdr
+  - limen.runtime.hosted
+opened: 2026-09-22
+landed: 2026-10-03
+---
+
 # F728 · Hosted OMP jobs stay live when Herdr loses their classification
 
 ## Outcome

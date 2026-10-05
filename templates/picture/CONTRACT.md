@@ -50,6 +50,20 @@ An edge with a feature or journey at either end is dropped with a warning (`edge
 
 A trailing body line `owner: <name>`, alone on its line, is metadata, not prose.
 
+## Ticket front matter
+
+`spec/features/<lane>/…/ticket.md` starts with YAML between `---` lines, before its `# FNNN` heading. Use the same scalar and block-list syntax as map files. The board owns state; ticket fields supply dated work and decisions to the offline picture.
+
+| Field | Meaning |
+| --- | --- |
+| `touches` | Optional block list of exact plant or module ids from `nodes/`; do not guess a place. |
+| `opened` | Ticket creation date, `YYYY-MM-DD`. |
+| `needs-adam` + `needs-adam-on` | Optional one-line decision request and its `YYYY-MM-DD` date; use both or neither. |
+| `wrong` + `wrong-on` | Optional one-line problem and its `YYYY-MM-DD` date; use both or neither. |
+| `landed` | `YYYY-MM-DD` for a done ticket with known landing evidence. |
+
+An unknown `touches` id is `ticket.unknown-touch` (error). Invalid keys, dates, pairs, or multiline requests are `ticket.bad-field` (error). Missing front matter or `touches` on an active ticket is `ticket.no-touches` (warning). Diagnostics name the ticket path and line. `limen picture build --strict` exits 1 for errors; a missing place never becomes a guessed link. Leave `touches` out when evidence is absent and accept the warning.
+
 ## Identifiers and relations
 
 Ids are lowercase ASCII, start with a letter, and use `.` between segments of letters, digits, or `-` (no leading `-`). Unique inside one project. A rename is a new id plus removal of the old file; never keep two ids for one thing.
@@ -73,9 +87,9 @@ Present tense, active voice, one idea per sentence, under 25 words. No contracti
 
 ## `limen picture build`
 
-Deterministic and offline. Reads the dataset, writes one self-contained HTML file that works from `file://` with no network. Never calls a model. The embedded model is `architecture-map-model/2`: `project`, `nodes`, `edges`, `features` (common fields plus `touches`), `journeys` (common fields plus `steps`), and `diagnostics`; `--json` writes the same model. Diagnostics (dangling edge, unknown parent, bad id, unknown touch or step, and so on) are listed in the view and on stderr; `--strict` exits 1 on any error diagnostic, otherwise the map still renders. Each `sources` path that does not exist in the project root is a `source.missing` warning; it does not fail `--strict`. The header names the plant `revision` and, when the project's current `HEAD` differs, says the map is behind and names that commit.
+Deterministic and offline. Reads the dataset, tickets, and board; writes one self-contained HTML file that works from `file://` with no network. Never calls a model. The embedded `architecture-map-model/3` keeps the map fields `project`, `nodes`, `edges`, `features` (common fields plus `touches`), `journeys` (common fields plus `steps`), and `diagnostics`. It adds `work` (ticket and board facts), `pins` (dated Changed, Wrong, Needs Adam items), and `days` (dated ticket events); `--json` writes the same model. Diagnostics (dangling edge, unknown parent, bad id, unknown touch or step, and ticket errors) are listed in the view and on stderr; `--strict` exits 1 on any error diagnostic, otherwise the map still renders. Each `sources` path that does not exist in the project root is a `source.missing` warning; it does not fail `--strict`. The header names the plant `revision` and, when the project's current `HEAD` differs, says the map is behind and names that commit.
 
-The view opens on the whole plant, with top-level places and edges lifted between them. Explore lists Features, Journeys, and Places beside the map. Search matches their ids, titles, summaries, and cited source paths. Selecting a feature or journey opens their shared level and reveals the places named in `touches` or `steps`, across collapsed boundaries. Only those places light; nested places retain parent captions. Collapsed containers show that they contain listed places; that hint is not a touch highlight. Each place shows its body, sources, edges, and the features and journeys that name it. Journey navigation preserves ordered steps, repeated visits, and steps at the plant. Place links use `#<id>`; the URL also preserves selected feature, journey, and step context for reload and browser Back. Partial and stub places look incomplete. Features and journeys remain overlays, never blocks or edges.
+The view opens on the whole plant, with its atlas beside a quiet reading column for work and dated decisions. Changed comes from known `landed` dates; Wrong and Needs Adam come from paired ticket fields. Selecting a feature or journey reveals only its named places; collapsed containers indicate where listed places sit without lighting as touches. Each place shows its body, sources, connections, and the features and journeys that name it. Journey steps keep their order and repeats. Routes such as `#plant`, `#work/f780`, `#place/<id>`, and `#day/<date>` preserve the selected item on reload. A layer opened inside another appends a `~<kind>/<id>` segment; browser Back or Esc closes one layer and a shared link restores the stack. Partial and stub places look incomplete. Map features and journeys remain overlays, never blocks or edges.
 
 ## `limen picture tick`
 

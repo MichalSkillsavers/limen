@@ -1,3 +1,14 @@
+---
+touches:
+  - limen.commands
+  - limen.picture.watch
+  - limen.picture.tick
+  - limen.picture.build
+  - limen.picture.viewer
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F743 · A local architecture map stays current without a model call per land
 
 ## Outcome
