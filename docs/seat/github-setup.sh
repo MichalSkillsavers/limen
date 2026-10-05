@@ -22,8 +22,8 @@ if id -nG "$WORKER" | tr ' ' '\n' | grep -Eq '^(sudo|wheel|admin)$' || sudo -n -
   exit 1
 fi
 
-# Existing timers must not run while an interpreter is unsafe or being replaced.
-systemctl stop limen-github.timer 2>/dev/null || true
+# Disable boot activation too: a reboot must not poll before doctor passes.
+systemctl disable --now limen-github.timer 2>/dev/null || true
 systemctl stop limen-github.service 2>/dev/null || true
 root_path() {
   local path parent mode
@@ -41,7 +41,10 @@ root_path() {
   done
 }
 for source in "$NODE_SOURCE" "$HERDR_SOURCE"; do
-  [[ $source == /* && ! -L $source ]] && root_path "$source" || { echo 'binary source and every parent must be root-owned, not writable by workers' >&2; exit 1; }
+  if [[ $source != /* || -L $source ]] || ! root_path "$source"; then
+    echo 'binary source and every parent must be root-owned, not writable by workers' >&2
+    exit 1
+  fi
 done
 [[ $(realpath "$NODE_SOURCE") != /usr/bin/node && $(realpath "$HERDR_SOURCE") != /usr/local/bin/herdr ]] || { echo 'use independent trusted source paths, not the installation destinations' >&2; exit 1; }
 install -d -o root -g root -m 0755 /usr/local /usr/local/bin
@@ -64,7 +67,10 @@ if [[ ! -d /opt/limen/.git ]]; then
 fi
 [[ $(stat -c %u /opt/limen) == 0 ]] || { echo '/opt/limen must be root-owned' >&2; exit 1; }
 git -C /opt/limen remote set-url origin "$LIMEN_REPO"
-git -C /opt/limen diff --quiet && git -C /opt/limen diff --cached --quiet || { echo 'refusing dirty release' >&2; exit 1; }
+if ! git -C /opt/limen diff --quiet || ! git -C /opt/limen diff --cached --quiet; then
+  echo 'refusing dirty release' >&2
+  exit 1
+fi
 git -C /opt/limen fetch origin "$LIMEN_REV"
 git -C /opt/limen checkout --detach "$LIMEN_REV"
 chown -R root:root /opt/limen
@@ -73,7 +79,10 @@ chmod -R go-w /opt/limen
 ln -sfnT /opt/limen/bin/limen /usr/local/bin/limen
 install -d -o root -g limen-github -m 0750 /etc/limen-github
 install -d -o limen-github -g limen-github -m 0700 /var/lib/limen-github/state
-[[ -f $PEM_SOURCE && ! -L $PEM_SOURCE ]] && root_path "$PEM_SOURCE" || { echo 'PEM source and every parent must be root-owned, not writable by workers' >&2; exit 1; }
+if [[ ! -f $PEM_SOURCE || -L $PEM_SOURCE ]] || ! root_path "$PEM_SOURCE"; then
+  echo 'PEM source and every parent must be root-owned, not writable by workers' >&2
+  exit 1
+fi
 install -o limen-github -g limen-github -m 0600 "$PEM_SOURCE" /etc/limen-github/app.pem
 registry="$worker_home/.limen/projects"
 [[ -f $registry ]] || { echo "run limen init in each project before setup; missing $registry" >&2; exit 1; }
@@ -108,4 +117,4 @@ install -o root -g root -m 0644 "$(dirname "$0")/limen-github.timer" /etc/system
 systemctl daemon-reload
 runuser -u limen-github -- test -r /etc/limen-github/app.pem
 # Do not start a polling pass here: connect/doctor and binary ownership must be checked first.
-echo 'Setup installed with timer stopped. Re-login as worker, run limen github doctor; repair every finding except the stopped timer, then enable the timer and rerun doctor.'
+echo 'Setup installed with timer disabled and stopped. Re-login as worker, run limen github doctor; repair every finding except the disabled timer, then enable the timer and rerun doctor.'
