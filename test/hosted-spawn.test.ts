@@ -832,7 +832,7 @@ test("hosted start does not restore focus over a human tab change", async (conte
 	await waitForState(scratch.root, id, "done");
 });
 
-test("hosted supervisor follows a moved pane and finalizes when its tab closes", async (context) => {
+test("hosted supervisor refuses an unbound moved pane and finalizes when its tab closes", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
 	assert.equal(limen(scratch, "init").status, 0);
@@ -850,10 +850,10 @@ test("hosted supervisor follows a moved pane and finalizes when its tab closes",
 	state.tabs["w2:t9"] = { pane: "w2:p9" };
 	delete state.tabs["w1:t1"];
 	await writeFile(statePath, JSON.stringify(state));
-	await waitForFile(join(job, "herdr/agent"), /w2:p9/);
-	// The supervisor writes herdr/agent, then herdr/pane.
-	await waitForFile(join(job, "herdr/pane"), /w2:p9/);
-	assert.equal(await readFile(join(job, "herdr/pane"), "utf8"), "w2:p9\n");
+	await waitForFile(join(job, "ownership-uncertainty"), /"root":true/);
+	await new Promise((resolve) => setTimeout(resolve, 1_500));
+	assert.equal(await readFile(join(job, "herdr/agent"), "utf8"), "w1:p1\n");
+	assert.equal(await readFile(join(job, "herdr/pane"), "utf8"), "w1:p1\n");
 	assert.equal(await readFile(join(job, "state"), "utf8"), "running\n");
 	execFileSync(process.execPath, [herdr.bin, "tab", "close", "w2:t9"], { env: { ...process.env, ...env } });
 	await waitForState(scratch.root, id, "done");

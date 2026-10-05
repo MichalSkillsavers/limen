@@ -126,11 +126,15 @@ Limen then does these steps:
 | Time | 90 minutes (change it with `--timeout 20m`) | None |
 | Tool-start events | 900 (`LIMEN_MAX_TOOL_CALLS`) | None |
 
-**Stalled tools.** In both modes, Limen fails a pending tool only in one case: an owned child process stays silent, and its process tree uses no new CPU time for three minutes. `LIMEN_TOOL_STALL_MS` changes that confirmation time. If the engine identity or the process snapshot is not certain, Limen records an advisory. It does not stop the process, because the process is possibly not part of the job.
+**Stalled tools.** Detached jobs retain the three-minute CPU-idle tool containment rule; `LIMEN_TOOL_STALL_MS` changes that confirmation time. Hosted observation never signals an engine or its children: a quiet external wait is not proof of a stuck tool. Explicit stops and configured group deadlines still apply.
+
+**Hosted ownership.** On Linux, the Pi hook binds the controlled launch, canonical job/session, initial pane, shell parent identity, engine PID/birth and boot ID in exclusive records. Ownership requires the saved process identity and fresh exact-PID foreground membership in the current verified pane, not visible launch arguments. Reload preserves the binding and is not completion; a foreign session, legacy PID-only record, unavailable query or unverified relocation stays unowned. OMP and Darwin attribution are not established and remain fail-closed.
+
+**Ownership uncertainty.** `limen jobs` shows a durable ownership observation warning, below real blocked/errored/idle advisories. After one minute, each subscribed recipient can receive one confirmed wake for that standing condition, with at most two unsuccessful attempts shared by its recipients. The warning waits for an idle recipient; it never queues running text as a follow-up. Tool/think changes and supervisor recovery retain the original timestamp and receipts. Only demonstrated recovery rearms it; engine recovery alone cannot clear an unavailable child observation. Real failures and completion use separate allowances. Terminal state retires the condition. A warning already queued by an older version cannot be retracted by this change.
 
 ### Seat notifications
 
-`limen sweep` scans registered projects for terminal jobs that nobody heard and for hosted-stall advisories. Each event gets one seat notification, also across restarts and concurrent sweeps. Old timestamp receipts stay valid. When an advisory clears and a new one starts, the new one can send a notification again.
+`limen sweep` scans registered projects for terminal jobs that nobody heard, hosted-stall advisories and persistent ownership uncertainty. Changes to an unresolved uncertainty diagnostic keep the same seat receipt and do not ring again. Each event gets one seat notification, also across restarts and concurrent sweeps. Old timestamp receipts stay valid. When an advisory clears and a new one starts, the new one can send a notification again.
 
 The sweep records `notify/seat` before it sends. So if a notification fails in an unclear way, the sweep logs an error and does not send that event again automatically. Seat receipts do not use up coordinator wakes or finish webhooks.
 

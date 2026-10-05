@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { hostedAgentName } from "../commands/spawn.ts";
-import { hostedAgentStatus, locateHostedAgent } from "../integrations/herdr.ts";
+import { hostedAgentStatus, hostedBindingInPane, locateHostedAgent } from "../integrations/herdr.ts";
 import { atomicWrite, textFile } from "../job/record.ts";
 import { processAlive, processInfo } from "./contain.ts";
 import { jobProfile } from "./engine.ts";
+import { hostedIdentityObservation, readHostedBinding } from "./hosted-binding.ts";
 import { ownerAlive } from "./reap.ts";
 import { launchHostedSupervisor } from "./wrapper.ts";
 
@@ -56,7 +57,16 @@ export async function recoveryTarget(jobDir: string): Promise<string | "missing"
 	const status = hostedAgentStatus(target, true);
 	if (status === "unknown") return "unknown";
 	if (status !== "missing") return target;
-	const located = locateHostedAgent(target, (await jobProfile(jobDir)).id, name, true);
+	const engine = (await jobProfile(jobDir)).id;
+	const located = locateHostedAgent(target, engine, name, true);
+	if (located && located !== "unknown" && located !== target) {
+		const binding = readHostedBinding(jobDir);
+		if (!binding || (await hostedBindingInPane(located, binding.pid, engine, jobDir)) !== "owned") return "unknown";
+	}
+	if (!located) {
+		const binding = readHostedBinding(jobDir);
+		if (binding && (await hostedIdentityObservation(binding)) !== "mismatch") return "unknown";
+	}
 	return located ?? "missing";
 }
 

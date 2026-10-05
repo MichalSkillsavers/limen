@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { installSeatSweep, showSeatNotification, uninstallSeatSweep, updateRegisteredProjects } from "../project/seat.ts";
+import { HOSTED_UNCERTAINTY_MS, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
 
 const text = (path: string) => (fs.existsSync(path) ? fs.readFileSync(path, "utf8").trim() : "");
@@ -33,18 +34,21 @@ async function sweepProject(root: string): Promise<void> {
 			state = text(statePath);
 		const delivered = fs.existsSync(join(job, "notify", "delivered")) ? fs.readdirSync(join(job, "notify", "delivered")) : [];
 		const advisory = state === "running",
-			stamp = advisory ? join(job, "advisory") : join(job, "finished-at");
+			uncertainty = advisory && !text(join(job, "advisory")) ? readHostedUncertainty(job) : undefined,
+			family = uncertainty ? "_uncertainty" : "_advisory",
+			stamp = advisory ? join(job, uncertainty ? "ownership-uncertainty" : "advisory") : join(job, "finished-at");
+		if (uncertainty && Date.now() - uncertainty.since < HOSTED_UNCERTAINTY_MS) continue;
 		const unheard = advisory
-			? !delivered.some((name) => name.startsWith("_advisory."))
-			: ["done", "failed", "stopped"].includes(state) && !delivered.some((name) => !name.startsWith("_advisory."));
+			? !delivered.some((name) => name.startsWith(`${family}.`))
+			: ["done", "failed", "stopped"].includes(state) && !delivered.some((name) => !name.startsWith("_advisory.") && !name.startsWith("_uncertainty."));
 		if (!unheard) continue;
 		const advisoryStamp = advisory ? metadata(stamp) : undefined;
 		if (advisory && !advisoryStamp) continue;
-		const since = advisoryStamp ? advisoryStamp.mtimeMs : Math.max(modified(stamp), modified(statePath));
+		const since = uncertainty?.since ?? (advisoryStamp ? advisoryStamp.mtimeMs : Math.max(modified(stamp), modified(statePath)));
 		if (!since || Date.now() - since < threshold) continue;
 		const seat = join(job, "notify", "seat"),
 			markers = fs.existsSync(seat) ? fs.readdirSync(seat) : [],
-			event = advisoryStamp ? `_advisory.${since}.${advisoryStamp.birthtimeMs}` : `_terminal.${state}.${since}`;
+			event = uncertainty ? `_uncertainty.${since}` : advisoryStamp ? `_advisory.${since}.${advisoryStamp.birthtimeMs}` : `_terminal.${state}.${since}`;
 		if (markers.some((name) => name === event || (/^\d+$/.test(name) && Number(name) >= since))) continue;
 		// Claim before transport: a concurrent sweep or ambiguous failure must not replay this event.
 		fs.mkdirSync(seat, { recursive: true });

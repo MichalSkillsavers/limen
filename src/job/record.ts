@@ -38,6 +38,7 @@ export async function finalizeJob(jobDir: string, state: "done" | "failed" | "st
 	const inbox = await readdir(`${jobDir}/steer/inbox`).catch(() => []);
 	await appendLimenLog(jobDir, inbox.length ? `${state}: ${detail}; ${inbox.length} steer(s) never delivered` : `${state}: ${detail}`).catch(() => {});
 	await atomicWrite(`${jobDir}/state`, `${state}\n`);
+	await rm(`${jobDir}/ownership-uncertainty`, { force: true });
 	const group = await textFile(`${jobDir}/group`);
 	if (group) {
 		const membership = await jobMembership(jobDir);
