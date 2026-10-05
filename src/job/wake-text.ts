@@ -58,8 +58,8 @@ export function completionWake(job: string, label: string, state: string, id: st
 export type LeadFallback = { readonly group: string; readonly feature: string; readonly lead: string; readonly team: string; readonly finished: number; readonly total: number };
 /** A team coordinator's finish for a lead whose group hook is not running: the group events that normally carry it cannot reach the pane. */
 export function groupLeadWake(job: string, label: string, state: string, id: string, branch: string, fallback: LeadFallback): string {
-	const task = firstSentence(text(join(job, "task.md")));
-	const lead = `${task ? `Limen job ${JSON.stringify(label)}: ${task}\nis` : `Limen job ${JSON.stringify(label)} is`} ${state} (${id}) on branch ${branch}. It is the ${fallback.team} coordinator of group ${fallback.group} for ${fallback.feature}.`;
+	// A member's task opens with the shared group contract, not its own aim; the team and the group name it instead.
+	const lead = `Limen job ${JSON.stringify(label)} is ${state} (${id}) on branch ${branch}. It is the ${fallback.team} coordinator of group ${fallback.group} for ${fallback.feature}.`;
 	const facts = `${fallback.finished} of ${fallback.total} team coordinators are finished. This wake comes through Herdr because the lead group hook (hook/group-peer.ts) is not running for lead session ${fallback.lead}, so group events do not reach this pane.`;
 	const instruction = `Run \`limen group status ${fallback.group}\` and read this team's result. When every team is finished, write the synthesis. To receive group events again, reload this pane with the Limen package hooks, including hook/group-peer.ts, and resume lead session ${fallback.lead}. Do not write .limen/group-leads by hand. Keep the user informed; ask only when a genuine product decision needs them.`;
 	return joinWake(lead, handoffExcerpt(job), facts, instruction);

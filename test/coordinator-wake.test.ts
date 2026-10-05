@@ -282,8 +282,10 @@ test("a team coordinator's finish wakes the lead pane through Herdr when the lea
 	const [sent] = await prompts(scratch);
 	assert.equal(sent?.[2], "w1:p7");
 	const text = sent?.[3] ?? "";
-	assert.match(text, /^Limen job "team-1 coordinator": Pursue the team-1 approach\.\nis done \(team-1-coordinator\)/);
-	assert.match(text, /team-1 coordinator of group group-1 for spec\/features\/active\/F001-example/);
+	assert.match(
+		text,
+		/^Limen job "team-1 coordinator" is done \(team-1-coordinator\) on branch limen\/team-1-coordinator\. It is the team-1 coordinator of group group-1 for spec\/features\/active\/F001-example\./,
+	);
 	assert.match(text, /Final message:\nteam-1 found the cause/);
 	assert.match(text, /1 of 2 team coordinators are finished/);
 	assert.match(text, new RegExp(`limen group status ${run.id}`));
