@@ -8,9 +8,10 @@
 # Ask the human for these values once, at the start.
 SEAT_NAME=        # Tailscale machine name, e.g. shop-seat
 PUBLIC_IP=        # VPS public IPv4; break-glass SSH only
-ROOT_KEY=         # laptop private key for root, e.g. ~/.ssh/shop-seat-root
+ADMIN_KEY=        # laptop private key for root over Tailscale (daily admin), e.g. ~/.ssh/shop-seat-admin
+BREAK_GLASS_KEY=  # a different laptop private key for root over PUBLIC_IP, e.g. ~/.ssh/shop-seat-glass
 WORKER=           # Unix user for the coordinator and all jobs; never sudo
-WORKER_KEY=       # a different laptop private key for WORKER, e.g. ~/.ssh/shop-seat-worker
+WORKER_KEY=       # a third laptop private key, for WORKER, e.g. ~/.ssh/shop-seat-worker
 PROJECT_REPO=     # OWNER/REPO on github.com
 PROJECT_BRANCH=   # an existing work branch, not only the default branch
 LIMEN_REV=        # 40-hex Limen commit on main that contains this file; the human picks it
@@ -25,8 +26,6 @@ ADMIN_SSH=$SEAT_NAME-root          # laptop alias: root over Tailscale
 BREAK_GLASS_SSH=$SEAT_NAME-public  # laptop alias: root over PUBLIC_IP
 LIMEN_REPO=https://github.com/overment/limen.git
 PEM_SOURCE=/root/limen-app.pem     # root-only file; never in a worker home
-NODE_SOURCE=/root/install/node     # phase 4 creates it
-HERDR_SOURCE=/root/install/herdr   # phase 4 creates it
 ```
 
 ## Rules for the agent
@@ -35,64 +34,72 @@ HERDR_SOURCE=/root/install/herdr   # phase 4 creates it
 2. At a HUMAN step, say what the human must do, then wait until the human says it is done. Then run the Check.
 3. Run every Check. A Check states the expected result; some expected results are a non-zero exit. If the result differs, STOP: show the command and its output, and ask the human. Do not invent a repair. `ExperimentalWarning` lines on stderr are not failures.
 4. Before you send a command, replace each `$NAME` from the fill-in block with its value. Lower-case variables, such as `$node_arch`, belong to the block; leave them. `root$` runs `ssh $ADMIN_SSH bash -ls <<'EOF'`, then `set -euo pipefail`, the commands, and `EOF`, so a failed line stops the block. `worker$` runs the same through `ssh $SEAT_HOST`. Run each Check in its own call without `set -e`. Each call starts in the home directory. `mac$` is the laptop. `pane$` is the seat coordinator pane in Herdr; the HUMAN types there.
-5. Public inbound: SSH only, for break-glass. Tailnet inbound: allowed. No unattended reboot, no `tailscale funnel`, no Docker `-p` without `127.0.0.1:`.
+5. Public inbound: port 22 only, for break-glass SSH with `BREAK_GLASS_KEY`. Admin and worker SSH run over the tailnet only. Tailnet inbound: allowed. Never run `tailscale up --ssh` (this guide uses OpenSSH keys on the tailnet), `tailscale funnel`, an unattended reboot, or Docker `-p` without `127.0.0.1:`.
 6. Run `limen init` only in `PROJECT_DIR`. Never run it in a tool folder such as `~/.nvm`.
 7. Do not push, and do not merge into `main`, in any repository. Only the human does that, after the human says "land".
 8. Never run `limen github poll`. Never enable `limen-github.timer` while `limen github doctor` shows a `FIX` other than the timer row.
 
-HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.1, and Limen ([setup](../setup.md)). Limen is installed on the Mac and on the seat. The phone has Tailscale and Moshi (or the ntfy app). Check: mac$ `herdr --version` prints `herdr 0.9.1`; `command -v limen` prints a path. STOP if not.
+HUMAN, before phase 1: the laptop has `ssh`, `curl`, Tailscale, Herdr 0.9.1, and Limen ([setup](../setup.md)). Limen runs on the Mac and, from phase 4 on, on the seat too. The laptop has three key pairs, one per path in `ADMIN_KEY`, `BREAK_GLASS_KEY`, and `WORKER_KEY`; to make a missing pair, the HUMAN runs `ssh-keygen -t ed25519 -f <path>`. The phone has Tailscale and Moshi (or the ntfy app). Check: mac$ `herdr --version` prints `herdr 0.9.1`; `command -v limen` prints a path; `ls $ADMIN_KEY $ADMIN_KEY.pub $BREAK_GLASS_KEY $BREAK_GLASS_KEY.pub $WORKER_KEY $WORKER_KEY.pub` lists six files. STOP if not.
 
 ## 1 · CPU, box, and break-glass SSH
 
-- HUMAN: create an Ubuntu LTS VPS, x86_64 or arm64, with 8 GB RAM, 150 GB disk or more, 2+ vCPU, and the `ROOT_KEY` public key. Add `Host $BREAK_GLASS_SSH` to the laptop `~/.ssh/config`: `HostName $PUBLIC_IP`, `User root`, `IdentityFile $ROOT_KEY`, `IdentitiesOnly yes`.
+- HUMAN: create an Ubuntu LTS VPS, x86_64 or arm64, with 8 GB RAM, 150 GB disk or more, 2+ vCPU, and the `BREAK_GLASS_KEY` public key. Add `Host $BREAK_GLASS_SSH` to the laptop `~/.ssh/config`: `HostName $PUBLIC_IP`, `User root`, `IdentityFile $BREAK_GLASS_KEY`, `IdentitiesOnly yes`.
 - Check, before any download: mac$ `ssh -o StrictHostKeyChecking=accept-new $BREAK_GLASS_SSH uname -m` prints `x86_64` or `aarch64`. STOP on any other value. Each later download picks its file from this value. Until phase 2 ends, `root$` runs through `$BREAK_GLASS_SSH`.
 - root$ `printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' > /etc/ssh/sshd_config.d/00-limen.conf && sshd -t && systemctl reload ssh && printf 'Unattended-Upgrade::Automatic-Reboot "false";\n' > /etc/apt/apt.conf.d/51-no-auto-reboot`
 - root$ `ufw allow OpenSSH && ufw --force enable && apt-get update && apt-get install -y git gh acl mosh python3`
-- Check: root$ `sshd -T | grep -E '^(port|passwordauthentication|kbdinteractiveauthentication|permitrootlogin) '` shows `port 22`, both authentications `no`, and `permitrootlogin` `without-password` or `prohibit-password`; `ufw status` shows `Status: active` and only `OpenSSH` rules. STOP if not.
+- Check: root$ `sshd -T | grep -E '^(port|passwordauthentication|kbdinteractiveauthentication|permitrootlogin) '` shows `port 22`, both authentications `no`, and `permitrootlogin without-password`; `ufw status verbose` shows `Status: active`, `Default: deny (incoming)`, and only `22/tcp (OpenSSH)` rules. STOP if not.
 
 ## 2 · Tailscale and admin SSH over the tailnet
 
 - root$ `curl -fsSL https://tailscale.com/install.sh | sh && tailscale up --hostname=$SEAT_NAME && ufw allow in on tailscale0` (the script adds the signed Tailscale apt repository; apt picks the CPU type).
 - HUMAN: open the URL that `tailscale up` prints while it waits, and approve the node.
 - root$ `tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'`. Write the output into `SEAT_HOST`.
-- HUMAN: add two hosts to the laptop `~/.ssh/config`. `Host $ADMIN_SSH`: `HostName $SEAT_HOST`, `User root`, `IdentityFile $ROOT_KEY`, `IdentitiesOnly yes`. `Host $SEAT_HOST`: `User $WORKER`, `IdentityFile $WORKER_KEY`, `IdentitiesOnly yes`.
-- Check: mac$ `ssh -o StrictHostKeyChecking=accept-new $ADMIN_SSH 'echo $SSH_CONNECTION'` prints a first field that starts with `100.` or `fd7a:115c:a1e0:` (a tailnet address); root$ `tailscale status` lists the laptop and the phone. STOP if not.
+- mac$ `{ printf 'from="100.64.0.0/10,fd7a:115c:a1e0::/48" '; cat $ADMIN_KEY.pub; } | ssh $BREAK_GLASS_SSH 'cat >> /root/.ssh/authorized_keys'`. With the `from=` prefix, sshd accepts `ADMIN_KEY` only from tailnet addresses ([100.x](https://tailscale.com/kb/1015/100.x-addresses), [IPv6](https://tailscale.com/kb/1033/ip-and-dns-addresses)).
+- HUMAN: add two hosts to the laptop `~/.ssh/config`. `Host $ADMIN_SSH`: `HostName $SEAT_HOST`, `User root`, `IdentityFile $ADMIN_KEY`, `IdentitiesOnly yes`. `Host $SEAT_HOST`: `User $WORKER`, `IdentityFile $WORKER_KEY`, `IdentitiesOnly yes`.
+- Check: mac$ `ssh -o StrictHostKeyChecking=accept-new $ADMIN_SSH 'echo ${SSH_CONNECTION%% *}'` prints an address that starts with `100.` or `fd7a:115c:a1e0:`; `ssh -o HostName=$PUBLIC_IP $ADMIN_SSH true` exits 255 with `Permission denied (publickey)`. root$ `tailscale status` lists the laptop and the phone; `ufw status verbose` shows `Default: deny (incoming)` and only `22/tcp (OpenSSH)`, `Anywhere on tailscale0`, and their `(v6)` rules. STOP if any differs.
 - From now on, `root$` runs through `$ADMIN_SSH`. Admin SSH runs over Tailscale only. `$BREAK_GLASS_SSH` is break-glass: use it only when Tailscale is down.
 
 ## 3 · Worker without sudo
 
 - root$ `adduser --disabled-password --gecos "" $WORKER && install -d -o $WORKER -g $WORKER -m 700 /home/$WORKER/.ssh && loginctl enable-linger $WORKER`
 - mac$ `ssh $ADMIN_SSH "cat > /home/$WORKER/.ssh/authorized_keys && chown $WORKER:$WORKER /home/$WORKER/.ssh/authorized_keys && chmod 600 /home/$WORKER/.ssh/authorized_keys" < $WORKER_KEY.pub`
-- root$ `printf 'AllowUsers root %s@100.64.0.0/10 %s@fd7a:115c:a1e0::/48\n' $WORKER $WORKER >> /etc/ssh/sshd_config.d/00-limen.conf && sshd -t && systemctl reload ssh` (the worker logs in over the tailnet only; root keeps the public break-glass login).
-- Check: root$ `id -nG $WORKER` has no `sudo`, `wheel`, or `admin`; `sudo -l -U $WORKER` says `not allowed`; `grep -rl $WORKER /etc/sudoers /etc/sudoers.d` prints nothing; `loginctl show-user $WORKER -p Linger` is `Linger=yes`. mac$ `ssh -o StrictHostKeyChecking=accept-new $SEAT_HOST true` exits 0; `ssh -o BatchMode=yes -o IdentitiesOnly=yes -i $WORKER_KEY $WORKER@$PUBLIC_IP true` fails. STOP if any differs.
+- root$ `printf 'AllowUsers root %s@100.64.0.0/10 %s@fd7a:115c:a1e0::/48\n' $WORKER $WORKER >> /etc/ssh/sshd_config.d/00-limen.conf && sshd -t && systemctl reload ssh`. The worker logs in over the tailnet only, even with a key that a job adds. Root keeps the public break-glass login.
+- Check: root$ `id -nG $WORKER` has no `sudo`, `wheel`, or `admin`; `sudo -l -U $WORKER` says `not allowed`; `grep -rl $WORKER /etc/sudoers /etc/sudoers.d` prints nothing; `loginctl show-user $WORKER -p Linger` is `Linger=yes`. mac$ `ssh -o StrictHostKeyChecking=accept-new $SEAT_HOST true` exits 0; `ssh -o IdentitiesOnly=yes -i $WORKER_KEY $WORKER@$PUBLIC_IP true` exits 255 with `Permission denied (publickey)`. STOP if any differs.
 
 ## 4 · Tools
 
 - root$ one root-owned Limen release, for the worker now and the poller later. Never `npm link` a worker clone. `git clone $LIMEN_REPO /opt/limen && git -C /opt/limen checkout --detach $LIMEN_REV && chown -R root:root /opt/limen && chmod -R go-w /opt/limen && ln -sfnT /opt/limen/bin/limen /usr/local/bin/limen`
-- root$ stage and install root-owned Node 24.19.0 and Herdr 0.9.1. The `case` picks the file and checksum for this CPU.
-
+- root$ stage and install root-owned Node 24.19.0, Herdr 0.9.1, and omp 18.4.4 (the last known-good versions in [setup](../setup.md)). The `case` picks the file and checksum for this CPU. Each checksum is checked before the file runs.
 ```sh
 case $(uname -m) in
-  x86_64)  node_arch=x64   node_sha=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647 herdr_sha=2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7 ;;
-  aarch64) node_arch=arm64 node_sha=01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc herdr_sha=f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e ;;
+  x86_64)  node_arch=x64 herdr_arch=x86_64 omp_arch=x64
+           node_sha=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647
+           herdr_sha=2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7
+           omp_sha=24c830fceb0bd6884bf5bf2c7a2b7407bc23fafe655e924c695ef9be308e46f3 ;;
+  aarch64) node_arch=arm64 herdr_arch=aarch64 omp_arch=arm64
+           node_sha=01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc
+           herdr_sha=f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e
+           omp_sha=602eefddc0fd87043f8f08d8628d72592e5802c003a05f203f1ecbc63a8fdd30 ;;
   *) echo "unsupported CPU $(uname -m)" >&2; exit 1 ;;
 esac
 install -d -o root -g root -m 0700 /root/install
 curl -fsSL https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-$node_arch.tar.xz -o /root/install/node.tar.xz
 echo "$node_sha  /root/install/node.tar.xz" | sha256sum -c -
 tar -xJf /root/install/node.tar.xz -C /root/install --strip-components=2 node-v24.19.0-linux-$node_arch/bin/node
-curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.9.1/herdr-linux-$(uname -m) -o /root/install/herdr
+curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.9.1/herdr-linux-$herdr_arch -o /root/install/herdr
 echo "$herdr_sha  /root/install/herdr" | sha256sum -c -
-chown root:root /root/install/node /root/install/herdr && chmod 0755 /root/install/node /root/install/herdr
+curl -fsSL https://github.com/can1357/oh-my-pi/releases/download/v18.4.4/omp-linux-$omp_arch -o /root/install/omp
+echo "$omp_sha  /root/install/omp" | sha256sum -c -
+chown root:root /root/install/node /root/install/herdr /root/install/omp
+chmod 0755 /root/install/node /root/install/herdr /root/install/omp
 install -o root -g root -m 0755 /root/install/node /usr/bin/node
 install -o root -g root -m 0755 /root/install/node /usr/local/bin/node
 install -o root -g root -m 0755 /root/install/herdr /usr/local/bin/herdr
+install -o root -g root -m 0755 /root/install/omp /usr/local/bin/omp
 ```
-
-- Checksum sources: Node [SHASUMS256.txt](https://nodejs.org/dist/v24.19.0/SHASUMS256.txt); Herdr, the `sha256:` digest of each asset on the [v0.9.1 release](https://github.com/herdrdev/herdr/releases/tag/v0.9.1). STOP if a `sha256sum -c` line does not end in `OK`.
-- worker$ `curl -fsSL https://omp.sh/install | sh`. The installer picks `omp-linux-x64` or `omp-linux-arm64` and puts `omp` in `~/.local/bin`. It checks no checksum.
+- Checksum sources: Node [SHASUMS256.txt](https://nodejs.org/dist/v24.19.0/SHASUMS256.txt); Herdr and omp, the `sha256:` digest of each asset on the [Herdr v0.9.1](https://github.com/herdrdev/herdr/releases/tag/v0.9.1) and [omp v18.4.4](https://github.com/can1357/oh-my-pi/releases/tag/v18.4.4) release pages. STOP if a `sha256sum -c` line does not end in `OK`.
 - HUMAN: `ssh -t $SEAT_HOST`, then `gh auth login` (GitHub.com, HTTPS), `gh auth setup-git`, and `omp` to log in to the model provider.
-- Check: worker$ `node -v` is `v24.19.0`; `command -v limen` is `/usr/local/bin/limen`; `git -C /opt/limen -c safe.directory=/opt/limen rev-parse HEAD` is `LIMEN_REV`; `test -f /opt/limen/docs/seat/agent-setup.md` exits 0; `herdr --version` is `herdr 0.9.1`; `omp --version` is `omp/18.4.4` or newer; `sha256sum ~/.local/bin/omp` equals the `sha256:` digest of the same asset on `https://github.com/can1357/oh-my-pi/releases/tag/v<that version>`; `gh auth status` exits 0. STOP on any mismatch.
+- Check: worker$ `node -v` is `v24.19.0`; `command -v limen` is `/usr/local/bin/limen`; `git -C /opt/limen -c safe.directory=/opt/limen rev-parse HEAD` is `LIMEN_REV`; `test -f /opt/limen/docs/seat/agent-setup.md` exits 0; `herdr --version` is `herdr 0.9.1`; `command -v omp` is `/usr/local/bin/omp`; `omp --version` is `omp/18.4.4`; `gh auth status` exits 0. STOP on any mismatch.
 
 ## 5 · Project and `limen init`
 
@@ -100,7 +107,7 @@ install -o root -g root -m 0755 /root/install/herdr /usr/local/bin/herdr
 
 - worker$ `gh repo clone $PROJECT_REPO $PROJECT_DIR -- --branch $PROJECT_BRANCH && cd $PROJECT_DIR && test "$(git rev-parse --show-toplevel)" = $PROJECT_DIR && limen init`
 - Check: worker$ `git -C $PROJECT_DIR branch --show-current` is `PROJECT_BRANCH`; `cat ~/.limen/projects` prints `PROJECT_DIR` and no other line (on a seat with older projects: only roots that the HUMAN names); `test -d $PROJECT_DIR/.limen/jobs` exits 0. STOP if not.
-- Fix, only with HUMAN approval, for a junk line such as `/home/$WORKER/.nvm`: worker$ `grep -vFx /home/$WORKER/.nvm ~/.limen/projects > ~/.limen/projects.new; cat ~/.limen/projects.new > ~/.limen/projects; rm ~/.limen/projects.new` (`cat >` keeps the file and the poller's read ACL). With the doorbell, run `limen github doctor` again after this. A later `limen init` rewrites the list and drops that ACL (`src/project/seat.ts:19-20`); with the doorbell, run the phase 12 block again after it.
+- Fix, only with HUMAN approval, for a junk line such as `/home/$WORKER/.nvm`: worker$ `grep -vFx /home/$WORKER/.nvm ~/.limen/projects > ~/.limen/projects.new; cat ~/.limen/projects.new > ~/.limen/projects; rm ~/.limen/projects.new` (`cat >` keeps the file and the poller's read ACL). With the doorbell, run `limen github doctor` again after this. `limen init` in a new project replaces the list file and drops that ACL (`src/project/seat.ts:15-20`); with the doorbell, run the phase 12 block again after it.
 - worker$ `cd $PROJECT_DIR && git status --short`. Show it to the HUMAN: `limen init` adds `spec/`, `.agents/limen/`, `.omp/extensions/limen.ts`, `.pi/extensions/limen.ts`, and a `.gitignore` line. The HUMAN decides whether to commit them. Do not push. Jobs branch from the last commit.
 
 Each checkout where `limen init` runs is its own plant, with its own `.limen/` job files. A plant can live on the Mac, on the seat, or on both. Never copy `.limen/` between machines. A job is visible only on the machine that started it. Only a seat plant gets GitHub doorbell wakes.
@@ -108,7 +115,6 @@ Each checkout where `limen init` runs is its own plant, with its own `.limen/` j
 ## 6 · Bell
 
 - Moshi: root$ install `moshi-hook` 0.3.19 for this CPU. Checksum source: [checksums.txt](https://cdn.getmoshi.app/hook/v0.3.19/checksums.txt).
-
 ```sh
 case $(uname -m) in
   x86_64)  moshi_arch=x86_64 moshi_sha=c94ce3de5b8e7b6d1b9f12d501a95db047f01bf32b6b837e29a4229267ee79d4 ;;
@@ -120,7 +126,6 @@ echo "$moshi_sha  /root/install/moshi.tgz" | sha256sum -c -
 tar -xzf /root/install/moshi.tgz -C /usr/local/bin moshi-hook
 chown root:root /usr/local/bin/moshi-hook && chmod 0755 /usr/local/bin/moshi-hook
 ```
-
 - worker$ `moshi-hook install --target omp && moshi-hook service install`
 - HUMAN, in their own terminal (the token is a secret): `ssh -t $SEAT_HOST moshi-hook pair --store file --name $SEAT_NAME --token <token from the phone: Settings → Integrations>`.
 - Check: worker$ `moshi-hook status` says paired and the daemon runs. STOP on `unpaired`. This proves the pairing only.
@@ -135,14 +140,12 @@ chown root:root /usr/local/bin/moshi-hook && chmod 0755 /usr/local/bin/moshi-hoo
 ## 8 · Prune timer
 
 - root$ (`limen prune` drops finished job worktrees; the unit runs it daily as `WORKER`)
-
 ```sh
 install -m 0644 /opt/limen/docs/seat/limen-prune.service /opt/limen/docs/seat/limen-prune.timer /etc/systemd/system/
 install -d /etc/systemd/system/limen-prune.service.d
 printf '[Service]\nUser=%s\nWorkingDirectory=%s\nEnvironment=PATH=/usr/local/bin:/usr/bin:/bin\n' $WORKER $PROJECT_DIR > /etc/systemd/system/limen-prune.service.d/override.conf
 systemctl daemon-reload && systemctl enable --now limen-prune.timer && systemctl start limen-prune.service
 ```
-
 - Check: root$ `systemctl show -p Result limen-prune.service` is `Result=success`; `systemctl is-active limen-prune.timer` is `active`. STOP if not.
 
 ## 9 · Preview
@@ -157,6 +160,7 @@ systemctl daemon-reload && systemctl enable --now limen-prune.timer && systemctl
 - HUMAN: pane$ ask the coordinator to run `limen spawn --detached --engine omp $MODEL_FLAGS --label seat-smoke "Print seat-smoke and finish. Change no files."`. Then close the laptop lid for five minutes.
 - Check: worker$ `cd $PROJECT_DIR && limen jobs seat-smoke` starts with `DONE` (`produced nothing` is fine here). mac$ `herdr --remote $WORKER@$SEAT_HOST` shows the same coordinator tab. STOP if not.
 - Prove later, not a gate: the Moshi phone ring. Ask the human if the phone rang, and write the answer in your report. A silent phone does not stop setup. Jobs start with `--no-extensions` (`src/runtime/engine.ts:136`), so only the coordinator's turn after the completion wake can ring Moshi.
+- Check (lock-down end state): mac$ `ssh $ADMIN_SSH 'echo ${SSH_CONNECTION%% *}'` prints a `100.` or `fd7a:115c:a1e0:` address; `ssh -o HostName=$PUBLIC_IP $ADMIN_SSH true` and `ssh -o IdentitiesOnly=yes -i $WORKER_KEY $WORKER@$PUBLIC_IP true` both exit 255 with `Permission denied (publickey)`; `ssh $BREAK_GLASS_SSH true` exits 0, so break-glass still works. STOP if any differs.
 
 The seat is ready after this phase. Phases 11–14 add the opt-in GitHub doorbell: a PR or issue comment with `@limen` or `/limen` from a writer wakes the coordinator.
 
@@ -170,14 +174,12 @@ The seat is ready after this phase. Phases 11–14 add the opt-in GitHub doorbel
 ## 12 · Doorbell install and connect
 
 - root$ (a root-owned installer checkout at the same revision, then the installer)
-
 ```sh
 test -d /root/limen-deploy/.git || git clone $LIMEN_REPO /root/limen-deploy
 git -C /root/limen-deploy fetch origin $LIMEN_REV && git -C /root/limen-deploy checkout --detach $LIMEN_REV
 WORKER=$WORKER APP_ID=$APP_ID PEM_SOURCE=$PEM_SOURCE LIMEN_REPO=$LIMEN_REPO LIMEN_REV=$LIMEN_REV \
-  NODE_SOURCE=$NODE_SOURCE HERDR_SOURCE=$HERDR_SOURCE /root/limen-deploy/docs/seat/github-setup.sh
+  NODE_SOURCE=/root/install/node HERDR_SOURCE=/root/install/herdr /root/limen-deploy/docs/seat/github-setup.sh
 ```
-
 - Check: it exits 0 and prints a line that starts `Setup installed`; root$ `systemctl is-enabled limen-github.timer` prints `disabled` (setup runs `systemctl disable --now limen-github.timer`, so a reboot cannot start polling before phase 13 enables it); worker$ `test ! -r /etc/limen-github/app.pem` exits 0. STOP if not, and show the script's message.
 - Check: worker$ `cd $PROJECT_DIR && limen jobs --running` prints `no running jobs` or `no jobs`. STOP if it lists a job: wait until the jobs finish.
 - worker$ `herdr server stop`. This closes every pane. The server must restart to get the new `limen-github` group.
@@ -200,5 +202,6 @@ WORKER=$WORKER APP_ID=$APP_ID PEM_SOURCE=$PEM_SOURCE LIMEN_REPO=$LIMEN_REPO LIME
 
 ## Upgrade
 
-- With the doorbell: root$ the phase 12 block with the new `LIMEN_REV`. It disables and stops the timer, moves `/opt/limen`, and keeps the CLI and the poller on one release. Then phases 13–14. Without the doorbell: root$ `git -C /opt/limen fetch origin $LIMEN_REV && git -C /opt/limen checkout --detach $LIMEN_REV && chmod -R go-w /opt/limen`.
-- HUMAN: restart the coordinator in its pane, so that it loads the new release. Then run the phase 4 Check. STOP on any mismatch.
+1. With the doorbell: root$ the phase 12 block with the new `LIMEN_REV`. It disables and stops the timer, moves `/opt/limen`, and keeps the CLI and the poller on one release. Without the doorbell: root$ `git -C /opt/limen fetch origin $LIMEN_REV && git -C /opt/limen checkout --detach $LIMEN_REV && chmod -R go-w /opt/limen`.
+2. HUMAN: restart the coordinator in its pane, so that it loads the new release. Then run the phase 4 Check; STOP on any mismatch. With the doorbell, then run phases 13 and 14.
+3. New pinned versions: take the hash for both CPU types from the vendor source that phase 4 or phase 6 names. Never compute a hash yourself.
