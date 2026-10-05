@@ -66,7 +66,10 @@ async function directories(path: string): Promise<string[]> {
 		if (error.code === "ENOENT") return [];
 		throw error;
 	});
-	return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+	return entries
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
+		.sort();
 }
 
 function parseTicket(text: string, path: string, lane: TicketRecord["lane"], code: string, slug: string, diagnostics: Diagnostic[]): TicketRecord {
@@ -81,7 +84,9 @@ function parseTicket(text: string, path: string, lane: TicketRecord["lane"], cod
 	const heading = /^#\s+F\d+\s*(?:[·:—-]\s*)?(.+)\s*$/m.exec(body);
 	const title = heading?.[1]?.trim() ?? slug.replaceAll("-", " ");
 	const section = /^## Outcome\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(body)?.[1] ?? "";
-	const outcome = inlineText(proseBlocks(section)[0]?.text ?? "").replace(/\s+/g, " ").trim();
+	const outcome = inlineText(proseBlocks(section)[0]?.text ?? "")
+		.replace(/\s+/g, " ")
+		.trim();
 	const purpose = /^(.+?[.!?])(?:\s|$)/.exec(outcome)?.[1] ?? outcome;
 	const ticket: TicketRecord = {
 		id,
@@ -138,7 +143,10 @@ function parseTicket(text: string, path: string, lane: TicketRecord["lane"], cod
 			}
 		}
 	}
-	for (const [key, dateKey] of [["needs-adam", "needs-adam-on"], ["wrong", "wrong-on"]] as const) {
+	for (const [key, dateKey] of [
+		["needs-adam", "needs-adam-on"],
+		["wrong", "wrong-on"],
+	] as const) {
 		const value = field(key);
 		const on = date(dateKey);
 		if (value === undefined) {
