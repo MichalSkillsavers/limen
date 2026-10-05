@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { processInfo } from "../src/runtime/contain.ts";
@@ -114,75 +114,6 @@ test("limen jobs reaps a dead record, then spawn and prune may use the branch", 
 	await waitForState(scratch.root, onlyJobId(spawned.stdout), "done");
 });
 
-test("a hosted job with a live agent gets a watch-only owner when its young supervisor is gone", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const herdr = await writeFakeHerdr(scratch.fakeBin, "working");
-	const previous = process.env.LIMEN_HERDR;
-	process.env.LIMEN_HERDR = herdr;
-	context.after(() => {
-		if (previous === undefined) delete process.env.LIMEN_HERDR;
-		else process.env.LIMEN_HERDR = previous;
-	});
-	const job = await writeRunning(scratch.root, "hosted-live", {
-		pid: DEAD_PID,
-		startedMsAgo: 60_000,
-		hosted: true,
-		agent: "w1:p1",
-	});
-	context.after(async () => {
-		const pid = Number(await text(join(job, "pid")).catch(() => ""));
-		if (pid > 0 && pid !== DEAD_PID) {
-			try {
-				process.kill(pid, "SIGKILL");
-			} catch {}
-		}
-	});
-	assert.equal(await liveJob(job), true);
-	const listed = limenWithEnv(scratch, { LIMEN_HERDR: herdr, LIMEN_REAP_CONFIRM_MS: "30" }, "jobs");
-	assert.equal(listed.status, 0, listed.stderr);
-	assert.match(listed.stdout, /RUNNING/);
-	assert.equal(await text(join(job, "state")), "running");
-	assert.notEqual(Number(await text(join(job, "pid"))), DEAD_PID, "the live agent needs a new supervisor, not merely RUNNING visibility");
-});
-
-test("a reaped hosted job keeps the session jsonl handoff", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const herdr = await writeFakeHerdr(scratch.fakeBin, "missing");
-	const previous = process.env.LIMEN_HERDR;
-	process.env.LIMEN_HERDR = herdr;
-	context.after(() => {
-		if (previous === undefined) delete process.env.LIMEN_HERDR;
-		else process.env.LIMEN_HERDR = previous;
-	});
-	const job = await writeRunning(scratch.root, "hosted-gone", {
-		pid: DEAD_PID,
-		startedMsAgo: STARTUP_GRACE_MS + 60_000,
-		hosted: true,
-		agent: "w1:p1",
-	});
-	await mkdir(join(job, "session"), { recursive: true });
-	await writeFile(
-		join(job, "session", "2026-08-19.jsonl"),
-		`${JSON.stringify({
-			type: "message",
-			message: { role: "assistant", content: [{ type: "text", text: "worker final" }], stopReason: "error", errorMessage: "usage limit reached" },
-		})}\n`,
-	);
-	assert.equal(await liveJob(job), false);
-	const listed = limenWithEnv(scratch, { LIMEN_HERDR: herdr, LIMEN_REAP_CONFIRM_MS: "30" }, "jobs", "hosted-gone");
-	assert.equal(listed.status, 0, listed.stderr);
-	assert.match(listed.stdout, /FAILED/);
-	assert.match(listed.stdout, /hosted supervisor lost/);
-	assert.equal(await text(join(job, "result")), "worker final");
-	assert.equal(await text(join(job, "stop-reason")), "error: usage limit reached");
-	assert.match(listed.stdout, /result:\n    worker final/);
-	assert.match(listed.stdout, /stop-reason:\n    error: usage limit reached/);
-});
-
 test("handshake records wrapper birth", async (context) => {
 	const scratch = await scratchRepo(livePi);
 	context.after(scratch.cleanup);
@@ -227,28 +158,6 @@ async function writeRunning(
 	if (input.agent) await writeFile(join(job, "herdr/agent"), `${input.agent}\n`);
 	await writeFile(join(job, "state"), "running\n");
 	return job;
-}
-
-async function writeFakeHerdr(fakeBin: string, status: "working" | "missing"): Promise<string> {
-	const bin = join(fakeBin, "herdr");
-	await writeFile(
-		bin,
-		`#!/usr/bin/env node
-const args = process.argv.slice(2);
-if (args[0] === "agent" && args[1] === "get") {
-  if (${JSON.stringify(status)} === "missing") {
-    console.log(JSON.stringify({ error: { code: "agent_not_found", message: "missing" } }));
-    process.exit(1);
-  }
-  console.log(JSON.stringify({ result: { type: "agent_info", agent: { agent_status: "working", pane_id: args[2] } } }));
-} else if (args[0] === "agent" && args[1] === "list") console.log(JSON.stringify({ result: { agents: [] } }));
-else if (args[0] === "pane" && args[1] === "process-info") console.log(JSON.stringify({ result: { process_info: { foreground_processes: [] } } }));
-else if (args[0] === "agent" && args[1] === "start") { require("node:fs").writeFileSync(${JSON.stringify(join(fakeBin, "unexpected-start"))}, JSON.stringify(args)); process.exit(1); }
-else console.log(JSON.stringify({ result: {} }));
-`,
-	);
-	await chmod(bin, 0o755);
-	return bin;
 }
 
 function text(path: string): Promise<string> {

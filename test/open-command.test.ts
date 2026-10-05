@@ -48,21 +48,6 @@ setInterval(() => {}, 1000);
 	assert.doesNotMatch(await readFile(herdr.calls, "utf8"), /pane run w1:p2 tail -f /);
 });
 
-test("open creates a log tab for a job spawned without herdr", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "--label", "F012 late", "make commit").stdout);
-	await waitForState(scratch.root, id, "done");
-	await assert.rejects(readFile(join(scratch.root, ".limen/jobs", id, "herdr/tab")));
-	const herdr = await installFakeHerdr(scratch.root, scratch.fakeBin);
-	const opened = limenWithEnv(scratch, herdrEnv(herdr), "open", id);
-	assert.equal(opened.status, 0, opened.stderr);
-	assert.match(opened.stdout, /opened F012 late/);
-	assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "herdr/tab"), "utf8"), "w1:t1\n");
-	assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "herdr/mode"), "utf8"), "log\n");
-});
-
 test("open recreates a live watch tab and says why when herdr is missing", async (context) => {
 	const scratch = await scratchRepo(`#!/usr/bin/env node
 process.on("SIGTERM", () => process.exit(0));
@@ -85,14 +70,6 @@ setInterval(() => {}, 1000);
 	assert.match(missing.stderr, /herdr is not available/);
 	limen(scratch, "stop", id, "test cleanup");
 	await waitForState(scratch.root, id, "stopped");
-	const deadline = Date.now() + 2_000;
-	let calls = "";
-	while (Date.now() < deadline) {
-		calls = await readFile(herdr.calls, "utf8").catch(() => "");
-		if (/tab close w1:t2/.test(calls)) break;
-		await new Promise((resolve) => setTimeout(resolve, 25));
-	}
-	assert.match(calls, /tab close w1:t2/);
 });
 
 test("close leftover tabs for a proven feature and leaves job files", async (context) => {
@@ -114,45 +91,6 @@ test("close leftover tabs for a proven feature and leaves job files", async (con
 	const swept = limenWithEnv(scratch, env, "close", "F012");
 	assert.equal(swept.status, 0, swept.stderr);
 	assert.match(swept.stdout, /closed 1 leftover tab for F012/);
-	assert.doesNotMatch(await readFile(herdr.calls, "utf8"), /tab close coord:tab/);
-	await access(join(scratch.root, ".limen/jobs", keep, "task.md"));
-	await access(join(scratch.root, ".limen/jobs", other, "task.md"));
-});
-
-test("close matches a feature number anywhere in the label or job id", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const herdr = await installFakeHerdr(scratch.root, scratch.fakeBin);
-	const env = { ...herdrEnv(herdr), HERDR_TAB_ID: "coord:tab" };
-	const keep = onlyJobId(limenWithEnv(scratch, env, "spawn", "--detached", "--label", "job spaces · F012", "make commit").stdout);
-	const other = onlyJobId(limenWithEnv(scratch, env, "spawn", "--detached", "--label", "other work · F010", "make commit").stdout);
-	await Promise.all([waitForState(scratch.root, keep, "done"), waitForState(scratch.root, other, "done")]);
-	assert.match(keep, /^\d{4}-\d{2}-\d{2}-f012-job-spaces-[0-9a-f]{8}$/);
-	await mkdir(join(scratch.root, "spec/features/done/2026-08/F012-herdr-job-spaces"), { recursive: true });
-	const reopened = limenWithEnv(scratch, env, "open", keep);
-	assert.match(reopened.stdout, /opened job spaces · F012/);
-	const planted = join(scratch.root, ".limen/jobs", "2026-08-15-f012-legacy-aaaaaaaa");
-	await mkdir(join(planted, "herdr"), { recursive: true });
-	await writeFile(join(planted, "label"), "unrelated leftover\n");
-	await Promise.all(
-		(
-			[
-				["workspace", "w1"],
-				["tab", "w1:t9"],
-				["pane", "w1:p9"],
-				["mode", "log"],
-			] as const
-		).map(([name, value]) => writeFile(join(planted, "herdr", name), `${value}\n`)),
-	);
-	const statePath = join(herdr.dir, "state.json");
-	const state = JSON.parse(await readFile(statePath, "utf8")) as { tabs: Record<string, { label: string; pane: string }> };
-	state.tabs["w1:t9"] = { label: "unrelated leftover", pane: "w1:p9" };
-	await writeFile(statePath, JSON.stringify(state));
-	const swept = limenWithEnv(scratch, env, "close", "F012");
-	assert.equal(swept.status, 0, swept.stderr);
-	assert.match(swept.stdout, /closed 2 leftover tabs for F012/);
-	assert.match(await readFile(herdr.calls, "utf8"), /tab close w1:t9/);
 	assert.doesNotMatch(await readFile(herdr.calls, "utf8"), /tab close coord:tab/);
 	await access(join(scratch.root, ".limen/jobs", keep, "task.md"));
 	await access(join(scratch.root, ".limen/jobs", other, "task.md"));

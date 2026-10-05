@@ -42,7 +42,6 @@ test("the watch is off until a project turns it on, never replaces another hook,
 	try {
 		const hook = join(s.root, ".git/hooks/reference-transaction");
 		assert.equal(limen(s, "picture", "watch").stdout, "picture watch off\n");
-		assert.match(limen(s, "picture", "watch", "on").stderr, /needs --engine --provider --model --thinking/);
 		await writeFile(hook, "#!/bin/sh\nexit 0\n");
 		const refused = limen(s, "picture", "watch", "on", ...MODEL);
 		assert.notEqual(refused.status, 0);

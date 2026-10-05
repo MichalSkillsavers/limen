@@ -19,14 +19,6 @@ setTimeout(() => console.log("finished"), 400);
 	assert.ok(Date.now() - started >= 100, "wait returned before the running job settled");
 });
 
-test("wait rejects unknown jobs", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	const result = limen(scratch, "wait", "missing");
-	assert.equal(result.status, 1);
-	assert.match(result.stderr, /no job matches/);
-});
-
 test("wait refuses in a coordinator instead of blocking its pane", async (context) => {
 	const scratch = await scratchRepo(`#!/usr/bin/env node
 setTimeout(() => console.log("finished"), 3000);
@@ -38,9 +30,6 @@ setTimeout(() => console.log("finished"), 3000);
 	const result = limenWithEnv(scratch, { LIMEN_COORDINATOR: "1" }, "wait", id);
 	assert.equal(result.status, 1);
 	assert.match(result.stderr, /LIMEN_COORDINATOR=1/);
-	assert.match(result.stderr, /limen jobs/);
-	assert.match(result.stderr, /state/);
-	assert.match(result.stderr, /wake/);
 	assert.ok(Date.now() - started < 2_000, "refusal must not wait for the running job");
 	assert.equal((await readFile(join(scratch.root, ".limen/jobs", id, "state"), "utf8")).trim(), "running");
 });

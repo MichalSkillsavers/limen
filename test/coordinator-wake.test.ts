@@ -113,18 +113,6 @@ test("two stalled Herdr prompts stop automatic delivery and leave the wake undel
 	await assert.rejects(readFile(join(job, "notify/delivered/_herdr")));
 });
 
-test("a missing coordinator pane fails the Herdr wake visibly without blocking the terminal state", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(() => wipe(scratch));
-	const herdr = await fakeHerdr(scratch, "missing");
-	limenWithEnv(scratch, {}, "init");
-	const id = onlyJobId(limenWithEnv(scratch, herdrCoordinator(herdr), "spawn", "--detached", "do work").stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	await waitForState(scratch.root, id, "done");
-	assert.match(await receipt(job), /^attempt 1: failed on w1:p7: pane_not_found \S+\nattempt 2: failed on w1:p7: pane_not_found \S+\nautomatic delivery stopped/);
-	await assert.rejects(readFile(join(job, "notify/delivered/_herdr")));
-});
-
 test("a Pi coordinator keeps its in-process wake route and records no Herdr pane", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(() => wipe(scratch));

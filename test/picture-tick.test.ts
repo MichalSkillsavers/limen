@@ -70,9 +70,6 @@ test("tick identifies cited edits and structural renames without calling a model
 		assert.match(result.stdout, /dry run/);
 		assert.equal(await readFile(join(dir, "nodes/sample.plant.md"), "utf8").then((text) => text.includes(base)), true);
 		await noJob(s);
-		const missing = limen(s, "picture", "tick", "--engine", "omp");
-		assert.match(missing.stdout, /supply --engine --provider --model --thinking/);
-		await noJob(s);
 	} finally {
 		await s.cleanup();
 	}

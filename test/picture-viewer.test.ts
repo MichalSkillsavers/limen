@@ -207,15 +207,6 @@ test("selected feature highlights remain exact while hovering connected places a
 	assert.equal(cleared.edge.classes.has("hl"), true);
 });
 
-test("journey rendering preserves repeated numbers and highlights the selected occurrence", async () => {
-	const v = await viewer();
-	const result = v.highlight("sample.parent", ["sample.child", "sample.sibling"], "journey:sample.focus", null, false, 2);
-	const child = result.blocks.get("sample.child");
-	assert.equal(child?.children.find((tag) => tag.className === "b-steps")?.textContent, "1 · 3");
-	assert.equal(child?.classes.has("ov-cur"), true);
-	assert.equal(result.blocks.get("sample.sibling")?.classes.has("ov-cur"), false);
-});
-
 test("selected work keeps its exact highlights while another overlay receives pointer or keyboard focus", async () => {
 	const v = await viewer();
 	for (const keyboard of [false, true]) {

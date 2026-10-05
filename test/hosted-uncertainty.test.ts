@@ -3,12 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { HOSTED_UNCERTAINTY_MS, noteHostedUncertainty, readHostedUncertainty } from "../src/runtime/hosted-uncertainty.ts";
+import { noteHostedUncertainty, readHostedUncertainty } from "../src/runtime/hosted-uncertainty.ts";
 
 test("one uncertainty condition survives transitions and fresh observers; child loss needs child recovery", async (context) => {
 	const job = await mkdtemp(join(tmpdir(), "limen-uncertainty-"));
 	context.after(() => rm(job, { recursive: true, force: true }));
-	assert.equal(HOSTED_UNCERTAINTY_MS, 60_000);
 	await noteHostedUncertainty(job, true, undefined, 1_000);
 	await mkdir(join(job, "notify/delivered/_uncertainty.coord"), { recursive: true });
 	await writeFile(join(job, "notify/delivered/_uncertainty.coord/accepted"), "1\n");

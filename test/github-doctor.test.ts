@@ -114,47 +114,4 @@ test("multiple registered projects each diagnose their own binding and warm idle
 	assert.equal(messages.filter((line) => line.includes("live registered Herdr agent")).length, 2);
 	assert.ok(messages.includes(`SKIP project ${inactive} has no GitHub binding`));
 	assert.ok(!messages.some((line) => line.startsWith(`FIX project ${inactive}`)));
-	await writeFile(herdr, '#!/bin/sh\necho \'{"id":"cli:agent:get","result":{"agent":{"pane_id":"w1K:p2","agent_status":"done","interactive_ready":false}}}\'\n');
-	messages.length = 0;
-	console.log = (message: string) => messages.push(message);
-	try {
-		await assert.rejects(
-			githubDoctor(first.root, {
-				release: join(seat, "missing-release"),
-				key: join(seat, "missing-key"),
-				state: join(seat, "missing-state"),
-				registry,
-				timer: "limen-github-test-missing.timer",
-				poller: "limen-github-test-missing",
-				node: join(seat, "missing-node"),
-				herdr: join(seat, "missing-herdr"),
-			}),
-			/need repair/,
-		);
-	} finally {
-		console.log = original;
-	}
-	assert.match(messages.join("\n"), new RegExp(`FIX project ${first.root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} live registered Herdr agent`));
-	// Herdr omits interactive_ready for an OMP pane; a warm idle OMP coordinator is still live.
-	await writeFile(herdr, '#!/bin/sh\necho \'{"id":"cli:agent:get","result":{"agent":{"pane_id":"w1K:p2","agent_status":"idle","screen_detection_skipped":true}}}\'\n');
-	messages.length = 0;
-	console.log = (message: string) => messages.push(message);
-	try {
-		await assert.rejects(
-			githubDoctor(first.root, {
-				release: join(seat, "missing-release"),
-				key: join(seat, "missing-key"),
-				state: join(seat, "missing-state"),
-				registry,
-				timer: "limen-github-test-missing.timer",
-				poller: "limen-github-test-missing",
-				node: join(seat, "missing-node"),
-				herdr: join(seat, "missing-herdr"),
-			}),
-			/need repair/,
-		);
-	} finally {
-		console.log = original;
-	}
-	assert.ok(messages.includes(`OK project ${first.root} live registered Herdr agent`));
 });

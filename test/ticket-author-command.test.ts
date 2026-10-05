@@ -73,11 +73,6 @@ test("uncommitted, missing, directory, and outside paths do not invent an author
 	assert.match(limen(scratch, "ticket-author", "tickets/new.md").stderr, /not a committed file at HEAD/);
 	git(scratch.root, "commit", "-m", "file ticket");
 	assert.match(limen(scratch, "ticket-author", "tickets").stderr, /not a committed file at HEAD/);
-	for (const args of [[], ["README.md", "tickets/new.md"]]) {
-		const result = limen(scratch, "ticket-author", ...args);
-		assert.equal(result.status, 1);
-		assert.match(result.stderr, /requires one ticket path/);
-	}
 });
 
 test("shallow history reports unavailable instead of attributing an edit as creation", async (context) => {

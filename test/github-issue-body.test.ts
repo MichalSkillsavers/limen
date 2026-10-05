@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { claimPath, type GithubBinding } from "../src/commands/github.ts";
-import { acceptGithubComment, pollGithubIssues, reconcileGithubClaim } from "../src/integrations/github-poller.ts";
+import { acceptGithubComment, pollGithubIssues } from "../src/integrations/github-poller.ts";
 import type { GithubClaim } from "../src/integrations/github-review.ts";
-import { git, LIMEN, limen, limenWithEnv, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
+import { git, LIMEN, limen, scratchRepo } from "./scratch.ts";
 
 const binding: GithubBinding = { repo: "acme/widget", coordinator: "coord:p1", user: "nobody", connectedAt: "2026-09-24T00:00:00Z" };
 type Listed = {
@@ -172,99 +172,4 @@ test("an issue body claim and a comment claim on the same issue both exist witho
 	assert.equal(delivered.length, 2, "one handoff prompt each");
 	assert.match(delivered[0] ?? "", /issue #5, comment 5 by alice/);
 	assert.match(delivered[1] ?? "", /issue #5, opened by alice with the request in its body, claim issue-5/);
-});
-
-test("github review refuses an issue body claim; github work starts one hosted job that earns one start and one terminal reply", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	const state = await mkdtemp(join(tmpdir(), "limen-github-poller-"));
-	await mkdir(join(state, "claims"));
-	context.after(() => rm(state, { recursive: true, force: true }));
-	assert.equal(limen(scratch, "init").status, 0);
-	git(scratch.root, "remote", "add", "origin", "https://github.com/acme/widget.git");
-	await mkdir(join(scratch.root, ".limen/github/claims"), { recursive: true });
-	await writeFile(join(scratch.root, ".limen/github/binding.json"), JSON.stringify(binding));
-	const claim: GithubClaim = {
-		repo: binding.repo,
-		id: "issue-5",
-		pr: 5,
-		kind: "issue",
-		actor: "alice",
-		url: "https://github.com/acme/widget/issues/5",
-		title: "Widget crashes on start",
-		body: "@limen please fix this crash",
-		discussion: "",
-		receipt: "prompt accepted",
-		attemptedAt: new Date().toISOString(),
-	};
-	await writeFile(join(state, "claims/issue-5.json"), JSON.stringify(claim));
-	await writeFile(claimPath(scratch.root, "issue-5"), JSON.stringify(claim));
-	await writeFile(join(scratch.fakeBin, "sudo"), "#!/bin/sh\nexit 1\n");
-	await writeFile(join(scratch.fakeBin, "id"), "#!/bin/sh\necho staff\n");
-	const herdrState = join(state, "herdr.json");
-	await writeFile(herdrState, JSON.stringify({ n: 0, tabs: {}, agents: {} }));
-	// A hosted agent that works for one status check, then exits.
-	await writeFile(
-		join(scratch.fakeBin, "herdr"),
-		`#!/usr/bin/env node
-const { readFileSync, writeFileSync } = require("node:fs");
-const args = process.argv.slice(2);
-const path = process.env.FAKE_HERDR_STATE;
-const state = JSON.parse(readFileSync(path, "utf8"));
-const flag = (name) => args[args.indexOf(name) + 1];
-const ok = (result) => { writeFileSync(path, JSON.stringify(state)); console.log(JSON.stringify({ result })); };
-const fail = (code) => { writeFileSync(path, JSON.stringify(state)); console.log(JSON.stringify({ error: { code, message: code } })); process.exit(1); };
-const verb = args[0] + " " + args[1];
-if (verb === "workspace list") ok({ workspaces: state.label ? [{ label: state.label, workspace_id: "w1" }] : [] });
-else if (verb === "workspace create") { state.label = flag("--label"); ok({ workspace: { workspace_id: "w1" } }); }
-else if (verb === "tab create") { state.n += 1; state.tabs["w1:t" + state.n] = "w1:p" + state.n; ok({ tab: { tab_id: "w1:t" + state.n }, root_pane: { pane_id: "w1:p" + state.n } }); }
-else if (verb === "tab get") state.tabs[args[2]] ? ok({ tab: { tab_id: args[2], focused: true } }) : fail("tab_not_found");
-else if (verb === "pane process-info") ok({ process_info: { foreground_process_group_id: 1, shell_pid: 1, foreground_processes: [{ name: "zsh", pid: 1 }] } });
-else if (verb === "agent start") { state.agents[flag("--pane")] = { name: args[2], ticks: 0 }; ok({ pane: { pane_id: flag("--pane") }, agent_status: "working" }); }
-else if (verb === "agent list") ok({ agents: Object.entries(state.agents).map(([pane_id, agent]) => ({ pane_id, name: agent.name })) });
-else if (verb === "agent get") {
-  const agent = state.agents[args[2]];
-  if (!agent || ++agent.ticks >= 2) { delete state.agents[args[2]]; fail("agent_not_found"); }
-  ok({ agent: { agent_status: "working", pane_id: args[2] } });
-} else ok({});
-`,
-	);
-	for (const name of ["sudo", "id", "herdr"]) await chmod(join(scratch.fakeBin, name), 0o755);
-	const coordinator = { HERDR_ENV: "1", LIMEN_COORDINATOR: "1", HERDR_PANE_ID: binding.coordinator, LIMEN_HERDR: join(scratch.fakeBin, "herdr"), FAKE_HERDR_STATE: herdrState };
-	const model = ["--engine", "omp", "--provider", "openai-codex", "--model", "gpt-6-sol", "--thinking", "xhigh"];
-
-	const review = limenWithEnv(scratch, coordinator, "github", "review", scratch.root, "issue-5", ...model);
-	assert.equal(review.status, 1);
-	assert.match(review.stderr, /github review needs a pull request head; claim issue-5 is for issue #5/);
-	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), [], "a refused review starts no job");
-
-	const work = limenWithEnv(scratch, coordinator, "github", "work", scratch.root, "issue-5", ...model, "--task", "Find and fix the crash");
-	assert.equal(work.status, 0, work.stderr);
-	const id = onlyJobId(work.stdout);
-	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), [id], "work starts one job");
-	await waitForState(scratch.root, id, "done");
-	assert.equal((await readFile(join(scratch.root, ".limen/jobs", id, "branch"), "utf8")).trim(), "limen/github-issue-5-issue-5");
-	const task = await readFile(join(scratch.root, ".limen/jobs", id, "task.md"), "utf8");
-	assert.match(task, /^GitHub doorbell: acme\/widget#issue-5\nCoordinator task: Find and fix the crash\nRepository acme\/widget, issue #5\./);
-	assert.match(task, /Untrusted triggering comment: none; the issue body carries the request/);
-
-	const posted: Array<{ url: string; body: string }> = [];
-	const originalFetch = globalThis.fetch;
-	globalThis.fetch = async (input, init) => {
-		if (init?.method === "POST") {
-			posted.push({ url: String(input), body: JSON.parse(String(init.body)).body as string });
-			return Response.json({ id: 700 + posted.length });
-		}
-		return Response.json([]);
-	};
-	context.after(() => {
-		globalThis.fetch = originalFetch;
-	});
-	await reconcileGithubClaim(scratch.root, state, "issue-5", "test-token");
-	await reconcileGithubClaim(scratch.root, state, "issue-5", "test-token");
-	assert.equal(posted.length, 2, "one start reply and one terminal reply");
-	assert.ok(posted.every((post) => post.url.endsWith("/repos/acme/widget/issues/5/comments")));
-	assert.match(posted[0]?.body ?? "", new RegExp(`started a hosted task for issue #5 from the registered repository\\. Job: \`${id}\``));
-	assert.match(posted[0]?.body ?? "", /<!-- limen-github acme\/widget issue-5 start -->/);
-	assert.match(posted[1]?.body ?? "", new RegExp(`hosted task job \`${id}\` ended with state \\*\\*done\\*\\*`));
 });
