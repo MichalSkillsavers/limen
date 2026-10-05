@@ -33,7 +33,7 @@
 	--teal: #0d6b62;
 	--teal-bg: #e2f0ed;
 	--teal-line: #8cc4bb;
-	--head: 72px;
+	--head: 88px;
 	--gap: var(--sp-6);
 	font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
 	color: var(--ink);
@@ -116,12 +116,12 @@ code,
 	font-size: 12px;
 }
 .pin .txt {
-	display: block;
+	display: -webkit-box;
 	font-size: 14px;
 	font-weight: 600;
-	white-space: nowrap;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
 	overflow: hidden;
-	text-overflow: ellipsis;
 }
 .pin.wrong {
 	border-left-color: var(--red);
@@ -315,10 +315,6 @@ code,
 	font-size: 11.5px;
 	line-height: 1.4;
 	color: var(--mute);
-	display: -webkit-box;
-	-webkit-line-clamp: 3;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
 }
 .mod .places {
 	display: grid;
@@ -503,6 +499,10 @@ code,
 	fill: none;
 	stroke: var(--wire);
 	stroke-width: 1.4;
+}
+/* Dim the lines, not their counts, so every number stays readable. */
+svg.base.dim .wire {
+	opacity: 0.35;
 }
 .wcount {
 	fill: #fff;
@@ -1112,9 +1112,6 @@ code,
 
 @media (max-width: 1240px) {
 	/* the plant needs its width: stack it above the column */
-	:root {
-		--head: 88px;
-	}
 	.main {
 		grid-template-columns: 1fr;
 	}
@@ -1129,11 +1126,14 @@ code,
 	.mast {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
+}
+@media (max-width: 1000px) {
+	/* a narrow pin needs a third line for a full question */
+	:root {
+		--head: 108px;
+	}
 	.pin .txt {
-		white-space: normal;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
 	}
 }
 @media (max-width: 760px) {
