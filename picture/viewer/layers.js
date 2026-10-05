@@ -210,7 +210,9 @@
 		const edges = (index.model.edges ?? []).filter((e) => e.from === n.id || e.to === n.id);
 		// "<a>X</a> generates this place" or "This place depends on <a>X</a>", with the edge title as small text.
 		const verb = (e) => String(e.kind || "connects to").replace(/-/g, " ");
-		const lines = edges.map((e) => (e.from === n.id ? `This place ${esc(verb(e))} ${nodeLink(e.to)}` : `${nodeLink(e.from)} ${esc(verb(e))} this place`) + meta(e.title));
+		const lines = edges.map(
+			(e) => (e.from === n.id ? `This place ${esc(verb(e))} ${nodeLink(e.to)}` : `${nodeLink(e.from)} ${esc(verb(e))} this place`) + meta(e.title ? `· ${e.title}` : ""),
+		);
 		const journeys = (index.model.journeys ?? [])
 			.filter((j) => (j.steps ?? []).includes(n.id))
 			.map((j) => `${link("journey", j.id, j.title || j.id)}${meta(`step ${j.steps.indexOf(n.id) + 1}`)}`);
