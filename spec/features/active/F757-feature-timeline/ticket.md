@@ -1,3 +1,7 @@
+---
+opened: 2026-10-04
+---
+
 # F757 · A feature shows as a timeline with only what a person needs to decide
 
 ## Outcome

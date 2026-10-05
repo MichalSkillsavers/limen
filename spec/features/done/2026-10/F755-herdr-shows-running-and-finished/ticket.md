@@ -1,3 +1,11 @@
+---
+touches:
+  - limen.integrations.herdr
+  - limen.cabinet.records
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F755 · Herdr shows which jobs run and which finished
 
 ## Outcome

@@ -1,3 +1,12 @@
+---
+touches:
+  - limen.commands
+  - limen.cabinet.records
+  - limen.integrations.herdr
+opened: 2026-10-02
+landed: 2026-10-03
+---
+
 # F741 · OMP finish wakes the Herdr coordinator; wait refuses under LIMEN_COORDINATOR
 
 ## Outcome

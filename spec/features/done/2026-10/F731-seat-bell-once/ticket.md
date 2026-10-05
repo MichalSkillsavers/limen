@@ -1,3 +1,11 @@
+---
+touches:
+  - limen.commands
+  - limen.integrations.seat
+opened: 2026-09-25
+landed: 2026-10-02
+---
+
 # F731 · One seat bell per real job event
 
 ## Outcome
