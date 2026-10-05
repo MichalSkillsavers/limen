@@ -25,6 +25,7 @@
 
 ## NOW
 
+- `F777-hosted-pane-shows-true-agent-state` (🟠 ACTIVE): hosted Pi/OMP panes load Herdr's own state extension so the tab icon shows working/blocked/idle truthfully instead of green while the agent works.
 - `F775-picture-merge-broad-digdown` (🟠 ACTIVE): four-team group merges live picture broad atlas/overview with F774 dig-down clarity; deliverable one polished merged HTML at `/Users/overment/Downloads/limen-picture-merged.html`; all-Sol (Opus still rate-limited); vscreen-only preview; no land unless synthesis asks park vs land.
 
 - `F774-picture-endgoal-layout` (🟠 ACTIVE): four-team group designs the target limen picture/dashboard layout from F768+F769 lessons; deliverable one polished endgoal HTML at `/Users/overment/Downloads/limen-picture-endgoal.html`; Sol-first (Opus rate-limited); no land unless synthesis asks park vs land.
