@@ -397,11 +397,11 @@ code,
 	color: var(--mute);
 	margin-left: var(--sp-2);
 }
-/* Dim by colour, not opacity, so a dimmed place name stays readable. */
+/* Dim by colour, not opacity, so a dimmed place name stays readable (AA); the chip itself fades into its card. */
 .lens .place:not(.lit):not(.focus):not(.near):not(.hov),
 .atlas.preview .place:not(.pv):not(.lit):not(.focus) {
 	color: var(--mute);
-	background: var(--sheet);
+	background: transparent;
 	border-color: var(--line2);
 }
 .place.lit {
