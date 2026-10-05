@@ -58,7 +58,7 @@ test("board reader ignores missing board and malformed or misplaced feature line
 			"- F201-unquoted (🟠 ACTIVE): invalid",
 			"- `F202-no-status` (ACTIVE): invalid",
 			"- `F203-no-emoji` (X ACTIVE): invalid",
-			"- `F204-no-slug` (🟠 ACTIVE): invalid",
+			"- `F204` (🟠 ACTIVE): invalid",
 			"- `F205-lower-state` (🟠 active): invalid",
 			"## OTHER",
 			"- `F206-other-section` (🟠 ACTIVE): ignored",
