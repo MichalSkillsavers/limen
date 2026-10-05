@@ -44,6 +44,7 @@
 
 ## PROVEN
 
+- `F772-seat-guide-from-live-cold-run` (🟢 PROVEN): seat guide encodes the nine limen-test cold-run snags, with a phase map and who/where labels; pins unchanged; docs only. Merge `a5d858e`.
 - `F770-omp-coordinator-counts-as-live` (🟢 PROVEN): a warm OMP coordinator counts as live when Herdr omits `interactive_ready`; explicit false stays not live; one rule for ensure, poller, and doctor. Landed `abf1e84`; focused tests 19/19.
 - `F762-private-planning-reads-clearly` (🟢 PROVEN): PR #4 private planning code reads top-down with plain docs; same behavior (smoke diff empty); no pre-PR test changed. Landed `130cf0c`; focused tests 110/110.
 - `F761-issue-body-rings-doorbell` (🟢 PROVEN): `@limen` in an open issue body rings the doorbell once per issue with its own cursor and `issue-<n>` claim; title, closed issues, and PR bodies never count. Landed `211efee`; live Alice bot needs `/opt/limen` upgraded.
