@@ -28,6 +28,10 @@ export function hostedBoot(): string | undefined {
 		return;
 	}
 }
+/** Only hosted Pi on Linux can bind its pane; OMP and other platforms have no ownership proof to lose. */
+export function hostedBindingSupported(engine: string): boolean {
+	return engine === "pi" && hostedBoot() !== undefined;
+}
 /** Read persisted launch evidence, not current ownership or proof of death. */
 export function readHostedBinding(jobDir: string): HostedBinding | undefined {
 	try {
@@ -64,9 +68,10 @@ function publishExclusive(path: string, value: unknown): void {
 	}
 }
 export async function prepareHostedLaunch(jobDir: string, pane: string, engine: string, parentPid: number): Promise<void> {
+	if (!hostedBindingSupported(engine)) return;
 	const parent = await processInfo(parentPid);
 	const boot = hostedBoot();
-	if (parent.kind !== "present" || !boot || engine !== "pi") return;
+	if (parent.kind !== "present" || !boot) return;
 	mkdirSync(join(jobDir, "session"), { recursive: true });
 	const launch: HostedLaunch = {
 		launchId: randomUUID(),

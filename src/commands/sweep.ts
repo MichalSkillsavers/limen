@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { noteKind } from "../job/view.ts";
 import { installSeatSweep, showSeatNotification, uninstallSeatSweep, updateRegisteredProjects } from "../project/seat.ts";
 import { HOSTED_UNCERTAINTY_MS, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
@@ -59,7 +60,8 @@ async function sweepProject(root: string): Promise<void> {
 			throw error;
 		}
 		const label = text(join(job, "label")) || entry.name;
-		if (!(await showSeatNotification(`limen: ${label} is ${advisory ? "unheard" : state}`, `job ${entry.name} · ${root}`)))
+		const title = advisory ? `limen: ${label} · ${uncertainty ? "ownership" : noteKind(text(join(job, "advisory")))}` : `limen: ${label} is ${state}`;
+		if (!(await showSeatNotification(title, `job ${entry.name} · ${root}`)))
 			console.error(`seat notification failed for ${entry.name}; event recorded to avoid an ambiguous retry`);
 	}
 }

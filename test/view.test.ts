@@ -28,6 +28,18 @@ test("a running human row is glyph, label, suffix, then live facts", () => {
 	assert.equal(row, `● ${"F051 readable jobs".padEnd(20)}  ${"ab12cd34".padEnd(12)}  12m · bash · 24 tools`);
 });
 
+test("a running row names its note kind, and only blocked or errored notes are red", () => {
+	const paint = paintWhen(true);
+	const row = (advisory: string) => humanRow(record("running", { pulse: "wait", elapsedMs: 60_000, silentMs: 3_000, advisory }), 20, paint);
+	assert.match(row("blocked after 4 tool calls, session still open"), /\u001b\[31mblocked\u001b\[0m/);
+	assert.match(row("errored: last turn failed with error: usage limit reached, session still open"), /\u001b\[31merrored\u001b\[0m/);
+	assert.match(row("idle 2m after 4 tool calls, session still open"), /\u001b\[33midle\u001b\[0m/);
+	assert.match(row("ownership observation unavailable for 2m (engine); this is not proof of a stalled tool"), /\u001b\[33mownership\u001b\[0m/);
+	assert.match(row("tool stall observation uncertain: CPU or process identity unavailable"), /\u001b\[33mownership\u001b\[0m/);
+	assert.doesNotMatch(row("blocked after 4 tool calls, session still open"), /advisory/);
+	assert.doesNotMatch(humanRow(record("running", { pulse: "think", elapsedMs: 60_000, silentMs: 3_000 }), 20, paint), /blocked|errored|idle|ownership|advisory/);
+});
+
 test("a terminal human row carries age, duration, work, and flags once each", () => {
 	const done = humanRow(record("done", { toolCalls: 82, commitCount: 1, elapsedMs: 2_040_000, ageMs: 4 * 86_400_000, hosted: true }), 20, plain);
 	assert.equal(done, `✓ ${"F051 readable jobs".padEnd(20)}  ${"ab12cd34".padEnd(12)}  4d ago · 34m · 82 tools · 1 commit · hosted`);

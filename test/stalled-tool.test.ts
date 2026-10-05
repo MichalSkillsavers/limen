@@ -7,6 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { hostedEngineOwned } from "../src/integrations/herdr.ts";
 import { processInfo } from "../src/runtime/contain.ts";
+import { hostedBindingSupported } from "../src/runtime/hosted-binding.ts";
 import { observeToolStall, signalOwnedProcess, type ToolStallWatch } from "../src/runtime/stalled-tool.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -97,7 +98,9 @@ console.log(JSON.stringify({ result: info }));
 		context.after(async () => {
 			if (supervisor.pid) await signalOwnedProcess(supervisor.pid, supervisorBirth, "SIGKILL");
 		});
-		await until(async () => ((await content(join(job, "ownership-uncertainty")))?.includes('"root":true') ? true : undefined));
+		const bindable = hostedBindingSupported(engine);
+		if (bindable) await until(async () => ((await content(join(job, "ownership-uncertainty")))?.includes('"root":true') ? true : undefined));
+		else await until(async () => ((await content(join(job, "log")))?.includes("hosted supervisor started") ? true : undefined));
 		assert.equal(await content(join(job, "state")), "running\n", "unknown pane ownership cannot fail the job");
 		assert.equal((await processInfo(childPid)).kind, "present", "unknown pane ownership cannot kill the child");
 		await writeFile(herdr, herdrSource(join(job, "session")));
@@ -107,6 +110,7 @@ console.log(JSON.stringify({ result: info }));
 		assert.equal((await processInfo(childPid)).kind, "present", "quiet child survives");
 		assert.equal(await content(join(job, "stop-reason")), undefined);
 		assert.equal(await content(join(job, "advisory")), undefined, "uncertainty is not a real idle advisory");
+		if (!bindable) assert.equal(await content(join(job, "ownership-uncertainty")), undefined, "an engine or platform that never binds has no ownership to lose");
 	});
 
 	test(`detached ${engine} fails an idle tool before its outer timeout`, async (context) => {

@@ -61,6 +61,11 @@ export function tallyStates(states: readonly string[]): StateTally {
 	}
 	return tally;
 }
+/** Hosted stall notes start with their kind; every other running note is an ownership observation. */
+export function noteKind(note: string): "blocked" | "errored" | "idle" | "ownership" {
+	for (const kind of ["blocked", "errored", "idle"] as const) if (note.startsWith(kind)) return kind;
+	return "ownership";
+}
 export function humanSnapshot(records: readonly JobRecord[], tally: StateTally, hint: boolean, paint: Paint): string {
 	const width = Math.min(32, Math.max(12, ...records.map((record) => [...(record.job?.label ?? record.id)].length)));
 	return [...records.map((record) => humanRow(record, width, paint)), cabinetLine(tally, hint, paint)].join("\n");
@@ -71,7 +76,7 @@ export function humanRow(record: JobRecord, labelWidth: number, paint: Paint): s
 	const label = clip(job.label, labelWidth).padEnd(labelWidth);
 	const facts =
 		job.phase === "running"
-			? [...runningFacts(record, paint), ...(record.advisory ? [paint("yellow", "advisory")] : []), ...flags(record).map((flag) => paint("dim", flag))]
+			? [...runningFacts(record, paint), ...(record.advisory ? [noteFact(record.advisory, paint)] : []), ...flags(record).map((flag) => paint("dim", flag))]
 			: terminalFacts(record, paint);
 	return `${glyph(record, paint)} ${job.phase === "running" ? paint("bold", label) : label}  ${paint("dim", jobSuffix(record.id).padEnd(12))}  ${facts.join(paint("dim", " · "))}`;
 }
@@ -138,6 +143,10 @@ function runningFacts(record: JobRecord, paint: Paint): string[] {
 	if (silent >= 300_000) facts.push(paint("red", `silent ${formatDuration(silent)}`));
 	else if (silent >= 90_000) facts.push(paint("yellow", `silent ${formatDuration(silent)}`));
 	return facts;
+}
+function noteFact(note: string, paint: Paint): string {
+	const kind = noteKind(note);
+	return paint(kind === "blocked" || kind === "errored" ? "red" : "yellow", kind);
 }
 function terminalFacts(record: JobRecord, paint: Paint): string[] {
 	const facts = record.ageMs === undefined ? [] : [paint("dim", formatAge(record.ageMs))];

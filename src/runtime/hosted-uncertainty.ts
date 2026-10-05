@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
+import { formatDuration } from "../job/job.ts";
 import { atomicWrite, textFile } from "../job/record.ts";
 
 // Match the hosted idle advisory's one-minute persistence window, not the CPU stall timer.
@@ -13,7 +14,7 @@ export function readHostedUncertainty(jobDir: string): HostedUncertainty | undef
 }
 export function hostedUncertaintyText(value: HostedUncertainty): string {
 	const scope = [value.root ? "engine" : "", value.child ? "child" : ""].filter(Boolean).join(" and ");
-	return `ownership observation unavailable since ${new Date(value.since).toISOString()} (${scope}); this is not proof of a stalled tool`;
+	return `ownership observation unavailable for ${formatDuration(Date.now() - value.since)} (${scope}); this is not proof of a stalled tool`;
 }
 export async function noteHostedUncertainty(jobDir: string, root: boolean, child: boolean | undefined, now = Date.now()): Promise<void> {
 	const terminal = async () => ["done", "failed", "stopped"].includes(await textFile(`${jobDir}/state`));

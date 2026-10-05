@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
+import { noteKind } from "../job/view.ts";
 import { limenRoot, unlandedBranches, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
 import { renderJobDirectory } from "./jobs.ts";
@@ -57,12 +58,14 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 			if (branch) runningBranches.add(`${repo}:${branch}`);
 			const { record } = await renderJobDirectory(root, jobsRoot, id, false);
 			const minutes = Date.parse(started) ? `${Math.max(0, Math.floor((now - Date.parse(started)) / 60_000))}m` : "";
+			const note = record.advisory ?? "";
+			const kind = note && noteKind(note);
 			const attention = record.invalid
 				? `invalid: ${record.invalid}`
 				: [
 						record.pulse === "dead" ? "dead" : (record.pulse ?? "unknown activity"),
 						record.silentMs !== undefined && record.silentMs >= 90_000 ? `silent ${Math.floor(record.silentMs / 60_000)}m` : "",
-						record.advisory ? `advisory ${record.advisory}` : "",
+						note.startsWith(kind) ? note : `${kind}: ${note}`,
 					]
 						.filter(Boolean)
 						.join(" · ");

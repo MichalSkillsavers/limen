@@ -20,7 +20,7 @@ import { syncLifecycle } from "../job/group-events.ts";
 import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, recordCommits, requestedTerminal, textFile, writeHandshake } from "../job/record.ts";
 import { cleanWorktree } from "../project/git.ts";
 import { argvFor, jobProfile, prepareSkillConfig } from "./engine.ts";
-import { hostedIdentityObservation, prepareHostedLaunch, readHostedBinding } from "./hosted-binding.ts";
+import { hostedBindingSupported, hostedIdentityObservation, prepareHostedLaunch, readHostedBinding } from "./hosted-binding.ts";
 import { noteHostedUncertainty } from "./hosted-uncertainty.ts";
 import { prepareRecoveredOwner } from "./recovery.ts";
 import { observeToolStall, type ToolStallWatch } from "./stalled-tool.ts";
@@ -81,12 +81,14 @@ export async function runHostedSupervisor(): Promise<void> {
 	const idle: HostedIdleWatch = { leftWorkingAt: undefined, armed: true };
 	const toolWatch: ToolStallWatch = { tool: "", born: "", started: 0 };
 	const engine = (await jobProfile(jobDir)).id;
+	// An engine or platform that never binds has no ownership to lose; a standing note there would hide real blocked or errored jobs.
+	const bindable = hostedBindingSupported(engine);
 	if ((await textFile(`${jobDir}/advisory`)).startsWith("tool stall observation uncertain")) {
 		const since = await stat(`${jobDir}/advisory`).then(
 			(value) => value.mtimeMs,
 			() => Date.now(),
 		);
-		await noteHostedUncertainty(jobDir, true, undefined, since);
+		await noteHostedUncertainty(jobDir, bindable, undefined, since);
 		await clearHostedAdvisory(jobDir);
 	}
 	while (!interrupted) {
@@ -154,7 +156,7 @@ export async function runHostedSupervisor(): Promise<void> {
 				toolWatch.previous = undefined;
 			}
 			// Think/tool transitions do not prove that an unavailable child observation recovered.
-			await noteHostedUncertainty(jobDir, !owned, child);
+			await noteHostedUncertainty(jobDir, bindable && !owned, child);
 		}
 		if (!reason) reason = await noteHostedIdle(jobDir, status, idle);
 		if (reason) {
