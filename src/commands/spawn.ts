@@ -19,7 +19,6 @@ import {
 	branchCommit,
 	branchExists,
 	commitHasFile,
-	headCommit,
 	repoRoot,
 	spawnBaseCommit,
 	workspaceRepository,
