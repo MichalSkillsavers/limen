@@ -1,10 +1,10 @@
 # Team 1 result · guide editor
 
-Candidate: `docs/seat/agent-setup.md` on branch `limen/2026-10-05-f767-agent-setup-guide-review-te-2c7df9c7`. The guide commit is named in the Verdict (205 lines). Draft commits: `2b1f400` (first rewrite, cold-run input 1), `a7de5af`, `9199116` (cold-run input 2). Team-1 changed only this file and this result file. The guide needs the script fix from team-2 (`5f1318c`, `docs/seat/github-setup.sh` runs `systemctl disable --now limen-github.timer`). Without that fix, the phase 12 Check (`is-enabled` prints `disabled`) fails on every run.
+Candidate: `docs/seat/agent-setup.md` on branch `limen/2026-10-05-f767-agent-setup-guide-review-te-2c7df9c7`, frozen at `358ce75` (205 lines). Draft commits: `2b1f400` (cold-run input 1), `a7de5af`, `9199116` (cold-run input 2), `916db78`, `4890d3b`, `358ce75` (frozen). Team-1 changed only this file and this result file. The guide needs the script fix from team-2 (`5f1318c`, `docs/seat/github-setup.sh` runs `systemctl disable --now limen-github.timer`). Without that fix, the phase 12 Check (`is-enabled` prints `disabled`) fails on every run.
 
 ## Owner locks: the guide lines
 
-Line numbers are for the final guide commit (they are the same in `9199116`).
+Line numbers are for `358ce75`.
 
 | Lock | Guide lines |
 |---|---|
