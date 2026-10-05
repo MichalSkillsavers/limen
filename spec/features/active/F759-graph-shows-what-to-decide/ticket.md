@@ -1,3 +1,7 @@
+---
+opened: 2026-10-04
+---
+
 # F759 · The graph shows only what the owner must decide, under high change volume
 
 ## Outcome

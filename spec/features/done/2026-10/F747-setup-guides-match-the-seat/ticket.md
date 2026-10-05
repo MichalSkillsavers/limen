@@ -1,3 +1,8 @@
+---
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F747 · The setup guides describe the seat as it runs today
 
 ## Outcome

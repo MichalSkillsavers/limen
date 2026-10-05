@@ -1,3 +1,7 @@
+---
+opened: 2026-10-05
+---
+
 # F774 · Adam can click the target picture dashboard as one polished end-goal HTML
 
 ## Outcome
