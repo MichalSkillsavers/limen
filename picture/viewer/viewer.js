@@ -66,23 +66,31 @@
 		const floor = modules.length > 1 ? byNet[byNet.length - 1] : null;
 		const mids = modules.filter((m) => m !== entry && m !== floor);
 		const w = (a, b) => weight.get([a, b].sort().join("|")) || 0;
-		/* Ties: modules more linked from the entry sit further left, compared slot by slot. */
-		const nearer = (a, b) => {
-			for (let i = 0; i < a.length; i++) {
-				const d = w(a[i].id, entry.id) - w(b[i].id, entry.id);
-				if (d) return d > 0;
-			}
+		/* Order score, compared in turn: total link span; linked pairs that skip a neighbour (their wire dips under
+		   the row and crosses the wires to the floor); then modules more linked from the entry sit further left. */
+		const score = (row) => {
+			let span = 0;
+			let dips = 0;
+			for (let i = 0; i < row.length; i++)
+				for (let j = i + 1; j < row.length; j++) {
+					const n = w(row[i].id, row[j].id);
+					span += n * (j - i);
+					if (n && j - i > 1) dips++;
+				}
+			return [span, dips, ...row.map((m) => (entry ? -w(m.id, entry.id) : 0))];
+		};
+		const before = (a, b) => {
+			for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
 			return false;
 		};
 		let best = mids;
 		if (mids.length > 2 && mids.length <= 7) {
-			let bestCost = Infinity;
+			let bestScore = null;
 			const permute = (done, rest) => {
 				if (!rest.length) {
-					let cost = 0;
-					for (let i = 0; i < done.length; i++) for (let j = i + 1; j < done.length; j++) cost += w(done[i].id, done[j].id) * (j - i);
-					if (cost < bestCost || (cost === bestCost && entry && nearer(done, best))) {
-						bestCost = cost;
+					const s = score(done);
+					if (!bestScore || before(s, bestScore)) {
+						bestScore = s;
 						best = done;
 					}
 					return;
@@ -153,7 +161,9 @@
 			const f = w.mapFeature ? features.get(w.mapFeature) : null;
 			const group = w.needsAdam ? "needs" : w.wrong ? "wrong" : w.lane;
 			const date = w.needsAdam?.on || w.wrong?.on || w.landed || w.opened || null;
-			const evidence = [{ title: "Ticket", purpose: "The outcome, as the ticket states it.", path: w.path, excerpt: w.outcome || w.purpose || "The ticket has no Outcome section." }];
+			const evidence = [
+				{ title: "Ticket", purpose: "The outcome, as the ticket states it.", path: w.path, excerpt: w.outcome || w.purpose || "The ticket has no Outcome section." },
+			];
 			if (w.board) evidence.push({ title: "Board line", purpose: "Where the board files this feature.", path: `spec/build.md, line ${w.board.line}`, excerpt: boardText(w.board) });
 			if (f) evidence.push({ title: f.title, purpose: "The feature record in the plant map.", path: f.source, excerpt: f.summary });
 			return {
@@ -417,7 +427,10 @@
 		const entry = D.modules.find((m) => m.layer === "entry");
 		const floor = D.modules.find((m) => m.layer === "floor");
 		const mids = D.modules.filter((m) => m.layer === "mid");
-		const wide = (m, row) => (m.places.length === 1 && m.places[0] === m.id ? `<div class="band" data-row="${row}" data-mod="${esc(m.id)}">${chip(m.id, true)}</div>` : `<div data-row="${row}">${modCard(m, "floor")}</div>`);
+		const wide = (m, row) =>
+			m.places.length === 1 && m.places[0] === m.id
+				? `<div class="band" data-row="${row}" data-mod="${esc(m.id)}">${chip(m.id, true)}</div>`
+				: `<div data-row="${row}">${modCard(m, "floor")}</div>`;
 		return (
 			(entry ? wide(entry, 0) : "") +
 			(mids.length ? `<div class="midrow" data-row="1" style="--mids:${mids.length}">${mids.map((m) => modCard(m, "")).join("")}</div>` : "") +
@@ -541,7 +554,16 @@
 	function box(el) {
 		const s = stage.getBoundingClientRect();
 		const b = el.getBoundingClientRect();
-		return { l: b.left - s.left, t: b.top - s.top, r: b.right - s.left, b: b.bottom - s.top, w: b.width, h: b.height, x: b.left - s.left + b.width / 2, y: b.top - s.top + b.height / 2 };
+		return {
+			l: b.left - s.left,
+			t: b.top - s.top,
+			r: b.right - s.left,
+			b: b.bottom - s.top,
+			w: b.width,
+			h: b.height,
+			x: b.left - s.left + b.width / 2,
+			y: b.top - s.top + b.height / 2,
+		};
 	}
 	const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 	function path(a, b, jit = 0, same = false) {
@@ -643,7 +665,10 @@
 		["t", "#0d6b62"],
 		["k", "#1c1e22"],
 	]
-		.map(([n, c]) => `<marker id="m${n}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="${c}"/></marker>`)
+		.map(
+			([n, c]) =>
+				`<marker id="m${n}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="${c}"/></marker>`,
+		)
 		.join("")}</defs>`;
 	function drawWires() {
 		/* Base: one wire per module pair, with a count of place-level links. */
@@ -974,7 +999,10 @@
 		const notes = D.diagnostics.filter((d) => d.level !== "info");
 		if (!notes.length) return "";
 		return `<details class="notes" id="notes"><summary>${plural(notes.length, "map note")} from the build</summary><ul>${notes
-			.map((d) => `<li><b>${esc(d.level === "error" ? "Error" : "Warning")}</b> ${esc(d.message)}${d.source ? ` <span class="path">${esc(d.source)}${d.line ? `:${d.line}` : ""}</span>` : ""}</li>`)
+			.map(
+				(d) =>
+					`<li><b>${esc(d.level === "error" ? "Error" : "Warning")}</b> ${esc(d.message)}${d.source ? ` <span class="path">${esc(d.source)}${d.line ? `:${d.line}` : ""}</span>` : ""}</li>`,
+			)
 			.join("")}</ul></details>`;
 	}
 	function readHtml(r) {
