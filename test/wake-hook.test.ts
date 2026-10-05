@@ -1995,6 +1995,107 @@ test("a wake opens with label and task and ends with the instruction", async (co
 	assert.equal(messages.length, 1, "two sweeps cannot deliver one completion twice to one session");
 });
 
+test("standing uncertainty waits one minute and delivers once across transitions and listener restart; real failure and completion still deliver", async (context) => {
+	stashEnv(context, "LIMEN_JOB", undefined);
+	stashEnv(context, "LIMEN_HERDR", "0");
+	const root = await mkdtemp(join(tmpdir(), "limen-uncertainty-wake-"));
+	context.after(() => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, ".agents/limen"), { recursive: true });
+	const jobs = join(root, ".limen/jobs"),
+		job = join(jobs, "uncertain");
+	await mkdir(job, { recursive: true });
+	await writeFile(join(job, "label"), "ownership proof\n");
+	await writeFile(join(job, "state"), "running\n");
+	await subscribe(jobs, "uncertain", "coordinator-a");
+	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
+	const messages: Array<{ content: string; deliverAs?: string }> = [];
+	limenWake({
+		on: (event, handler) => handlers.set(event, handler),
+		sendUserMessage(content, options) {
+			messages.push({ content, ...(options ? { deliverAs: options.deliverAs } : {}) });
+		},
+	});
+	const session = { cwd: root, isIdle: () => true, sessionManager: sessionManager("coordinator-a"), ui: { notify() {}, setStatus() {} } };
+	handlers.get("session_start")?.({}, session);
+	context.after(() => handlers.get("session_shutdown")?.({}, session));
+	const since = Date.now();
+	await writeFile(join(job, "ownership-uncertainty"), JSON.stringify({ since, root: true, child: false }));
+	await new Promise((resolve) => setTimeout(resolve, 650));
+	assert.equal(messages.length, 0, "transient observations do not wake");
+	const standing = since - 61_000;
+	await writeFile(join(job, "ownership-uncertainty"), JSON.stringify({ since: standing, root: true, child: false }));
+	await waitUntil(() => messages.length === 1);
+	assert.match(messages[0]!.content, /ownership observation unavailable/);
+	assert.doesNotMatch(messages[0]!.content, /is idle/);
+	assert.equal(messages[0]!.deliverAs, undefined, "uncertainty never enters followUp");
+	emitWakeTurn(handlers, session, messages[0]!.content);
+	await waitUntilAsync(async () => (await readFile(join(job, "notify/delivered/_uncertainty.coordinator-a/accepted"), "utf8").catch(() => "")) === "1\n");
+	for (let i = 0; i < 20; i++) {
+		await writeFile(join(job, "activity"), i % 2 ? "think\n" : "tool\n");
+		await writeFile(join(job, "ownership-uncertainty"), JSON.stringify({ since: standing, root: Boolean(i % 2), child: true }));
+	}
+	handlers.get("session_shutdown")?.({}, session);
+	handlers.get("session_start")?.({}, session);
+	await new Promise((resolve) => setTimeout(resolve, 650));
+	assert.equal(messages.length, 1, "one standing condition stays heard after reload");
+	await writeFile(join(job, "advisory"), "errored: last turn failed with error: real failure, session still open\n");
+	await waitUntil(() => messages.length === 2);
+	assert.match(messages[1]!.content, /real failure/);
+	emitWakeTurn(handlers, session, messages[1]!.content);
+	await writeFile(join(job, "state"), "failed\n");
+	await waitUntil(() => messages.length === 3);
+	assert.match(messages[2]!.content, /is failed/);
+});
+
+test("uncertainty does not queue into a busy recipient or consume failure and completion attempts", async (context) => {
+	stashEnv(context, "LIMEN_JOB", undefined);
+	stashEnv(context, "LIMEN_HERDR", "0");
+	const root = await mkdtemp(join(tmpdir(), "limen-uncertainty-busy-"));
+	context.after(() => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, ".agents/limen"), { recursive: true });
+	const jobs = join(root, ".limen/jobs"),
+		job = join(jobs, "busy");
+	await mkdir(join(job, "notify/unconfirmed"), { recursive: true });
+	await writeFile(join(job, "notify/unconfirmed/_uncertainty"), "1\n1\n");
+	await subscribe(jobs, "busy", "coordinator-a");
+	await writeFile(join(job, "state"), "running\n");
+	await writeFile(join(job, "ownership-uncertainty"), JSON.stringify({ since: Date.now() - 61_000, root: true, child: false }));
+	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
+	const messages: string[] = [];
+	let idle = false;
+	limenWake({
+		on: (event, handler) => handlers.set(event, handler),
+		sendUserMessage(content) {
+			messages.push(content);
+		},
+	});
+	const session = { cwd: root, isIdle: () => idle, sessionManager: sessionManager("coordinator-a"), ui: { notify() {}, setStatus() {} } };
+	handlers.get("session_start")?.({}, session);
+	context.after(() => handlers.get("session_shutdown")?.({}, session));
+	await new Promise((resolve) => setTimeout(resolve, 650));
+	assert.equal(messages.length, 0);
+	idle = true;
+	handlers.get("agent_settled")?.({}, session);
+	await new Promise((resolve) => setTimeout(resolve, 650));
+	assert.equal(messages.length, 0, "exhausted uncertainty stays stopped");
+	await writeFile(join(job, "advisory"), "blocked after 3 tool calls, session still open\n");
+	await waitUntil(() => messages.length === 1);
+	assert.match(messages[0]!, /blocked/);
+	emitWakeTurn(handlers, session, messages[0]!);
+	await rm(join(job, "advisory"));
+	idle = false;
+	await rm(join(job, "notify/unconfirmed/_uncertainty"));
+	await new Promise((resolve) => setTimeout(resolve, 650));
+	assert.equal(messages.length, 1, "busy uncertainty is not accepted or queued");
+	await writeFile(join(job, "state"), "done\n");
+	await waitUntil(() => messages.length === 2);
+	idle = true;
+	emitWakeTurn(handlers, session, messages[1]!);
+	await new Promise((resolve) => setTimeout(resolve, 650));
+	assert.equal(messages.length, 2, "busy-to-terminal has no stale running wake");
+	assert.match(messages[1]!, /is done/);
+});
+
 function emitWakeTurn(handlers: Map<string, (event: unknown, context: TestContext) => void>, session: TestContext, content: string, stopReason = "stop"): void {
 	const user = { role: "user", content: [{ type: "text", text: content }] };
 	handlers.get("message_start")?.({ message: user }, session);

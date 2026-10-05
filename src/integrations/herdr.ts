@@ -1,9 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { ENGINES, type EngineId, engineProfile } from "../runtime/engine.ts";
+import { hostedIdentityObservation, readHostedBinding } from "../runtime/hosted-binding.ts";
 
 export type HerdrPlace = { readonly workspace: string; readonly tab: string; readonly pane: string; readonly mode: "watch" | "log" | "hosted" | "diff" };
 export type HostedAgentStatus = "idle" | "working" | "blocked" | "done" | "unknown" | "missing";
@@ -243,27 +244,59 @@ function noteHostedFault(target: string, code: string): HostedAgentStatus {
 	return lastHostedStatus.get(target) ?? "unknown";
 }
 
-/** The hook PID must be the foreground engine for this pane and this job's session. */
-export function hostedEngineOwned(target: string, pid: number, engine: "pi" | "omp", jobDir: string): boolean {
+export function hostedLaunchParent(target: string): number {
+	try {
+		const info = asRecord(asRecord(call(requireHerdr(), ["pane", "process-info", "--pane", target], 2_000)).process_info);
+		return Number(info.shell_pid);
+	} catch {
+		return 0;
+	}
+}
+export function hostedForegroundPid(target: string, pid: number): "present" | "mismatch" | "unavailable" {
 	const herdr = herdrBinary();
-	if (!herdr || !Number.isSafeInteger(pid) || pid <= 0) return false;
+	if (!herdr) return "unavailable";
 	try {
 		const info = asRecord(asRecord(call(herdr, ["pane", "process-info", "--pane", target], 2_000)).process_info);
-		const foreground = info.foreground_processes;
-		if (!Array.isArray(foreground)) return false;
-		return foreground.some((value) => {
-			const row = asRecord(value);
-			const argv = row.argv;
-			return (
-				row.pid === pid &&
-				(row.name === engine || row.name === "node") &&
-				Array.isArray(argv) &&
-				argv.some((arg, index) => arg === "--session-dir" && argv[index + 1] === `${jobDir}/session`)
-			);
-		});
+		if (!Array.isArray(info.foreground_processes)) return "unavailable";
+		return info.foreground_processes.some((value) => asRecord(value).pid === pid) ? "present" : "mismatch";
 	} catch {
-		return false;
+		return "unavailable";
 	}
+}
+/** Current pane membership is checked between two fresh checks of the immutable binding. */
+export async function hostedBindingInPane(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
+	const binding = readHostedBinding(jobDir);
+	if (!binding || binding.pid !== pid || binding.engine !== engine) return "mismatch";
+	let session: string;
+	try {
+		session = readFileSync(`${jobDir}/engine-session`, "utf8");
+		const association = JSON.parse(session);
+		if (association.pid !== binding.pid || association.born !== binding.born || association.sessionId !== binding.sessionId) return "mismatch";
+	} catch {
+		return "mismatch";
+	}
+	const before = await hostedIdentityObservation(binding);
+	if (before !== "present") return before;
+	const foreground = hostedForegroundPid(target, pid);
+	if (foreground !== "present") return foreground;
+	const after = await hostedIdentityObservation(binding);
+	if (after !== "present") return after;
+	try {
+		return readFileSync(`${jobDir}/engine-session`, "utf8") === session ? "owned" : "mismatch";
+	} catch {
+		return "mismatch";
+	}
+}
+export async function hostedEngineObservation(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
+	try {
+		if (readFileSync(`${jobDir}/herdr/pane`, "utf8").trim() !== target) return "mismatch";
+	} catch {
+		return "mismatch";
+	}
+	return hostedBindingInPane(target, pid, engine, jobDir);
+}
+export async function hostedEngineOwned(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<boolean> {
+	return (await hostedEngineObservation(target, pid, engine, jobDir)) === "owned";
 }
 
 export function stopHostedAgent(target: string): void {

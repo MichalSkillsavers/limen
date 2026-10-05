@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { hostedForegroundPid } from "../src/integrations/herdr.ts";
+import { readHostedBinding, registerHostedBinding } from "../src/runtime/hosted-binding.ts";
 
 type PiApi = {
 	on(event: "session_start" | "session_shutdown" | "agent_settled", handler: (event: unknown, context: unknown) => void): void;
@@ -31,6 +33,7 @@ export default function limenHosted(pi: PiApi): void {
 	const jobDir = join(root, ".limen", "jobs", id);
 	if (!existsSync(jobDir)) return;
 	let tools = 0;
+	let pendingTools = 0;
 	let turnTools = 0;
 	let metadataTimer: NodeJS.Timeout | undefined;
 	let herdr: { readonly binary: string; readonly pane: string } | undefined;
@@ -95,17 +98,32 @@ export default function limenHosted(pi: PiApi): void {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const handoff = typeof params?.handoff === "string" ? params.handoff.trim() : "";
 			if (handoff) write("result", handoff);
+			write("session-ended", new Date().toISOString());
 			ctx.shutdown();
 			return { content: [{ type: "text", text: "done" }], details: {} };
 		},
 	});
-	pi.on("session_start", () => {
+	pi.on("session_start", async (_event, context) => {
 		mkdirSync(join(jobDir, "session"), { recursive: true });
-		write("engine-pid", String(process.pid));
+		let pane = process.env.HERDR_PANE_ID?.trim() || "";
+		if (readHostedBinding(jobDir)?.pid === process.pid) {
+			try {
+				pane = readFileSync(join(jobDir, "herdr/pane"), "utf8").trim();
+			} catch {
+				pane = "";
+			}
+		}
+		const registered = hostedForegroundPid(pane, process.pid) === "present" && (await registerHostedBinding(jobDir, pane, context));
+		if (registered) {
+			const binding = readHostedBinding(jobDir)!;
+			write("engine-pid", String(binding.pid));
+			write("engine-session", JSON.stringify({ pid: binding.pid, born: binding.born, sessionId: binding.sessionId }));
+		} else if (readHostedBinding(jobDir)?.pid === process.pid) {
+			rmSync(join(jobDir, "engine-session"), { force: true });
+		}
 		write("activity", "think");
 		log(`[limen ${new Date().toISOString()}] hosted reporter attached`);
 		const binary = process.env.LIMEN_HERDR?.trim() || "herdr";
-		const pane = process.env.HERDR_PANE_ID?.trim();
 		if (metadataTimer) clearInterval(metadataTimer);
 		herdr = process.env.HERDR_ENV === "1" && binary !== "0" && pane ? { binary, pane } : undefined;
 		if (!herdr) return;
@@ -117,12 +135,13 @@ export default function limenHosted(pi: PiApi): void {
 	pi.on("agent_settled", () => report());
 	pi.on("turn_start", () => {
 		turnTools = 0;
-		write("activity", "think");
+		write("activity", pendingTools ? "tool" : "think");
 		log("think");
 	});
 	pi.on("tool_execution_start", (event) => {
 		const name = event.toolName?.trim() || "tool";
 		tools += 1;
+		pendingTools += 1;
 		turnTools += 1;
 		write("activity", "tool");
 		write("last-tool", name);
@@ -131,12 +150,13 @@ export default function limenHosted(pi: PiApi): void {
 		log(name);
 	});
 	pi.on("tool_execution_end", () => {
-		write("activity", "think");
+		pendingTools = Math.max(0, pendingTools - 1);
+		write("activity", pendingTools ? "tool" : "think");
 	});
 	pi.on("turn_end", () => {
 		// A turn end is not job completion — hosted jobs are multi-turn.
 		write("last-turn-tools", String(turnTools));
-		write("activity", "wait");
+		write("activity", pendingTools ? "tool" : "wait");
 		log("wait");
 	});
 	pi.on("session_shutdown", () => {
@@ -145,7 +165,8 @@ export default function limenHosted(pi: PiApi): void {
 		report(true);
 		herdr = undefined;
 		write("activity", "wait");
-		write("session-ended", new Date().toISOString());
+		// Pi also emits shutdown on reload. Only finish or actual process exit ends the job.
+		if (readHostedBinding(jobDir)?.pid === process.pid) rmSync(join(jobDir, "engine-session"), { force: true });
 		log(`[limen ${new Date().toISOString()}] hosted session shutdown`);
 	});
 }

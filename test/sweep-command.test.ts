@@ -62,6 +62,38 @@ test("sweep claims each advisory once without consuming wakes, honors liveness, 
 	assert.equal((await readdir(join(job, "notify/seat"))).length, 2, "a live coordinator suppresses seat rings");
 });
 
+test("seat uncertainty bell uses one standing timestamp and never consumes real advisory or completion bells", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const log = join(dirname(scratch.root), "uncertainty-rings"),
+		herdr = join(scratch.fakeBin, "herdr-ring");
+	await writeFile(herdr, `#!/bin/sh\nprintf 'ring\\n' >> '${log}'\n`);
+	await chmod(herdr, 0o755);
+	const env = { ...(await fakeNotifications(scratch.fakeBin, herdr)), LIMEN_SEAT_RING_MS: "1", LIMEN_SEAT_NOTIFY_TIMEOUT_MS: fakeSeatTimeoutMs };
+	const job = join(scratch.root, ".limen/jobs/uncertain");
+	await mkdir(job, { recursive: true });
+	await writeFile(join(job, "state"), "running\n");
+	await writeFile(join(job, "pid"), `${process.pid}\n`);
+	const since = Date.now() - 61_000;
+	await writeFile(join(job, "ownership-uncertainty"), JSON.stringify({ since, root: true, child: false }));
+	assert.equal(limenWithEnv(scratch, env, "sweep").status, 0);
+	assert.equal(await readFile(log, "utf8"), "ring\n");
+	await writeFile(join(job, "ownership-uncertainty"), JSON.stringify({ since, root: false, child: true }));
+	assert.equal(limenWithEnv(scratch, env, "sweep").status, 0);
+	assert.equal(await readFile(log, "utf8"), "ring\n", "diagnostic changes do not ring again");
+	await mkdir(join(job, "notify/delivered/_uncertainty.coord"), { recursive: true });
+	await writeFile(join(job, "advisory"), "errored: real failure\n");
+	const old = new Date(Date.now() - 1_000);
+	await utimes(join(job, "advisory"), old, old);
+	assert.equal(limenWithEnv(scratch, env, "sweep").status, 0);
+	assert.equal(await readFile(log, "utf8"), "ring\nring\n", "heard uncertainty cannot silence a real failure");
+	await writeFile(join(job, "state"), "done\n");
+	await utimes(join(job, "state"), old, old);
+	assert.equal(limenWithEnv(scratch, env, "sweep").status, 0);
+	assert.equal(await readFile(log, "utf8"), "ring\nring\nring\n", "uncertainty receipt is not a completion receipt");
+});
+
 test("seat sweep honors legacy receipts and atomically claims a terminal event", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);

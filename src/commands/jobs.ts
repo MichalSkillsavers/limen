@@ -6,6 +6,7 @@ import { resolveJob } from "../job/lookup.ts";
 import { colorWanted, humanDetail, humanSnapshot, type JobRecord, paintWhen, resolveView, tallyStates } from "../job/view.ts";
 import { limenRoot, liveDiffstat, workspaceRepository } from "../project/git.ts";
 import { processGroupAlive } from "../runtime/contain.ts";
+import { hostedUncertaintyText, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
 
 export async function jobsCommand(args: readonly string[], cwd: string): Promise<void> {
@@ -125,6 +126,8 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 			.map((field) => text(`${jobDir}/${field}`)),
 	);
 	if (!state) return { compact: `ORPHAN ${id} · no state`, record: { id, invalid: "orphan · no state" } };
+	const uncertainty = readHostedUncertainty(jobDir);
+	const warning = advisory || (uncertainty ? hostedUncertaintyText(uncertainty) : "");
 	const agent = await text(`${jobDir}/herdr/agent`);
 	const [commits, commitsStat] = await Promise.all([text(`${jobDir}/commits`), optionalStat(`${jobDir}/commits`)]);
 	const [result, stopReason, versions] = detailed ? await Promise.all([text(`${jobDir}/result`), text(`${jobDir}/stop-reason`), text(`${jobDir}/versions`)]) : ["", "", ""];
@@ -172,7 +175,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 		if (candidate) blocks.push(`  candidate ${display(candidate)}`);
 		if (engine && engine !== "pi") blocks.push(`  engine ${display(engine)}`);
 		if (hosted) blocks.push("  hosted (weaker guarantees)");
-		if (job.phase === "running" && advisory) blocks.push(`  advisory ${display(advisory)}`);
+		if (job.phase === "running" && warning) blocks.push(`  advisory ${display(warning)}`);
 		if (stopReason) blocks.push(indented("stop-reason", stopReason));
 		if (versions) blocks.push(indented("versions", versions));
 		if (detailed && commits) blocks.push(indented("commits", commits));
@@ -203,7 +206,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 			...(parent ? { parent } : {}),
 			...(candidate ? { candidate } : {}),
 			...(hosted ? { hosted: true } : {}),
-			...(job.phase === "running" && advisory ? { advisory } : {}),
+			...(job.phase === "running" && warning ? { advisory: warning } : {}),
 			...(stopReason ? { stopReason } : {}),
 			...(versions ? { versions } : {}),
 			...(detailed && commits ? { commits } : {}),

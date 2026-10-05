@@ -90,6 +90,10 @@ test("hosted refresh preserves supervisor warnings, promptly recovers RUNNING la
 	context.mock.timers.tick(180_000);
 	assert.equal((await readCalls()).length, before, "shutdown must stop metadata refresh");
 	for (const call of await readCalls()) {
+		if (call[1] === "process-info") {
+			assert.deepEqual(call, ["pane", "process-info", "--pane", "w1:p1"]);
+			continue;
+		}
 		assert.deepEqual(call.slice(0, 5), ["pane", "report-metadata", "w1:p1", "--source", "limen"]);
 		assert.ok(!call.includes("--state"));
 		if (call.includes("--seq")) assert.ok(!call.some((arg) => arg.startsWith("blocked=")), "only the supervisor owns the blocker label");
@@ -145,10 +149,16 @@ test("hosted finish writes the handoff and shuts down; a text-only turn records 
 	handlers.get("tool_execution_start")?.({ toolName: "bash", args: { command: "cargo test" } });
 	assert.equal(await readFile(join(job, "activity"), "utf8"), "tool\n");
 	assert.equal(await readFile(join(job, "tool-detail"), "utf8"), "cargo test\n");
+	handlers.get("tool_execution_start")?.({ toolName: "read" });
+	handlers.get("tool_execution_end")?.({});
+	assert.equal(await readFile(join(job, "activity"), "utf8"), "tool\n", "a sibling or nested tool remains pending");
+	handlers.get("turn_end")?.({});
+	assert.equal(await readFile(join(job, "activity"), "utf8"), "tool\n");
+	assert.equal(await readFile(join(job, "last-turn-tools"), "utf8"), "2\n");
 	handlers.get("tool_execution_end")?.({});
 	assert.equal(await readFile(join(job, "activity"), "utf8"), "think\n");
-	handlers.get("turn_end")?.({});
-	assert.equal(await readFile(join(job, "last-turn-tools"), "utf8"), "1\n");
+	handlers.get("session_shutdown")?.({});
+	await assert.rejects(readFile(join(job, "session-ended")), "reload shutdown alone is not completion");
 	assert.ok(tool);
 	await tool.execute("1", { handoff: "landed the finish tool" }, undefined, undefined, { shutdown: () => shutdowns++ });
 	assert.equal(await readFile(join(job, "result"), "utf8"), "landed the finish tool\n");

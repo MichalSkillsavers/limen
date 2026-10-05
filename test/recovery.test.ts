@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { hostedAgentStatus } from "../src/integrations/herdr.ts";
 import { textFile } from "../src/job/record.ts";
-import { processAlive } from "../src/runtime/contain.ts";
+import { processAlive, processInfo } from "../src/runtime/contain.ts";
+import { prepareHostedLaunch } from "../src/runtime/hosted-binding.ts";
 import { ownerAlive, reapDeadJobs, STARTUP_GRACE_MS } from "../src/runtime/reap.ts";
 import { recoveryTarget } from "../src/runtime/recovery.ts";
 import { launchHostedSupervisor } from "../src/runtime/wrapper.ts";
@@ -306,6 +307,26 @@ test("uncertain Herdr never adopts or fails, including cached life and a failed 
 	await Promise.all(["role", "agent-name", "herdr/agent", "started-at"].map((name) => rm(join(f.job, name))));
 	await writeFile(join(f.job, "pid"), "broken\n");
 	await reapDeadJobs(f.jobs, seen, now + 40_001);
+	assert.equal(await starts(f.job), 0, "legacy name-only relocation cannot be adopted");
+	assert.equal(await textFile(join(f.job, "herdr/pane")), "w1:p1");
+	if (process.platform !== "linux") {
+		context.diagnostic("Linux boot-binding relocation proof unavailable on this platform; legacy relocation stayed unowned");
+		return;
+	}
+	await prepareHostedLaunch(f.job, "w1:p1", "pi", process.pid);
+	const launch = JSON.parse(await readFile(join(f.job, "engine-launch"), "utf8"));
+	const identity = await processInfo(f.agent.pid!);
+	assert.equal(identity.kind, "present");
+	if (identity.kind !== "present") return;
+	const binding = { ...launch, pid: f.agent.pid, born: identity.process.born, platform: process.platform, sessionId: "fixture-session" };
+	await writeFile(join(f.job, "engine-binding"), JSON.stringify(binding));
+	await writeFile(join(f.job, "engine-session"), JSON.stringify(binding));
+	await f.set({ foreground: ["pi"] });
+	const uncertaintySince = Date.now() - 61_000;
+	await writeFile(join(f.job, "ownership-uncertainty"), JSON.stringify({ since: uncertaintySince, root: true, child: true }));
+	await mkdir(join(f.job, "notify/delivered/_uncertainty.coord"), { recursive: true });
+	await writeFile(join(f.job, "notify/delivered/_uncertainty.coord/accepted"), "1\n");
+	await reapDeadJobs(f.jobs, seen, now + 50_001);
 	await f.owner();
 	assert.equal(await textFile(join(f.job, "herdr/agent")), "w2:p2");
 	assert.equal(await textFile(join(f.job, "herdr/pane")), "w2:p2");
@@ -316,7 +337,17 @@ test("uncertain Herdr never adopts or fails, including cached life and a failed 
 	assert.equal(environment.LIMEN_CONTEXT_ROOT, f.root);
 	assert.equal(seen.size, 0);
 	assert.doesNotMatch(await textFile(f.calls), /"agent","start"/);
-	context.diagnostic("cached-working transport failure, unknown status, and list outage all waited; concrete moved pane adopted via pre-F048 fallbacks");
+	context.diagnostic(
+		"cached-working transport failure, unknown status, list outage and legacy relocation waited; moved pane adopted only after the saved birth/boot/session binding matched",
+	);
+	assert.equal(await readFile(join(f.job, "engine-binding"), "utf8"), JSON.stringify(binding), "recovery cannot replace the binding");
+	await until(async () => JSON.parse(await textFile(join(f.job, "ownership-uncertainty"))).root === false);
+	assert.deepEqual(
+		JSON.parse(await textFile(join(f.job, "ownership-uncertainty"))),
+		{ since: uncertaintySince, root: false, child: true },
+		"a recovered supervisor retains the first timestamp and unavailable child observation",
+	);
+	assert.equal(await textFile(join(f.job, "notify/delivered/_uncertainty.coord/accepted")), "1", "recovery retains standing uncertainty receipts");
 });
 
 test("uncertain then concretely missing agent fails with handoff and wake eligibility; terminal records cannot revive", async (context) => {

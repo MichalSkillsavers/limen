@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { limen, limenWithEnv, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
@@ -272,6 +272,13 @@ test("jobs shows the advisory line on a running hosted job", async (context) => 
 	assert.equal(result.status, 0, result.stderr);
 	assert.match(result.stdout, /RUNNING F027 stalled/);
 	assert.match(result.stdout, /advisory idle 10m after 14 tool calls, session still open/);
+	await writeFile(join(job, "ownership-uncertainty"), JSON.stringify({ since: Date.now(), root: true, child: false }));
+	assert.doesNotMatch(limen(scratch, "jobs").stdout, /ownership observation/, "real failures and idle episodes have display priority");
+	await rm(join(job, "advisory"));
+	assert.match(limen(scratch, "jobs").stdout, /ownership observation unavailable/);
+	await mkdir(join(job, "notify/unconfirmed"), { recursive: true });
+	await writeFile(join(job, "notify/unconfirmed/_uncertainty"), "1\n1\n");
+	assert.match(limen(scratch, "jobs", "stalled").stdout, /ownership observation unavailable/, "exhausted delivery does not hide the condition");
 });
 
 test("jobs rejects ambiguous option shapes", async (context) => {

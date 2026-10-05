@@ -5,6 +5,7 @@ import { derivePulse, type Pulse, producedNothing } from "../src/job/job.ts";
 import { unlandedBranches } from "../src/project/git.ts";
 import { registerProject } from "../src/project/seat.ts";
 import { processGroupAlive } from "../src/runtime/contain.ts";
+import { HOSTED_UNCERTAINTY_MS, hostedUncertaintyText, readHostedUncertainty } from "../src/runtime/hosted-uncertainty.ts";
 import { reapDeadJobs } from "../src/runtime/reap.ts";
 
 type Context = {
@@ -294,15 +295,19 @@ export default function limenWake(pi: PiApi): void {
 	const sendAdvisory = (jobs: string, id: string, fallback: boolean): boolean => {
 		if (!session) return false;
 		const job = join(jobs, id);
-		const advisory = text(join(job, "advisory"));
-		if (!advisory) return false;
+		const genuine = text(join(job, "advisory"));
+		const uncertainty = genuine ? undefined : readHostedUncertainty(job);
+		if (!genuine && (!uncertainty || Date.now() - uncertainty.since < HOSTED_UNCERTAINTY_MS || session.isIdle() !== true || injectedThisSweep)) return false;
+		const advisory = genuine || hostedUncertaintyText(uncertainty!);
+		const family = genuine ? "_advisory" : "_uncertainty";
+		const slots = (names: readonly string[]) => names.filter((name) => receiptFamily(name) === family);
 		const label = text(join(job, "label")) || id;
 		const branch = text(join(job, "branch"));
 		const repo = text(join(job, "repo"));
-		const slot = fallback ? "_advisory._fallback" : `_advisory.${sessionId}`;
+		const slot = `${family}.${fallback ? "_fallback" : sessionId}`;
 		if (!fallback && deliveryExists(job, slot)) return false;
-		if (fallback && (advisorySlots(deliveredSlots(job)).length > 0 || session.isIdle() !== true || muted || !sessionOwns(jobs))) return false;
-		const kind = advisory.startsWith("blocked") ? "blocked" : advisory.startsWith("errored:") ? "errored" : "idle";
+		if (fallback && (slots(deliveredSlots(job)).length > 0 || session.isIdle() !== true || muted || !sessionOwns(jobs))) return false;
+		const kind = uncertainty ? "ownership observation unavailable" : advisory.startsWith("blocked") ? "blocked" : advisory.startsWith("errored:") ? "errored" : "idle";
 		const blocked = () => {
 			try {
 				session?.ui.notify(`limen: ${label} advisory wake was unconfirmed twice; automatic delivery stopped (${id})`, "info");
@@ -312,25 +317,35 @@ export default function limenWake(pi: PiApi): void {
 		};
 		const eligible = () => {
 			if (recoverClaims(job, (claim) => pendingDeliveries.has(claim))) blocked();
-			if (stateOf(jobs, id) !== "running" || !text(join(job, "advisory")) || !routable(job)) return false;
+			if (stateOf(jobs, id) !== "running" || !routable(job)) return false;
+			if (uncertainty) {
+				if (readHostedUncertainty(job)?.since !== uncertainty.since || text(join(job, "advisory")) || session?.isIdle() !== true || injectedThisSweep) return false;
+			} else if (!text(join(job, "advisory"))) return false;
 			if (fallback)
 				return (
 					session?.isIdle() === true &&
 					!muted &&
 					sessionOwns(jobs) &&
-					advisorySlots(claimSlots(job)).every((claim) => claim === "_advisory._fallback") &&
-					advisorySlots(deliveredSlots(job)).length === 0
+					slots(claimSlots(job)).every((claim) => claim === `${family}._fallback`) &&
+					slots(deliveredSlots(job)).length === 0
 				);
 			return (
-				subscribed(job, sessionId) && !existsSync(join(job, "notify", "claims", "_advisory._fallback")) && !existsSync(join(job, "notify", "delivered", "_advisory._fallback"))
+				subscribed(job, sessionId) && !existsSync(join(job, "notify", "claims", `${family}._fallback`)) && !existsSync(join(job, "notify", "delivered", `${family}._fallback`))
 			);
 		};
-		const message = advisoryWake(job, label, id, branch, repo, advisory, fallback);
+		const message = uncertainty
+			? `Limen job ${JSON.stringify(label)} (${id}) on branch ${branch}: ${advisory}. The job was running at dispatch. Inspect the saved observation; do not infer a timeout or stop authority from it.`
+			: advisoryWake(job, label, id, branch, repo, advisory, fallback);
 		const routed = claimDelivery(
 			job,
 			slot,
 			eligible,
 			() => {
+				if (uncertainty) {
+					if (!eligible()) return false;
+					injectedThisSweep = true;
+					return Promise.resolve(pi.sendUserMessage(message));
+				}
 				try {
 					session?.ui.notify(kind === "errored" ? `limen: ${label} last turn failed (${id})` : `limen: ${label} is ${kind} (${id})`, "info");
 				} catch {
@@ -361,9 +376,10 @@ export default function limenWake(pi: PiApi): void {
 		}
 		if (muted) return;
 		if (state === "running") {
-			if (!text(join(job, "advisory"))) return;
+			const stamp = text(join(job, "advisory")) ? "advisory" : "ownership-uncertainty";
+			if (!existsSync(join(job, stamp))) return;
 			if (own) sendAdvisory(jobs, id, false);
-			else if (oldEnoughForFallback(job, join(job, "advisory"))) sendAdvisory(jobs, id, true);
+			else if (oldEnoughForFallback(job, join(job, stamp))) sendAdvisory(jobs, id, true);
 			return;
 		}
 		if (own && !deliveryExists(job, sessionId) && !deliveryExists(job, "_fallback")) notifyHerdr(job, id, state, label, branch, sessionId);
@@ -410,7 +426,7 @@ export default function limenWake(pi: PiApi): void {
 			if (initialSweep) {
 				initialSweep = false;
 				for (const id of running) {
-					if (text(join(jobs, id, "advisory"))) observe(jobs, id);
+					if (text(join(jobs, id, "advisory")) || readHostedUncertainty(join(jobs, id))) observe(jobs, id);
 				}
 			}
 			await reapDeadJobs(jobs, firstDead, Date.now(), running);
@@ -761,7 +777,7 @@ type DeliveryCallbacks = {
 	readonly accepted: (claim: string) => void;
 	readonly released: (claim: string) => void;
 };
-function claimDelivery(job: string, slot: string, eligible: () => boolean, send: () => void | Promise<void>, callbacks: DeliveryCallbacks): boolean {
+function claimDelivery(job: string, slot: string, eligible: () => boolean, send: () => false | void | Promise<void>, callbacks: DeliveryCallbacks): boolean {
 	const claim = join(job, "notify", "claims", slot);
 	const delivered = join(job, "notify", "delivered", slot);
 	if (unsuccessfulAttempts(claim) >= 2) return false;
@@ -788,7 +804,7 @@ function claimDelivery(job: string, slot: string, eligible: () => boolean, send:
 		rmSync(claim, { recursive: true, force: true });
 		return false;
 	}
-	const sameKind = isAdvisorySlot(slot) ? advisorySlots(claimSlots(job)) : completionSlots(claimSlots(job));
+	const sameKind = claimSlots(job).filter((name) => receiptFamily(name) === receiptFamily(slot));
 	if (!eligible() || sameKind.length + unsuccessfulAttempts(claim) > 2) {
 		rmSync(claim, { recursive: true, force: true });
 		return false;
@@ -800,7 +816,16 @@ function claimDelivery(job: string, slot: string, eligible: () => boolean, send:
 	};
 	try {
 		const injected = send();
+		if (injected === false) {
+			callbacks.released(claim);
+			rmSync(claim, { recursive: true, force: true });
+			return false;
+		}
 		const accept = () => {
+			if (!existsSync(claim)) {
+				callbacks.released(claim);
+				return;
+			}
 			writeFileSync(join(claim, "accepted"), "1\n");
 			callbacks.accepted(claim);
 		};
@@ -837,7 +862,7 @@ function refreshClaim(claim: string): void {
 	}
 }
 function attemptsPath(claim: string): string {
-	return join(dirname(dirname(claim)), "unconfirmed", isAdvisorySlot(claim.slice(claim.lastIndexOf("/") + 1)) ? "_advisory" : "_completion");
+	return join(dirname(dirname(claim)), "unconfirmed", receiptFamily(claim.slice(claim.lastIndexOf("/") + 1)));
 }
 function unsuccessfulAttempts(claim: string): number {
 	return text(attemptsPath(claim))
@@ -954,11 +979,11 @@ function sessionOwnsJobs(jobs: string, session: string): boolean {
 function isAdvisorySlot(slot: string): boolean {
 	return slot.startsWith("_advisory.");
 }
-function advisorySlots(names: readonly string[]): string[] {
-	return names.filter((name) => isAdvisorySlot(name));
+function receiptFamily(slot: string): "_advisory" | "_uncertainty" | "_completion" {
+	return isAdvisorySlot(slot) ? "_advisory" : slot.startsWith("_uncertainty.") ? "_uncertainty" : "_completion";
 }
 function completionSlots(names: readonly string[]): string[] {
-	return names.filter((name) => !isAdvisorySlot(name));
+	return names.filter((name) => receiptFamily(name) === "_completion");
 }
 function projectRoot(cwd: string): string | undefined {
 	let dir = resolve(cwd);

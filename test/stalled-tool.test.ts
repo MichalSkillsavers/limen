@@ -27,7 +27,7 @@ async function content(path: string): Promise<string | undefined> {
 
 // These processes are real: the engine owns a sleeping child and its own process group.
 for (const engine of ["pi", "omp"] as const) {
-	test(`hosted ${engine} terminates an owned idle tool child and retains failed state`, async (context) => {
+	test(`hosted ${engine} quiet tools survive beyond the observation window without signals`, async (context) => {
 		const dir = await mkdtemp(join(tmpdir(), `limen-hosted-stall-${engine}-`));
 		const job = join(dir, "job");
 		await mkdir(join(job, "session"), { recursive: true });
@@ -97,16 +97,16 @@ console.log(JSON.stringify({ result: info }));
 		context.after(async () => {
 			if (supervisor.pid) await signalOwnedProcess(supervisor.pid, supervisorBirth, "SIGKILL");
 		});
-		await until(async () => ((await content(join(job, "advisory")))?.includes("ownership requires attention") ? true : undefined));
+		await until(async () => ((await content(join(job, "ownership-uncertainty")))?.includes('"root":true') ? true : undefined));
 		assert.equal(await content(join(job, "state")), "running\n", "unknown pane ownership cannot fail the job");
 		assert.equal((await processInfo(childPid)).kind, "present", "unknown pane ownership cannot kill the child");
 		await writeFile(herdr, herdrSource(join(job, "session")));
-		await until(async () => ((await content(join(job, "state"))) === "failed\n" ? true : undefined), 25_000);
-		assert.match((await content(join(job, "log"))) ?? "", /stalled tool cargo test: CPU-idle child/);
-		assert.match((await content(join(job, "stop-reason"))) ?? "", /error: stalled tool cargo test/);
-		await until(async () => ((await processInfo(childPid)).kind === "absent" ? true : undefined));
-		assert.equal(await content(join(job, "state")), "failed\n");
-		assert.equal(await content(join(job, "advisory")), undefined, "resolved ownership warning must not remain after failure");
+		await wait(5_000);
+		assert.equal(await content(join(job, "state")), "running\n");
+		assert.equal((await processInfo(worker.pid!)).kind, "present", "quiet engine survives");
+		assert.equal((await processInfo(childPid)).kind, "present", "quiet child survives");
+		assert.equal(await content(join(job, "stop-reason")), undefined);
+		assert.equal(await content(join(job, "advisory")), undefined, "uncertainty is not a real idle advisory");
 	});
 
 	test(`detached ${engine} fails an idle tool before its outer timeout`, async (context) => {
@@ -267,8 +267,8 @@ console.log(JSON.stringify({ result: { process_info: { foreground_processes: [{ 
 	const old = process.env.LIMEN_HERDR;
 	process.env.LIMEN_HERDR = bin;
 	try {
-		assert.equal(hostedEngineOwned("test:p1", 345, "omp", dir), false);
-		assert.equal(hostedEngineOwned("test:p1", 346, "omp", "/other/job"), false);
+		assert.equal(await hostedEngineOwned("test:p1", 345, "omp", dir), false);
+		assert.equal(await hostedEngineOwned("test:p1", 346, "omp", "/other/job"), false);
 	} finally {
 		if (old === undefined) delete process.env.LIMEN_HERDR;
 		else process.env.LIMEN_HERDR = old;
