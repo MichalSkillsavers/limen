@@ -125,9 +125,13 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	const repository = repo ? workspaceRepository(root, repo) : root;
 	if (!existsSync(worktree) && !branchExists(repository, branch))
 		throw new Error(`parent worktree ${worktree} is gone and branch ${branch} is missing in ${repository}; restore that branch before continuing`);
-	const notificationSession = currentNotificationSession();
-	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
-	const coordinatorPane = herdrWakePane(notificationSession);
+	// A continuation started from a shell with no wake route (a remote executor, a plain terminal) keeps the parent's coordinator; otherwise its finish reaches nobody.
+	const callerSession = currentNotificationSession();
+	const callerPane = herdrWakePane(membership ? undefined : callerSession);
+	const routed = Boolean(callerSession || callerPane);
+	const coordinatorTab = process.env.HERDR_TAB_ID?.trim() || (routed ? "" : await text(`${parentDir}/origin-tab`));
+	const coordinatorPane = routed ? callerPane : await text(`${parentDir}/origin-pane`);
+	const notificationSession = routed ? callerSession : coordinatorPane ? undefined : (await text(`${parentDir}/origin-session`)) || undefined;
 	// Resume the parent's opt-in (or absence), not the current shell's destination.
 	const finishConfig = await text(`${parentDir}/finish-webhook-env`);
 	const finishAuthor = await text(`${parentDir}/finish-webhook-author`);

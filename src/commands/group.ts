@@ -5,12 +5,11 @@ import { relative, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { herdrAvailable } from "../integrations/herdr.ts";
 import type { GroupIdentity, GroupRun } from "../job/group-cabinet.ts";
-import { groupIdentity, groupLock, groupPath, leadSession, memberLive, readRun, runs, saveJson, teamRoute } from "../job/group-cabinet.ts";
+import { groupIdentity, groupLock, groupPath, leadHookLive, leadSession, memberLive, readRun, runs, saveJson, teamRoute } from "../job/group-cabinet.ts";
 import { acceptBatch, acceptTransport, groupEvents, publishEvent, syncLifecycle } from "../job/group-events.ts";
 import { parseDuration } from "../job/job.ts";
 import { cleanWorktree, commitHasFile, headCommit, repoRoot } from "../project/git.ts";
 import { planningSource, privatePlanningFile } from "../project/planning.ts";
-import { processAlive } from "../runtime/contain.ts";
 import { preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { spawnCommand } from "./spawn.ts";
 import { stopCommand } from "./stop.ts";
@@ -73,10 +72,9 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 		throw new Error(
 			"group start requires the interactive Herdr coordinator pane (LIMEN_COORDINATOR=1) with hook/group-peer.ts loaded and registered under .limen/group-leads — reload that pane after updating the package; a hosted limen job never registers as lead",
 		);
-	const listener = Number(await readFile(`${root}/.limen/group-leads/${lead}`, "utf8").catch(() => ""));
-	if (listener <= 0 || !processAlive(listener))
+	if (!(await leadHookLive(root, lead)))
 		throw new Error(
-			"group lead hook is not running in this pane: load hook/group-peer.ts on the interactive Herdr coordinator (LIMEN_COORDINATOR=1) and retry — do not spawn a hosted job as lead",
+			`group lead hook is not running in this pane: .limen/group-leads/${lead} names no live process refreshed by hook/group-peer.ts in the last 30 seconds. Reload this interactive Herdr coordinator (LIMEN_COORDINATOR=1) with the Limen package hooks, including hook/group-peer.ts, and retry. Do not write .limen/group-leads by hand: without the hook, team results never reach this pane — and do not spawn a hosted job as lead`,
 		);
 	const teams = Array.from({ length: count("--teams") }, (_, index) => `team-${index + 1}`);
 	for (const team of Object.keys(teamModels)) if (!teams.includes(team)) throw new Error(`--team-model names ${team}, which is not in the roster`);

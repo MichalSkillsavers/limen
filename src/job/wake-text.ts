@@ -55,6 +55,15 @@ export function completionWake(job: string, label: string, state: string, id: st
 	if (fallback) instruction = "The subscribed coordinator is busy. Do not spawn, stop, steer, or land on behalf of another coordinator unless the human asks.";
 	return joinWake(lead, handoffExcerpt(job), [facts, handoff].filter(Boolean).join("\n\n"), routeInstruction ?? instruction);
 }
+export type LeadFallback = { readonly group: string; readonly feature: string; readonly lead: string; readonly team: string; readonly finished: number; readonly total: number };
+/** A team coordinator's finish for a lead whose group hook is not running: the group events that normally carry it cannot reach the pane. */
+export function groupLeadWake(job: string, label: string, state: string, id: string, branch: string, fallback: LeadFallback): string {
+	const task = firstSentence(text(join(job, "task.md")));
+	const lead = `${task ? `Limen job ${JSON.stringify(label)}: ${task}\nis` : `Limen job ${JSON.stringify(label)} is`} ${state} (${id}) on branch ${branch}. It is the ${fallback.team} coordinator of group ${fallback.group} for ${fallback.feature}.`;
+	const facts = `${fallback.finished} of ${fallback.total} team coordinators are finished. This wake comes through Herdr because the lead group hook (hook/group-peer.ts) is not running for lead session ${fallback.lead}, so group events do not reach this pane.`;
+	const instruction = `Run \`limen group status ${fallback.group}\` and read this team's result. When every team is finished, write the synthesis. To receive group events again, reload this pane with the Limen package hooks, including hook/group-peer.ts, and resume lead session ${fallback.lead}. Do not write .limen/group-leads by hand. Keep the user informed; ask only when a genuine product decision needs them.`;
+	return joinWake(lead, handoffExcerpt(job), facts, instruction);
+}
 export function advisoryWake(job: string, label: string, id: string, branch: string, repo: string, advisory: string, fallback: boolean): string {
 	const location = repo ? ` in repository ${repo}` : "";
 	const task = firstSentence(text(join(job, "task.md")));
