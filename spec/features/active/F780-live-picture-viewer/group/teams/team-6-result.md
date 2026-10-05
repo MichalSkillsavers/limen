@@ -1,10 +1,10 @@
 # Team 6 · Cold-reader review and contrast
 
-**Verdict:** the integration build at lead tip `3728b60` passes this review at 1440, 1240, and 900 px wide. Every finding below was filed to its owner, and every owner took it. No Team 6 finding is open.
+**Verdict:** lead integration build #3 (lead tip `a4e7d25`, the landing candidate) passes this review at 1440, 1240, and 900 px wide. Every finding below was filed to its owner, and every owner took it. No Team 6 finding is open.
 
-The checked file is `/tmp/f780-lead/build/map.html`, byte-identical to a strict build of `3728b60` from this worktree. Team 3's final `855c92d` and lead tip `5d1f1f6` differ from `3728b60` only in shots, result notes, and `templates/communication.md`, so the verdict holds for them. Checks were headless Chromium (Playwright) only, never the hidden screen. Contrast ratios are WCAG 2.x, against the effective background with ancestor opacity applied. Scripts: `/tmp/f780-team-6/` (`shoot.mjs`, `audit.mjs`, `fit.mjs`, `spacing.mjs`, `layers-live.mjs`, `shift.mjs`, `atlasfit.mjs`). Shots: `group/shots/team-6/`.
+The checked file is `/tmp/f780-lead/build/map.html` of 01:09. I re-ran every check below on that file. Its model is identical to a strict build of `3728b60`, and its HTML differs only in the embedded checkout tip. Checks were headless Chromium (Playwright) only, never the hidden screen. Contrast ratios are WCAG 2.x, against the effective background with ancestor opacity applied. Scripts: `/tmp/f780-team-6/` (`shoot.mjs`, `audit.mjs`, `fit.mjs`, `spacing.mjs`, `layers-live.mjs`, `shift.mjs`, `atlasfit.mjs`). Shots: `group/shots/team-6/`.
 
-## Final checks on `3728b60`
+## Final checks on build #3
 
 | Check | Result |
 | --- | --- |
@@ -19,7 +19,7 @@ The checked file is `/tmp/f780-lead/build/map.html`, byte-identical to a strict 
 | Sheet covers the plant at 1440 | no: sheet starts at x 931, plant ends at 907 |
 | Esc with two layers open | closes only the top layer |
 
-Before and after: `group/shots/team-6/reference/` (the approved sample), `lead-build-1/` (first integration, pins and glosses cut), `team-3-3728b60/` (final).
+Before and after: `group/shots/team-6/reference/` (the approved sample), `lead-build-1/` (first integration, pins and glosses cut), `lead-build-3/` (the landing candidate, with two stacked layers at each width).
 
 Not checked by Team 6: route and link sweeps and keyboard focus (Team 5), dark theme, and real reading time with Adam.
 
