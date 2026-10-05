@@ -363,13 +363,19 @@
 		root.hidden = !on;
 	}
 	// After a close, focus goes back to what opened the layer. If the page redrew that control, or after a reload,
-	// focus goes to the page control with the same data-layer value, else the one for the closed item.
+	// focus goes to the page control with the same data-layer value, else the one for the closed item, else the
+	// page link to the closed item, else the first link of the reading column, so focus never drops to the body.
 	function refocus(closed, top) {
 		const back = openers[stack.length];
 		openers.length = stack.length;
 		const usable = (el) => el?.isConnected && !el.closest("[inert]");
 		const byKey = (key) => (key ? document.querySelector(`[data-layer="${CSS.escape(key)}"]`) : null);
-		const to = usable(back) ? back : top ? top.querySelector("h2") : (byKey(back?.dataset?.layer) ?? byKey(keyOf(closed)));
+		const page = () =>
+			byKey(back?.dataset?.layer) ??
+			byKey(keyOf(closed)) ??
+			[...document.querySelectorAll(`a[href="#${CSS.escape(`${closed.kind}/${closed.id}`)}"]`)].find((a) => !root.contains(a)) ??
+			document.querySelector("#read a[href]");
+		const to = usable(back) ? back : top ? top.querySelector("h2") : page();
 		to?.focus({ preventScroll: true });
 	}
 	function show(next, why) {
