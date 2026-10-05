@@ -78,11 +78,24 @@ Reviewed `94c4747` inside the reference page with Team 2's model sample. Shots: 
 - **Y6 · two date formats.** Layers print `6 Oct 2026`; pins print `6 Oct`. Use one.
 - **Y7 · `Work that names it`.** The page says "touches". Use one word.
 
+## Findings on the viewer candidate (owner: Team 3)
+
+Reviewed `9186c68` (`/tmp/f780-team-3/map.html`) at 1440, 1240, and 900 wide. Before and after shots: `group/shots/team-6/team-3-9186c68/`. Tested patch: `group/teams/team-6-patches/team-3-viewer-on-9186c68.patch`.
+
+- Passes: no horizontal scroll, no `undefined`, `null`, or `NaN`. Every padding, margin, and gap is on the `--sp` scale, except the intended `60vh` scroll room under the column. C1–C3, W1–W12, L1, and E1 are in.
+- **V1 · pins still cut the question.** At 1440 px each pin is one line, so the Needs Adam question stops at `…when the map …`. At 900 px two lines still cut it. The patch gives pins two lines at every width and three at 1000 px and below.
+- **V2 · module glosses cut** (L2 not enough with live text). The patch removes the clamp. The atlas still fits 1440×900 with no inner scroll.
+- **V3 · dimmed connection counts at 2.15:1.** The patch dims only the lines. After it, the contrast audit finds no failing text on eight routes.
+- **V4 · `25 more` is cut first** from a long Changed label. The patch moves it before the scope.
+- **V5 · words.** `15 map notes` → `15 warnings`; `1 needs adam` → `1 Needs Adam`; `0 places` dropped from row meta; `0 places · lit in the plant` → `none yet`; `named by` and `names it` → `touched by` and `touches it`.
+- Team 5 asked whether hiding the brand at 1240 px and below costs navigation. Checked: the atlas title links to the plant overview and sits in the first screen at 900×900, and Esc goes up. Not filed.
+
 ## Fix status
 
 | Fix | Owner | Filed | Taken |
 | --- | --- | --- | --- |
-| C1–C3, W1–W12, L1–L2, E1 | Team 3 | yes | open |
+| C1–C3, W1–W12, L1, E1 | Team 3 | yes | yes (`9186c68`) |
+| L2, V1–V5 | Team 3 | yes, as a patch | open |
 | D1–D4 | Team 1 | yes | yes (`b2c965c`, `c667ef7`, `8d6f11d`) |
 | D5 | Team 2 | yes | yes (`f1c114e`) |
 | Y1–Y7 | Team 4 | yes | open |
