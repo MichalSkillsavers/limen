@@ -4,7 +4,7 @@ import { access, lstat, readdir, readFile, realpath, stat } from "node:fs/promis
 import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bindingPath, originRepository, readBinding } from "./github.ts";
+import { bindingPath, liveCoordinator, originRepository, readBinding } from "./github.ts";
 
 type Seat = {
 	release: string;
@@ -287,26 +287,16 @@ export async function githubDoctor(root: string, seat: Seat = seatDefaults()): P
 		const agent = binding?.coordinator && command(process.env.LIMEN_HERDR || "herdr", ["agent", "get", binding.coordinator]);
 		let live = false;
 		try {
-			const response = JSON.parse(agent ?? "null") as {
-				result?: { agent?: { agent_status?: string; interactive_ready?: boolean; pane_id?: string } };
-				agent?: { agent_status?: string; interactive_ready?: boolean; pane_id?: string };
-				agent_status?: string;
-				interactive_ready?: boolean;
-				pane_id?: string;
-			};
-			const liveAgent = response.result?.agent ?? response.agent ?? response;
-			const status = liveAgent.agent_status;
-			live =
-				liveAgent.pane_id === binding?.coordinator &&
-				(status === "idle" || status === "working" || status === "blocked" || status === "done") &&
-				liveAgent.interactive_ready === true;
+			type Row = { agent_status?: string; interactive_ready?: boolean; pane_id?: string };
+			const response = JSON.parse(agent ?? "null") as { result?: { agent?: Row }; agent?: Row } & Row;
+			live = liveCoordinator(response.result?.agent ?? response.agent ?? response, binding?.coordinator ?? "");
 		} catch {
 			/* unavailable Herdr is a repair, not a reason to dump its response */
 		}
 		report(
 			live,
 			`${label} live registered Herdr agent`,
-			"attach/start its persistent Herdr coordinator and reconnect if its pane identity changed; done is warm idle only with interactive_ready true",
+			"attach/start its persistent Herdr coordinator and reconnect if its pane identity changed; done is warm idle unless Herdr reports interactive_ready false",
 		);
 	}
 	if (failures) throw new Error(`github doctor: ${failures} prerequisite${failures === 1 ? "" : "s"} need repair`);

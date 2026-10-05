@@ -281,6 +281,14 @@ test("one idle coordinator accepts two repository-specific requests and rejects 
 	);
 	await writeFile(herdr, '#!/bin/sh\nprintf \'%s\\n\' \'{"id":"cli:agent:get","result":{"agent":{"pane_id":"coord:p1","agent_status":"done","interactive_ready":false}}}\'\n');
 	await assert.rejects(ensureGithubCoordinator(roots[0] as string), /not interactive/);
+	// Herdr omits interactive_ready for an OMP pane; deliver and the poller use this same check.
+	await writeFile(
+		herdr,
+		'#!/bin/sh\nprintf \'%s\\n\' \'{"id":"cli:agent:get","result":{"agent":{"pane_id":"coord:p1","agent_status":"idle","screen_detection_skipped":true}}}\'\n',
+	);
+	assert.equal((await ensureGithubCoordinator(roots[0] as string)).coordinator, "coord:p1");
+	await writeFile(herdr, '#!/bin/sh\nprintf \'%s\\n\' \'{"id":"cli:agent:get","result":{"agent":{"pane_id":"other:p9","agent_status":"idle"}}}\'\n');
+	await assert.rejects(ensureGithubCoordinator(roots[0] as string), /not interactive/);
 });
 
 test("a generic hosted worker and a nonce-backed no-job answer reconcile without a review claim", async (context) => {

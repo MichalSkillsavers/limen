@@ -43,24 +43,26 @@ export function assertUnprivileged(): void {
 	if (!sudo.error && sudo.status === 0) throw new Error("GitHub doorbell refuses an account with noninteractive sudo access");
 }
 
+type HerdrAgentRow = { pane_id?: string; agent_status?: string; interactive_ready?: boolean };
+
+// Herdr skips screen detection for some engines (OMP) and then omits interactive_ready; only an explicit false means not ready.
+export function liveCoordinator(agent: HerdrAgentRow | undefined, pane: string): boolean {
+	return agent?.pane_id === pane && ["idle", "working", "blocked", "done"].includes(agent.agent_status ?? "") && agent.interactive_ready !== false;
+}
+
 export async function ensureGithubCoordinator(root: string): Promise<GithubBinding> {
 	const binding = await readBinding(root);
 	if (!binding || originRepository(root).toLowerCase() !== binding.repo.toLowerCase()) throw new Error("GitHub registration is disconnected or no longer matches origin");
 	const agent = spawnSync(process.env.LIMEN_HERDR || "herdr", ["agent", "get", binding.coordinator], { encoding: "utf8", timeout: 15000 });
 	if (agent.status !== 0) throw new Error(`registered Herdr coordinator unavailable: ${(agent.stderr || agent.error?.message || "agent get failed").trim()}`);
-	let row: {
-		result?: { agent?: { pane_id?: string; agent_status?: string; interactive_ready?: boolean } };
-		agent?: { pane_id?: string; agent_status?: string; interactive_ready?: boolean };
-	};
+	let row: { result?: { agent?: HerdrAgentRow }; agent?: HerdrAgentRow };
 	try {
 		row = JSON.parse(agent.stdout);
 	} catch {
 		throw new Error("registered Herdr coordinator returned invalid agent status");
 	}
 	const live = row.result?.agent ?? row.agent;
-	const status = live?.agent_status;
-	if (live?.pane_id !== binding.coordinator || !["idle", "working", "blocked", "done"].includes(status ?? "") || live?.interactive_ready !== true)
-		throw new Error(`registered Herdr coordinator is not interactive (status: ${status ?? "unknown"})`);
+	if (!liveCoordinator(live, binding.coordinator)) throw new Error(`registered Herdr coordinator is not interactive (status: ${live?.agent_status ?? "unknown"})`);
 	return binding; // Herdr done is an idle, interactive agent, not a dead pane.
 }
 
