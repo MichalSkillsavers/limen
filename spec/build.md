@@ -25,7 +25,6 @@
 
 ## NOW
 
-- `F771-omp-claude-bridge-follows-upstream` (🟠 ACTIVE): replace the private OMP pi-claude bridge with a port of upstream `elidickinson/pi-claude-bridge`; keep Limen's `--extension` argv; dated backup and rollback.
 - `F759-graph-shows-what-to-decide` (🟠 ACTIVE): four-team group keeps the graph, mixes in time, removes side panels, and shows only what the owner must decide under 200+ changes; no landing, no live map edits.
 - `F757-feature-timeline` (🟠 ACTIVE): two-team group cuts the F756 panel to a timeline graph with detail one click away; screenshots justify each cut; no live map edits, no code landing.
 - `F729-continuation-publication` (🟠 ACTIVE): publish continuation records safely against concurrent prune without adding workflow state.
@@ -44,6 +43,7 @@
 
 ## PROVEN
 
+- `F771-omp-claude-bridge-follows-upstream` (🟢 PROVEN): OMP pi-claude bridge is now upstream pi-claude-bridge v0.9.1 plus OMP commits; Limen argv unchanged; dated backup kept. Merge `59dc42f`.
 - `F772-seat-guide-from-live-cold-run` (🟢 PROVEN): seat guide encodes the nine limen-test cold-run snags, with a phase map and who/where labels; pins unchanged; docs only. Merge `a5d858e`.
 - `F770-omp-coordinator-counts-as-live` (🟢 PROVEN): a warm OMP coordinator counts as live when Herdr omits `interactive_ready`; explicit false stays not live; one rule for ensure, poller, and doctor. Landed `abf1e84`; focused tests 19/19.
 - `F762-private-planning-reads-clearly` (🟢 PROVEN): PR #4 private planning code reads top-down with plain docs; same behavior (smoke diff empty); no pre-PR test changed. Landed `130cf0c`; focused tests 110/110.
