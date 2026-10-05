@@ -10,3 +10,14 @@ Scope: synthesis specs 4, 8 (including the continuation-publication fix F729), a
 Baseline `9d8db3358e8bc6aa750c6e67a6c395ba0aa1db71`: injected prune before continuation markers caused ENOENT; injected task write failure left a visible child; Herdr wake omitted commits/final message. The new regressions demonstrate these failures against a temporary baseline archive.
 
 Evidence lives outside the worktree in `/Users/overment/.overment/limen/.limen/jobs/2026-10-05-f773-module-boundary-p1s-8409455a/session/module-boundary-evidence/`. `smoke.txt` exercises both real wake routes against the same completed record and CLI prune/continue with a fixture OMP executable. `trust-smoke.txt` covers 16 GitHub trust cases and five dataset-path cases. External Herdr/GitHub services were fixture executables/network replies, not live services.
+
+## Landing gate
+
+Candidate code commit: `8a90e7e` (`Unify coordinator wakes and atomic job publication`).
+
+- Locked install: `npm ci` passed. Scoped Biome check passed after formatting six changed files. Final typecheck passed.
+- Focused behavior run: 216/217 passed. The overlap test assumed the checkout existed as soon as the complete job record appeared. It now waits for its prepare marker; the scoped updated test passed.
+- Committed native lane: typecheck and Biome passed; tests reported 608 passed, 3 failed, 2 skipped (613 total). All continuation, publication, pruning, wake and GitHub trust tests passed. Full output: `native-check.txt` in the evidence directory above.
+- The three failures are unchanged `test/hosted-spawn.test.ts` checks: OMP launch completion (line 633), quoted multiline hosted spawn/continue (line 660), and one failed agent-get sample (line 1107). The first two exceeded the helper's 10-second completion wait while the last log entry still said start attempt 1. The third looked for its timeout diagnostic after a fixed four-second sleep, before that diagnostic appeared. These three checks passed in the earlier focused run. Timing/contention is an inference, not a proven root cause; a later machine sample reported load averages 13.05, 13.07, 24.62.
+
+Landing question: should a separate worker repair the hosted checks' synchronization before this candidate lands, or does the coordinator accept the failed native lane based on the scoped and smoke evidence? This worker leaves `main` unchanged rather than expand into hosted-test/supervisor work or call the failed lane green.
