@@ -62,6 +62,8 @@ A trailing body line `owner: <name>`, alone on its line, is metadata, not prose.
 | `wrong` + `wrong-on` | Optional one-line problem and its `YYYY-MM-DD` date; use both or neither. |
 | `landed` | `YYYY-MM-DD` for a done ticket with known landing evidence. |
 
+Remove `needs-adam` and its date when Adam answers. Remove `wrong` and its date when the problem is fixed. The pin then leaves the live picture.
+
 An unknown `touches` id is `ticket.unknown-touch` (error). Invalid keys, dates, pairs, or multiline requests are `ticket.bad-field` (error). Missing front matter or `touches` on an active ticket is `ticket.no-touches` (warning). Diagnostics name the ticket path and line. `limen picture build --strict` exits 1 for errors; a missing place never becomes a guessed link. Leave `touches` out when evidence is absent and accept the warning.
 
 ## Identifiers and relations

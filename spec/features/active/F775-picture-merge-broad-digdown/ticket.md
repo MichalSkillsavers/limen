@@ -1,9 +1,5 @@
 ---
 opened: 2026-10-05
-needs-adam: Park the merged picture, or approve its landing?
-needs-adam-on: 2026-10-05
-wrong: The earlier end-goal layout lost the broad architecture picture.
-wrong-on: 2026-10-05
 ---
 
 # F775 · Adam sees the broad architecture picture and can dig down to decide fast
