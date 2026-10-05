@@ -752,6 +752,8 @@ test("prune between job-directory creation and marker writes cannot delete the s
 		process.env.LIMEN_HERDR = "0";
 		process.env.LIMEN_HUNK = "0";
 		process.env.LIMEN_FINISH_WEBHOOK_ENV = "";
+		delete process.env.LIMEN_OMP;
+		delete process.env.LIMEN_PI;
 		for (const name of Object.keys(process.env)) {
 			if (name.startsWith("HERDR_") || name === "PI_SESSION_ID" || name === "PI_SESSION_FILE") delete process.env[name];
 		}

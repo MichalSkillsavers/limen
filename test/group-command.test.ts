@@ -77,6 +77,8 @@ async function launch(scratch: Scratch, added: NodeJS.ProcessEnv, ...args: strin
 	delete env.LIMEN_INTERNAL_RUN;
 	delete env.LIMEN_INTERNAL_HOSTED;
 	delete env.HERDR_ENV;
+	delete env.LIMEN_OMP;
+	delete env.LIMEN_PI;
 	if (!added.LIMEN_JOB) delete env.LIMEN_JOB;
 	const child = spawn(process.execPath, [LIMEN, ...args], { cwd: scratch.root, env, stdio: ["ignore", "pipe", "pipe"] });
 	let stdout = "",

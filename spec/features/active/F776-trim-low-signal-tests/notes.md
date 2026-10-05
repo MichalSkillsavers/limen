@@ -21,7 +21,14 @@ Publication (`continue-command`: "continuation publication ..."), wake text (`wa
 
 ## Still timing-sensitive, kept on purpose
 
-- `stop-command`: "sleeping descendant discovery delays stop only through its short bound" asserts a 900 to 2000 ms window. It is the only proof that a stuck `ps` cannot hold `stop` open.
+- `stop-command`: "sleeping descendant discovery delays stop only through its short bound" asserts a 900 to 2000 ms window. It is the only proof that a stuck `ps` cannot hold `stop` open. At load average 400 it took 2310 ms and failed once; it passed on rerun.
+
+At load average near 400, about ten other tests hit their 10 s state wait or 60 s test timeout and passed on rerun. They are load failures, not product failures.
+
+## Red tests on main that this work fixed
+
+- `coordinator-wake`: the OMP watch test expected the old wake header. The wake names the task after the label (`"taken over": do work\nis done (id)`), so the test now matches that.
+- Engine leak: a test that spreads `process.env` keeps the operator's `LIMEN_OMP`, so inside a Limen job it launches the real `omp` with a real model. Five group tests, the prune publication race test, and the picture watch test failed this way. `group-command` `launch`, the `spawn-command` prune race test, and `picture-watch` `commitAsMover` now clear or pin `LIMEN_OMP` and `LIMEN_PI`. `test/scratch.ts` already did this.
 
 ## Candidates for a later pass
 
