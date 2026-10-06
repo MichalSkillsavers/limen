@@ -53,8 +53,9 @@ type SpawnOptions = {
 };
 const PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export function resolvePreamble(root: string, role: string): string {
-	for (const path of [`${root}/.agents/limen/${role}.md`, `${PACKAGE_ROOT}/templates/${role}.md`]) if (existsSync(path)) return path;
-	throw new Error(`no preamble for role ${role}`);
+	const places = [`${root}/.agents/limen/${role}.md`, resolve(PACKAGE_ROOT, "templates", `${role}.md`)];
+	for (const path of places) if (existsSync(path)) return path;
+	throw new Error(`no preamble for role ${role} in ${places.join(" or ")}; write .agents/limen/${role}.md to add the role`);
 }
 type WorktreePlan =
 	| { readonly kind: "detach"; readonly path: string; readonly ref: string }
@@ -145,14 +146,6 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const id = makeJobId(options.label);
 	const jobsRoot = `${root}/.limen/jobs`;
 	await mkdir(jobsRoot, { recursive: true });
-	let running = 0,
-		held = false;
-	for (const entry of await readdir(jobsRoot, { withFileTypes: true })) {
-		if (entry.isDirectory() && (await liveJob(`${jobsRoot}/${entry.name}`))) (running += 1), (held ||= (await text(`${jobsRoot}/${entry.name}/label`)) === options.label);
-	}
-	if (running > 0) console.log(`note: ${running} job${running === 1 ? "" : "s"} already running; starting another`);
-	if (/^F\d{3,}$/i.test(options.label)) console.log("warning: label is only a feature number");
-	if (held) console.log("warning: a live job already holds this label");
 	const branch = options.branch ?? `limen/${id}`;
 	const worktreeRoot = `${dirname(repository)}/.${basename(repository)}-limen-worktrees`;
 	const requestedPath = `${worktreeRoot}/${id}`;
@@ -173,6 +166,14 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 			if (path.startsWith("spec/") && !commitHasFile(repository, baseCommit, path)) throw new Error(`ticket ${path} is missing from the base commit`);
 	}
 	const member = group ? await claimMember(group.run, group.team, group.role, id) : undefined;
+	let running = 0,
+		held = false;
+	for (const entry of await readdir(jobsRoot, { withFileTypes: true })) {
+		if (entry.isDirectory() && (await liveJob(`${jobsRoot}/${entry.name}`))) (running += 1), (held ||= (await text(`${jobsRoot}/${entry.name}/label`)) === options.label);
+	}
+	if (running > 0) console.log(`note: ${running} job${running === 1 ? "" : "s"} already running; starting another`);
+	if (/^F\d{3,}$/i.test(options.label)) console.log("warning: label is only a feature number");
+	if (held) console.log("warning: a live job already holds this label");
 	const jobDir = `${jobsRoot}/${id}`;
 	const candidate = options.review ? branchCommit(repository, branch) : undefined;
 	const base = options.base ?? baseCommit;
@@ -355,7 +356,10 @@ async function planWorktree(input: {
 	}
 	if (!branchExists(root, branch)) return { kind: "add-new", path, branch };
 	const existing = worktreeForBranch(root, branch);
-	if (existing && resolve(existing.path) === resolve(root)) throw new Error(`branch ${branch} is checked out in the primary worktree; isolation is impossible`);
+	if (existing && resolve(existing.path) === resolve(root))
+		throw new Error(
+			`branch ${branch} is checked out in the primary worktree, so the job cannot get its own worktree; switch the primary worktree to another branch, or omit --branch`,
+		);
 	if (await liveJobUsesBranch(input.jobsRoot, branch, input.repo)) throw new Error(`branch ${branch} already has a live job`);
 	return existing ? { kind: "reuse", path: existing.path } : { kind: "add-branch", path, branch };
 }
