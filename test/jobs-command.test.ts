@@ -363,7 +363,7 @@ test("hosted pulse uses wrapper identity even when the agent is idle", async (co
 		"started-at": new Date().toISOString(),
 	}))
 		await writeFile(join(job, field), `${value}\n`);
-	const lost = await renderJobDirectory(scratch.root, jobs, "identity", false, true);
+	const lost = await renderJobDirectory(scratch.root, jobs, "identity", "human");
 	assert.equal(await ownerAlive(job), false);
 	assert.equal(lost.record.pulse, "dead");
 	assert.equal(lost.record.agentStatus, "idle");
@@ -372,7 +372,7 @@ test("hosted pulse uses wrapper identity even when the agent is idle", async (co
 	assert.equal(info.kind, "present");
 	if (info.kind !== "present") return;
 	await writeFile(join(job, "born"), info.process.born);
-	const live = await renderJobDirectory(scratch.root, jobs, "identity", false, true);
+	const live = await renderJobDirectory(scratch.root, jobs, "identity", "human");
 	assert.equal(await ownerAlive(job), true);
 	assert.equal(live.record.pulse, "tool");
 });
@@ -403,4 +403,64 @@ test("failed human rows prefer stop-reason and ignore post-finish delivery logs"
 	assert.match(rows.stdout, /limited.*rate limit \(429\); retry after 71m/);
 	assert.match(rows.stdout, /legacy.*worker crashed/);
 	assert.doesNotMatch(rows.stdout, /wake delivery failed|tab closed/);
+});
+
+test("jobs refuses an unknown id in an empty plant and hides old empty jobs", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	limen(scratch, "init");
+	const missing = limen(scratch, "jobs", "nope");
+	assert.equal(missing.status, 1);
+	assert.match(missing.stderr, /no job matches "nope"/);
+	const day = 24 * 60 * 60 * 1000;
+	for (const [id, ageDays] of [
+		["fresh-empty", 1],
+		["old-empty", 9],
+	] as const) {
+		const dir = join(scratch.root, ".limen/jobs", id);
+		await mkdir(dir, { recursive: true });
+		const at = new Date(Date.now() - ageDays * day).toISOString();
+		for (const [name, value] of Object.entries({
+			"task.md": "x",
+			state: "done",
+			label: id,
+			branch: "main",
+			"started-at": at,
+			"finished-at": at,
+			"tool-calls": "0",
+			commits: "",
+			log: "",
+		}))
+			await writeFile(join(dir, name), `${value}\n`);
+	}
+	const snapshot = limen(scratch, "jobs");
+	assert.equal(snapshot.status, 0, snapshot.stderr);
+	assert.match(snapshot.stdout, /fresh-empty/);
+	assert.doesNotMatch(snapshot.stdout, /old-empty/);
+	assert.match(snapshot.stdout, /1 older empty job hidden/);
+});
+
+test("hosted detail folds activity words and hides the finish webhook while running", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	limen(scratch, "init");
+	const dir = join(scratch.root, ".limen/jobs/hosted-busy");
+	await mkdir(dir);
+	const words = Array.from({ length: 20 }, (_, index) => ["think", "read", "bash"][index % 3]);
+	for (const [name, value] of Object.entries({
+		"task.md": "x",
+		state: "running",
+		label: "hosted-busy",
+		branch: "main",
+		hosted: "1",
+		pid: String(process.pid),
+		activity: "think",
+		"started-at": new Date().toISOString(),
+		log: words.join("\n"),
+	}))
+		await writeFile(join(dir, name), `${value}\n`);
+	const detail = limen(scratch, "jobs", "hosted-busy");
+	assert.equal(detail.status, 0, detail.stderr);
+	assert.match(detail.stdout, /recent activity: think, read, bash \(20 events\)/);
+	assert.doesNotMatch(detail.stdout, /finish-webhook/);
 });

@@ -284,7 +284,12 @@ test("concurrent worktree spawns consume one total slot and never create a secon
 	assert.equal(existsSync(`${worktree}/.limen/jobs`), false);
 	const childTree = (await readFile(`${scratch.root}/.limen/jobs/${worker}/worktree`, "utf8")).trim();
 	assert.notEqual(childTree, worktree);
-	assert.equal(limenWithEnv(memberScratch, environment(run, run.members[1]?.id), "stop", worker).status, 1);
+	const peer = environment(run, run.members[1]?.id);
+	assert.equal(limenWithEnv(memberScratch, peer, "jobs", worker).status, 0);
+	assert.equal(limenWithEnv(memberScratch, peer, "diff", worker).status, 0);
+	const refused = limenWithEnv(memberScratch, peer, "stop", worker);
+	assert.equal(refused.status, 1);
+	assert.match(refused.stderr, /cannot stop, steer, continue, watch, or land another team's job/);
 	assert.match(limenWithEnv(memberScratch, environment(run), "land", worker, "--yes").stderr, /lead owns landing/);
 	const continued = limenWithEnv(scratch, lead, "continue", worker, "more evidence", ...workerSettings);
 	assert.equal(continued.status, 1);

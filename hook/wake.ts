@@ -257,7 +257,8 @@ export default function limenWake(pi: PiApi): void {
 			activeDeliveries.delete(claim);
 		},
 	});
-	const sendCompletion = (jobs: string, id: string, state: string, fallback: boolean): boolean => {
+	const sendCompletion = (jobs: string, id: string, state: string, delivery: "own" | "fallback"): boolean => {
+		const fallback = delivery === "fallback";
 		if (!session) return false;
 		const job = join(jobs, id);
 		const label = text(join(job, "label")) || id;
@@ -309,7 +310,8 @@ export default function limenWake(pi: PiApi): void {
 		if (routed) notifyHerdr(job, id, state, label, branch, slot);
 		return routed;
 	};
-	const sendAdvisory = (jobs: string, id: string, fallback: boolean): boolean => {
+	const sendAdvisory = (jobs: string, id: string, delivery: "own" | "fallback"): boolean => {
+		const fallback = delivery === "fallback";
 		if (!session) return false;
 		const job = join(jobs, id);
 		const genuine = text(join(job, "advisory"));
@@ -395,13 +397,13 @@ export default function limenWake(pi: PiApi): void {
 		if (state === "running") {
 			const stamp = text(join(job, "advisory")) ? "advisory" : "ownership-uncertainty";
 			if (!existsSync(join(job, stamp))) return;
-			if (own) sendAdvisory(jobs, id, false);
-			else if (oldEnoughForFallback(job, join(job, stamp))) sendAdvisory(jobs, id, true);
+			if (own) sendAdvisory(jobs, id, "own");
+			else if (oldEnoughForFallback(job, join(job, stamp))) sendAdvisory(jobs, id, "fallback");
 			return;
 		}
 		if (own && !deliveryExists(job, sessionId) && !deliveryExists(job, "_fallback")) notifyHerdr(job, id, state, label, branch, sessionId);
-		if (own) sendCompletion(jobs, id, state, false);
-		else if (oldEnoughForFallback(job)) sendCompletion(jobs, id, state, true);
+		if (own) sendCompletion(jobs, id, state, "own");
+		else if (oldEnoughForFallback(job)) sendCompletion(jobs, id, state, "fallback");
 	};
 	const confirmDeliveries = () => {
 		for (const pending of pendingDeliveries.values()) {

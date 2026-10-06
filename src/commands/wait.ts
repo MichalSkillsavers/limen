@@ -8,7 +8,7 @@ export async function waitCommand(args: readonly string[], cwd: string): Promise
 		);
 	const query = args[0];
 	if (!query || args.length !== 1) throw new Error("wait requires exactly one job id");
-	const { id, jobDir } = await resolveJob(cwd, query);
+	const { id, jobDir } = await resolveJob(cwd, query, "read");
 	let state = await readState(jobDir);
 	if (state === "running") state = await waitForTerminal(jobDir);
 	else if (!isTerminal(state)) throw new Error(`job ${id} has unknown state ${JSON.stringify(state)}`);

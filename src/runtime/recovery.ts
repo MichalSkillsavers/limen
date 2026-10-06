@@ -54,11 +54,11 @@ export async function claimRecovery(jobDir: string): Promise<(() => Promise<void
 export async function recoveryTarget(jobDir: string): Promise<string | "missing" | "unknown"> {
 	const name = (await textFile(`${jobDir}/agent-name`)) || hostedAgentName(basename(jobDir));
 	const target = (await textFile(`${jobDir}/herdr/agent`)) || (await textFile(`${jobDir}/herdr/pane`)) || name;
-	const status = hostedAgentStatus(target, true);
+	const status = hostedAgentStatus(target, "fresh");
 	if (status === "unknown") return "unknown";
 	if (status !== "missing") return target;
 	const engine = (await jobProfile(jobDir)).id;
-	const located = locateHostedAgent(target, engine, name, true);
+	const located = locateHostedAgent(target, engine, name, "fresh");
 	if (located && located !== "unknown" && located !== target) {
 		const binding = readHostedBinding(jobDir);
 		if (!binding || (await hostedBindingInPane(located, binding.pid, engine, jobDir)) !== "owned") return "unknown";

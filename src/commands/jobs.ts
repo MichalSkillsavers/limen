@@ -8,6 +8,9 @@ import { limenRoot, liveDiffstat, workspaceRepository } from "../project/git.ts"
 import { hostedUncertaintyText, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
 import { confirmDeadJobs, ownerAlive } from "../runtime/reap.ts";
 
+export const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+const HUMAN_TERMINAL_ROWS = 6;
+
 export async function jobsCommand(args: readonly string[], cwd: string): Promise<void> {
 	const selection = select(args);
 	const tty = process.stdout.isTTY === true;
@@ -20,15 +23,15 @@ export async function jobsCommand(args: readonly string[], cwd: string): Promise
 		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return [];
 		throw error;
 	});
+	if (typeof selection === "object" && "detail" in selection) {
+		const { id } = await resolveJob(cwd, selection.detail, "read");
+		const loaded = await renderJobDirectory(root, jobsRoot, id, "detail");
+		console.log(human ? humanDetail(loaded.record, paint) : loaded.compact);
+		return;
+	}
 	const ids = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 	if (ids.length === 0) {
 		console.log("no jobs");
-		return;
-	}
-	if (typeof selection === "object" && "detail" in selection) {
-		const { id } = await resolveJob(cwd, selection.detail);
-		const loaded = await renderJobDirectory(root, jobsRoot, id, true, human);
-		console.log(human ? humanDetail(loaded.record, paint) : loaded.compact);
 		return;
 	}
 	const order = await orderedJobs(ids, jobsRoot);
@@ -39,7 +42,7 @@ export async function jobsCommand(args: readonly string[], cwd: string): Promise
 			console.log("nothing matched");
 			return;
 		}
-		const loaded = await Promise.all(listed.map(([id]) => renderJobDirectory(root, jobsRoot, id, false, human)));
+		const loaded = await Promise.all(listed.map(([id]) => renderJobDirectory(root, jobsRoot, id, human ? "human" : "row")));
 		if (human) {
 			console.log(
 				humanSnapshot(
@@ -57,21 +60,21 @@ export async function jobsCommand(args: readonly string[], cwd: string): Promise
 	if (human) {
 		const running = order.filter(([, state]) => state === "running");
 		const terminal = order.filter(([, state]) => state !== "running");
-		const shown = selection === "all" ? order : selection === "running" ? running : [...running, ...terminal.slice(0, 6)];
+		const shown = selection === "all" ? order : selection === "running" ? running : [...running, ...terminal.slice(0, HUMAN_TERMINAL_ROWS)];
 		if (shown.length === 0) {
 			console.log("no running jobs");
 			return;
 		}
-		const records = await Promise.all(shown.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, false, true)).record));
-		console.log(humanSnapshot(records, tallyStates(order.map(([, state]) => state)), selection === "snapshot" && terminal.length > 6, paint));
+		const records = await Promise.all(shown.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, "human")).record));
+		console.log(humanSnapshot(records, tallyStates(order.map(([, state]) => state)), selection === "snapshot" && terminal.length > HUMAN_TERMINAL_ROWS, paint));
 		return;
 	}
 	if (selection === "all") {
-		console.log((await Promise.all(order.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, true)).compact))).join("\n\n"));
+		console.log((await Promise.all(order.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, "detail")).compact))).join("\n\n"));
 		return;
 	}
 	const running = order.filter(([, state]) => state === "running");
-	const rendered = await Promise.all(running.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, false)).compact));
+	const rendered = await Promise.all(running.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, "row")).compact));
 	if (selection !== "snapshot") {
 		console.log(rendered.length ? rendered.join("\n") : "no running jobs");
 		return;
@@ -79,10 +82,20 @@ export async function jobsCommand(args: readonly string[], cwd: string): Promise
 	const terminal = order.filter(([, state]) => state !== "running");
 	const observed = await Promise.all(terminal.map(async (entry) => ({ entry, empty: !entry[1] || (await jobProducedNothing(`${jobsRoot}/${entry[0]}`)) })));
 	const empty = observed.filter(({ empty }) => empty).map(({ entry }) => entry);
-	const emptyRendered = await Promise.all(empty.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, false)).compact));
-	const summary = [...rendered, ...emptyRendered].join("\n") || "no running jobs";
+	const now = Date.now();
+	const recent = await Promise.all(empty.map(async ([id, state]) => !state || now - (await finishedAt(`${jobsRoot}/${id}`)) <= RECENT_MS));
+	const shown = empty.filter((_, index) => recent[index]);
+	const emptyRendered = await Promise.all(shown.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, "row")).compact));
+	const lines = [...rendered, ...emptyRendered];
+	if (!lines.length) lines.push("no running jobs");
 	const hiddenCount = terminal.length - empty.length;
-	console.log(hiddenCount ? `${summary}\n${hiddenCount} terminal ${hiddenCount === 1 ? "job" : "jobs"} hidden · use limen jobs --all or limen jobs <id> for detail` : summary);
+	if (hiddenCount) lines.push(`${hiddenCount} terminal ${hiddenCount === 1 ? "job" : "jobs"} hidden · use limen jobs --all or limen jobs <id> for detail`);
+	const olderCount = empty.length - shown.length;
+	if (olderCount) lines.push(`${olderCount} older empty ${olderCount === 1 ? "job" : "jobs"} hidden`);
+	console.log(lines.join("\n"));
+}
+async function finishedAt(jobDir: string): Promise<number> {
+	return Date.parse(await text(`${jobDir}/finished-at`)) || (await optionalStat(`${jobDir}/state`))?.mtimeMs || 0;
 }
 function select(args: readonly string[]) {
 	if (args[0] === "--label") {
@@ -101,8 +114,9 @@ async function orderedJobs(ids: readonly string[], jobsRoot: string): Promise<Re
 	const order = await Promise.all(ids.map(async (id) => [id, await text(`${jobsRoot}/${id}/state`), (await text(`${jobsRoot}/${id}/started-at`)) || id] as const));
 	return order.sort((a, b) => Number(b[1] === "running") - Number(a[1] === "running") || b[2].localeCompare(a[2]));
 }
-export async function renderJobDirectory(root: string, jobsRoot: string, id: string, detailed: boolean, human = false): Promise<{ compact: string; record: JobRecord }> {
+export async function renderJobDirectory(root: string, jobsRoot: string, id: string, view: "row" | "human" | "detail"): Promise<{ compact: string; record: JobRecord }> {
 	const jobDir = `${jobsRoot}/${id}`;
+	const detailed = view === "detail";
 	const [
 		state = "",
 		label = "",
@@ -133,10 +147,11 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 	const [result, versions] = detailed ? await Promise.all([text(`${jobDir}/result`), text(`${jobDir}/versions`)]) : ["", ""];
 	const [taskStat, logStat] = await Promise.all([optionalStat(`${jobDir}/task.md`), optionalStat(`${jobDir}/log`)]);
 	const cleanup = detailed ? await text(`${jobDir}/cleanup`) : "";
-	const finishWebhook = detailed ? await inspectFinishWebhook(jobDir) : "";
+	const finishWebhook = detailed && state !== "running" ? await inspectFinishWebhook(jobDir) : "";
 	const herdrWake = detailed ? await text(`${jobDir}/notify/herdr-prompt`) : "";
 	if (!taskStat || !logStat) return { compact: `INVALID ${id} · missing task.md or log`, record: { id, invalid: "missing task.md or log" } };
-	const log = detailed || human ? await readLog(`${jobDir}/log`) : { tail: "", detail: "" };
+	const log = view !== "row" ? await readLog(`${jobDir}/log`) : { tail: "", detail: "" };
+	if (hosted) log.tail = activitySummary(log.tail);
 	const display = (value: string) => (detailed || value.length <= 160 ? value : `${value.slice(0, 159)}…`);
 	try {
 		const startedAt = recordedDate(started, taskStat.mtime, "started-at");
@@ -272,6 +287,11 @@ function recordedCount(value: string): number {
 	const count = Number(value);
 	if (!Number.isSafeInteger(count) || count < 0) throw new Error(`invalid tool-calls ${JSON.stringify(value.slice(0, 160))}`);
 	return count;
+}
+function activitySummary(tail: string): string {
+	const words = tail.split("\n");
+	if (words.length < 2 || !words.every((word) => /^[a-z_-]+$/.test(word))) return tail;
+	return `recent activity: ${[...new Set(words)].join(", ")} (${words.length} events)`;
 }
 async function readLog(path: string): Promise<{ tail: string; detail: string }> {
 	try {

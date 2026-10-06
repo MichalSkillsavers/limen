@@ -43,7 +43,10 @@ export function parseFinishReceipt(line: string): FinishReceipt | undefined {
 }
 export async function inspectFinishWebhook(jobDir: string): Promise<string> {
 	const configured = Boolean(await textFile(`${jobDir}/finish-webhook-env`));
-	const lines = [`configured: ${configured ? "yes (selection recorded; validity not checked)" : "no"}`, `event: ${finishEvent(jobDir)}`];
+	const lines = [
+		`configured: ${configured ? "yes (a webhook target is recorded; Limen did not check it)" : "no (this job sends no finish webhook)"}`,
+		`event: ${finishEvent(jobDir)} (the ID the receiver uses to match this finish)`,
+	];
 	const state = await textFile(`${jobDir}/state`);
 	if (state === "done") lines.push("handoff: Job done. Next step: land it, or name the check that still blocks landing.");
 	else if (state === "failed" || state === "stopped") lines.push(`handoff: ${state}; inspect failure before proceeding`);
@@ -54,7 +57,7 @@ export async function inspectFinishWebhook(jobDir: string): Promise<string> {
 		lines.push(`author: unavailable · ${second}${third && commit === third ? ` · commit ${third}` : ""}`);
 	else lines.push("author: unavailable · missing evidence");
 	const route = await textFile(`${jobDir}/finish-webhook-route`);
-	if (route && FINISH_SELECTION.test(route)) lines.push(`route: ${route}`);
+	if (route && FINISH_SELECTION.test(route)) lines.push(`route: ${route} (how Limen chose the targets)`);
 	const targets = new Map<number, FinishReceipt>();
 	const handle = await open(`${jobDir}/finish-webhook-targets`, "r").catch(() => undefined);
 	if (handle) {
@@ -69,21 +72,21 @@ export async function inspectFinishWebhook(jobDir: string): Promise<string> {
 			await handle.close();
 		}
 	}
-	if (!targets.size) lines.push("transport: unknown (no per-target evidence)");
+	if (!targets.size) lines.push("transport: unknown (no record that Limen sent the webhook to any target)");
 	const turns = await inspectFinishTurns(finishEvent(jobDir));
 	for (const ordinal of [...new Set([...targets.keys(), ...turns.keys()])].sort((a, b) => a - b)) {
 		const target = targets.get(ordinal);
 		const transport = target
 			? `${target.transport === "pending" ? "unknown (attempt started; no result)" : target.transport} · HTTP ${target.http} · ${target.at}`
-			: "unknown (no per-target evidence)";
+			: "unknown (no record that Limen sent the webhook to this target)";
 		lines.push(`target ${ordinal}: transport ${transport} · bot-turn ${turns.get(ordinal) ?? "unobserved"}`);
 	}
 	lines.push(
 		turns.size
-			? `bot-turn: observed for ${turns.size} target(s) (operator-trusted exports; not origin authentication)`
-			: "bot-turn: unobserved (no matching completed-turn export from an operator-trusted source)",
+			? `bot-turn: observed for ${turns.size} target(s) (a trusted export shows the receiving bot finished a turn for this event; it does not prove who sent the webhook)`
+			: "bot-turn: unobserved (no trusted export shows that a receiving bot finished a turn for this event)",
 	);
 	const aggregate = await textFile(`${jobDir}/finish-webhook`);
-	if (aggregate) lines.push(`aggregate: ${aggregate}`);
+	if (aggregate) lines.push(`aggregate: ${aggregate} (the overall send result)`);
 	return lines.join("\n");
 }
