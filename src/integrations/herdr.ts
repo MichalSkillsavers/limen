@@ -150,9 +150,10 @@ export function hostedTerminalReason(status: HostedAgentStatus, sessionEnded: bo
 	if (status === "missing") return "hosted agent ended";
 }
 
-/** Live target for a hosted job whose recorded target stopped resolving cleanly: the agent found under a moved pane ID, or an unclassifiable but present process on the recorded pane. Undefined means genuinely gone. */
-export function locateHostedAgent(target: string, engine: EngineId, agentName = "", concrete = false): string | undefined {
-	const status = hostedAgentStatus(target, concrete);
+/** Live target for a hosted job whose recorded target stopped resolving cleanly: the agent found under a moved pane ID, or an unclassifiable but present process on the recorded pane. Undefined means genuinely gone. With read "fresh", returns "unknown" when Herdr cannot tell. */
+export function locateHostedAgent(target: string, engine: EngineId, agentName = "", read: "cached" | "fresh" = "cached"): string | undefined {
+	const concrete = read === "fresh";
+	const status = hostedAgentStatus(target, read);
 	if (concrete && status === "unknown") return "unknown";
 	if (status !== "missing") return target;
 	const herdr = herdrBinary();
@@ -213,7 +214,8 @@ function waitForShell(herdr: string, pane: string, timeoutMs: number, stopped?: 
 const lastHostedStatus = new Map<string, HostedAgentStatus>();
 const lastHostedFault = new Map<string, string>();
 
-export function hostedAgentStatus(target: string, fresh = false): HostedAgentStatus {
+export function hostedAgentStatus(target: string, read: "cached" | "fresh" = "cached"): HostedAgentStatus {
+	const fresh = read === "fresh";
 	const herdr = herdrBinary();
 	if (!herdr) return fresh ? "unknown" : noteHostedFault(target, "herdr_unavailable");
 	try {

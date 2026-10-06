@@ -56,7 +56,7 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 		if (origin) lastOrigin = origin;
 		if (state === "running") {
 			if (branch) runningBranches.add(`${repo}:${branch}`);
-			const { record } = await renderJobDirectory(root, jobsRoot, id, false);
+			const { record } = await renderJobDirectory(root, jobsRoot, id, "row");
 			const minutes = Date.parse(started) ? `${Math.max(0, Math.floor((now - Date.parse(started)) / 60_000))}m` : "";
 			const note = record.advisory ?? "";
 			const kind = note && noteKind(note);

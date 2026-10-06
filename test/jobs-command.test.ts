@@ -363,7 +363,7 @@ test("hosted pulse uses wrapper identity even when the agent is idle", async (co
 		"started-at": new Date().toISOString(),
 	}))
 		await writeFile(join(job, field), `${value}\n`);
-	const lost = await renderJobDirectory(scratch.root, jobs, "identity", false, true);
+	const lost = await renderJobDirectory(scratch.root, jobs, "identity", "human");
 	assert.equal(await ownerAlive(job), false);
 	assert.equal(lost.record.pulse, "dead");
 	assert.equal(lost.record.agentStatus, "idle");
@@ -372,7 +372,7 @@ test("hosted pulse uses wrapper identity even when the agent is idle", async (co
 	assert.equal(info.kind, "present");
 	if (info.kind !== "present") return;
 	await writeFile(join(job, "born"), info.process.born);
-	const live = await renderJobDirectory(scratch.root, jobs, "identity", false, true);
+	const live = await renderJobDirectory(scratch.root, jobs, "identity", "human");
 	assert.equal(await ownerAlive(job), true);
 	assert.equal(live.record.pulse, "tool");
 });
