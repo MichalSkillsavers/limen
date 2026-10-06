@@ -351,7 +351,7 @@ async function request(root: string, state: string, binding: GithubBinding, trig
 			...(pull ? { base: pull.base.sha, baseRef: pull.base.ref, head: pull.head.sha } : { kind: "issue" as const }),
 			title: boundedContext(thread.title ?? "", 500, pull ? "PR title" : "Issue title", link),
 			body: boundedContext(thread.body ?? "", 6000, pull ? "PR body" : "Issue body", link),
-			discussion: excerpt.length > 12000 ? `${excerpt.slice(0, 12000)}\n[Discussion truncated; see ${link}]` : excerpt,
+			discussion: boundedContext(excerpt, 12000, "Discussion", link),
 			outcomeNonce: randomBytes(24).toString("hex"),
 			...(trigger.command === undefined ? {} : { command: boundedContext(trigger.command, 4000, "Triggering comment", trigger.url) }),
 		};
