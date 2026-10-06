@@ -19,6 +19,8 @@ Scope: the 12 largest files in `test/`, 9,299 lines (`wc -l`). The coordinator s
 | `test/hosted-spawn.test.ts` | 1340 | finish-wake | seam | delete | good noteHostedIdle/parser units, but half the lines assert fake-Herdr argv and race windows instead of job state |
 | `test/spawn-command.test.ts` | 930 | spawn | seam | delete | real `bin/limen` spawns in temp Git repos; core spawn, review, prune and ticket-gate paths, plus argv copies and refusal wording |
 | `test/group-command.test.ts` | 879 | groups | seam | scenario | real group start, then half direct cabinet/event units and three wall-clock contention tests (11 s, 12 s ×2) |
+| `test/finish-webhook.test.ts` | 829 | webhooks | seam | delete | real finalize path and real helper with intercepted fetch; strong allowlist and author-routing checks, but each test copies the package and four tests wait on 2.5–20 s sender/Herdr timeouts |
+| `test/github-doorbell.test.ts` | 700 | doorbell | unit | delete | internal poller functions with stubbed fetch; the claim allowlist and forged-receipt checks are cheap security units, two `bin/limen github` runs are the only end-to-end paths |
 
 Seam, Class and Action in a row are the largest line share in that file (section 2 has the split).
 
@@ -183,3 +185,58 @@ TAP time (sum of per-test `duration_ms`, `/tmp/f783-lead/full-suite.tap`): 259.8
 - L770 "busy cabinet never blocks finalization or loses its deferred lifecycle event" — timing, groups, scenario, waits: activate(): waitForState poll 25ms, 10s deadline per member; delay 11000ms holding the cabinet lock (36 lines; tap 17.84 s)
 - L808 "a ${command} waits beyond ten seconds for a real sibling launch without half-claimed members" — timing, groups, scenario, waits: activate(): waitForState poll 25ms, 10s deadline per member; git post-checkout hook sleeps 12000ms; poll marker 25ms 5s; asserts elapsed > 10000ms; runs twice (spawn, continue) (51 lines; tap 47.23 s over 2 runs)
 - L861 "cabinet recovery reclaims a dead owner but never displaces an aged live owner" — unit, groups, keep, waits: lock mtime aged −60s (19 lines; tap 0.57 s)
+
+### `test/finish-webhook.test.ts` (829 lines, 28 tests)
+
+Lines by class: seam 412 · duplicate 157 · wording 144 · timing 85 · trivia 31 (sum 829).  
+Lines by seam: webhooks 815 · finish-wake 14.  
+Lines by action: delete 409 · scenario 393 · keep 27.  
+TAP time (sum of per-test `duration_ms`, `/tmp/f783-lead/full-suite.tap`): 146.9 s.
+
+- L96 "automatic finish decision: ${state} with ${result === undefined ? "missing" : "a"} result sends once with its reason" — seam, webhooks, scenario, waits: fixture copies src/ hook/ templates/ per test; runs 6× (state × result) (39 lines; tap 11.17 s over 6 runs)
+- L138 "jobs at the same recorded tip each send, including with a legacy tip marker" — duplicate, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test, dup of: L162 two detached jobs at the same HEAD each send (23 lines; tap 1.63 s)
+- L162 "two detached jobs that settle at the same HEAD each send an automatic ping" — seam, webhooks, scenario, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline (14 lines; tap 5.86 s)
+- L177 "automatic delivery invokes the real canonical helper with synthetic dotenv and intercepted transport" — seam, webhooks, scenario, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline (25 lines; tap 3.44 s)
+- L203 "automatic delivery finds Limen's Node runtime when the inherited PATH cannot run node" — seam, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline (23 lines; tap 1.58 s)
+- L228 "automatic fan-out reaches two bot routes after terminal state; first HTTP ${firstStatus} stays HTTP-only" — wording, webhooks, scenario, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline; stall case waits the sender's 3000ms timeout twice; runs 2× (122 lines; tap 18.93 s over 2 runs)
+- L352 "private receipt channel discards malformed, secret-bearing, duplicate and overflowing sender output" — seam, webhooks, keep, waits: fixture copies src/ hook/ templates/ per test (23 lines; tap 1.59 s)
+- L376 "detached completion sends exact arguments only after durable state using an absolute explicit config snapshot" — seam, webhooks, scenario, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline (16 lines; tap 3.66 s)
+- L393 "canonical project config is selected from a linked worktree, never the worktree-local decoy" — seam, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline (13 lines; tap 3.28 s)
+- L407 "workspace jobs use the coordinator project's config rather than a child repository destination" — seam, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline (11 lines; tap 3.58 s)
+- L419 "a retired env-path override does not opt an unconfigured job into delivery" — trivia, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; waitForState poll 25ms, 10s deadline (11 lines; tap 3.13 s)
+- L431 "unconfigured jobs never inherit home config or a later finalizer environment" — seam, webhooks, scenario, waits: fixture copies src/ hook/ templates/ per test; waitForState poll 25ms, 10s deadline (15 lines; tap 3.48 s)
+- L447 "concurrent processes and repeated finalization make one automatic attempt; failure preserves outcome and routing" — duplicate, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline, dup of: L96 automatic finish decision (also runs 4 concurrent deliveries and a repeat finalize) (19 lines; tap 1.75 s)
+- L467 "hosted supervisor completion uses the same automatic path without a worker manual ping" — duplicate, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline, dup of: L376 detached completion sends after durable state (hosted entry) (17 lines; tap 1.94 s)
+- L485 "hanging sender and its descendant are killed within shutdown grace without changing stopped state" — timing, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; sender hangs until the 3000ms sender timeout; asserts elapsed < 4500ms (20 lines; tap 5.45 s)
+- L506 "a slow Herdr coordinator prompt does not spend the configured webhook's shutdown budget" — timing, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; fake Herdr sleeps 20000ms; finalize deadline now+4000ms (17 lines; tap 5.24 s)
+- L524 "a sender timeout gets one bounded successful retry and records both attempts" — timing, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; first attempt hangs to the 3000ms sender timeout (18 lines; tap 4.35 s)
+- L543 "a timeout at the shutdown deadline records no retry" — timing, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; sender hangs; deliver deadline now+2500ms (17 lines; tap 3.80 s)
+- L561 "an exhausted shutdown budget records not sent without launching the helper" — trivia, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline (15 lines; tap 1.30 s)
+- L577 "missing config and unavailable sender fail safely, while an interrupted claim is never retried automatically" — seam, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline (19 lines; tap 1.64 s)
+- L597 "a detached timeout sends job.timed-out with its reason before its self-kill grace" — seam, finish-wake, scenario, waits: fixture copies src/ hook/ templates/ per test; job --timeout 1s; delivery(): poll finish-webhook 25ms, 20s deadline (12 lines; tap 6.25 s)
+- L610 "continuation retains only its parent's config path even when the caller selects another destination" — seam, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline ×2 (15 lines; tap 5.15 s)
+- L637 "two collaborators' finishes reach only their mapped targets after edits and lane moves" — seam, webhooks, scenario, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline ×2 (48 lines; tap 9.88 s)
+- L686 "missing attribution and unmapped logins skip unless fallback is explicit" — seam, webhooks, scenario, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline ×4 (37 lines; tap 13.45 s)
+- L724 "invalid author maps make zero requests and leave the job result intact" — duplicate, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline, dup of: L686 unmapped logins skip (fail-closed author routing) (24 lines; tap 5.52 s)
+- L749 "continuation keeps captured author after the ticket is removed" — seam, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; waitForState poll 25ms, 10s deadline ×2 (19 lines; tap 7.81 s)
+- L769 "hosted completion filters by captured author and preserves ordinals on partial failure" — duplicate, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test; delivery(): poll finish-webhook 25ms, 20s deadline, dup of: L637 mapped author targets (hosted entry, partial failure) (46 lines; tap 4.30 s)
+- L816 "workspace, shallow, and later ticket evidence do not invent an author" — seam, webhooks, delete, waits: fixture copies src/ hook/ templates/ per test (14 lines; tap 7.73 s)
+
+### `test/github-doorbell.test.ts` (700 lines, 11 tests)
+
+Lines by class: unit 228 · seam 216 · mock 156 · duplicate 100 (sum 700).  
+Lines by seam: doorbell 700.  
+Lines by action: delete 299 · scenario 216 · keep 185.  
+TAP time (sum of per-test `duration_ms`, `/tmp/f783-lead/full-suite.tap`): 32.3 s.
+
+- L31 "only an exact write-authorized PR comment claims a request; unavailable coordinator never spawns" — unit, doorbell, keep, waits: stubbed global fetch (68 lines; tap 1.54 s)
+- L100 "a rejected bare-shell prompt retries after recovery without duplicate notice" — mock, doorbell, delete, waits: claim attemptedAt aged −31s (retry backoff window) (55 lines; tap 1.61 s)
+- L156 "one idle coordinator accepts two repository-specific requests and rejects a noninteractive pane" — mock, doorbell, delete (92 lines; tap 3.89 s)
+- L249 "a generic hosted worker and a nonce-backed no-job answer reconcile without a review claim" — unit, doorbell, keep, waits: stubbed global fetch (72 lines; tap 1.33 s)
+- L322 "a forged checkout claim and hosted-looking job cannot earn an App receipt" — unit, doorbell, keep, waits: stubbed global fetch (34 lines; tap 1.40 s)
+- L357 "reconciliation posts start and terminal once for matching hosted pinned job, never approval" — duplicate, doorbell, delete, waits: stubbed global fetch, dup of: L608 one start and one terminal reply; L322 forged receipt (58 lines; tap 1.85 s)
+- L416 "poller restart recognizes its own posted receipt after an interrupted write" — unit, doorbell, delete, waits: stubbed global fetch (41 lines; tap 1.54 s)
+- L458 "review records an explicitly pinned base and refuses a moved head" — seam, doorbell, scenario, waits: waitForState poll 25ms, 10s deadline (25 lines; tap 4.80 s)
+- L484 "coordinator review refuses a changed PR head and never falls back to detached without Herdr" — duplicate, doorbell, delete, dup of: L458 refuses a moved head; hosted-spawn L409 refuses without Herdr (36 lines; tap 2.96 s)
+- L521 "an authorized comment on an open issue claims one request and prompts the coordinator with the issue" — seam, doorbell, scenario, waits: stubbed global fetch; real sudo handoff via fake sudo (86 lines; tap 3.32 s)
+- L608 "github review refuses an issue claim; github work starts one hosted job that earns one start and one terminal reply" — seam, doorbell, scenario, waits: waitForState poll 25ms, 10s deadline; stateful fake Herdr (93 lines; tap 8.01 s)
