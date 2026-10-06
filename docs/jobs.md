@@ -112,7 +112,7 @@ Use these steps in this order:
 
 ### Spec keeper
 
-`limen keeper <ticket> --job <id> [--job <id> …] [--candidate <branch>] [--group <id>]` starts a short detached job (default timeout 20 minutes) that fixes the spec links of finished work: ticket front matter, the board line and map sources. The coordinator starts it; no hook does.
+`limen keeper <ticket> (--job <id> [--job <id> …] | --group <id>) [--candidate <branch>]` starts a short detached job (default timeout 20 minutes) that fixes the spec links of finished work: ticket front matter, the board line and map sources. `--group` adds every member job of that group. The coordinator starts it; no hook does.
 
 - It refuses while a listed job is still running, so it never races a worker. In a group, only the lead starts it.
 - It creates `limen/keeper-<fnnn>-<tip>` at the candidate tip: the single job's branch, or `--candidate` for several jobs on one integration branch. The keeper commits only there.

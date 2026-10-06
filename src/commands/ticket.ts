@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readPicture } from "../picture/picture-build.ts";
 import { ID_PATTERN } from "../picture/picture-model.ts";
-import { repoRoot } from "../project/git.ts";
+import { currentBranch, limenRoot, repoRoot } from "../project/git.ts";
+import { landTicketCheck } from "./land.ts";
 
-const HELP = 'limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]';
+const HELP =
+	'limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]\nlimen ticket check [BRANCH]  # the land gate for tickets BRANCH adds or changes against the plant branch; default: this checkout\'s branch';
 const PLACE_ID = ID_PATTERN;
 
 async function directories(path: string): Promise<string[]> {
@@ -40,6 +42,7 @@ async function nextFeatureNumber(root: string, plant: string): Promise<number> {
 }
 
 export async function ticketCommand(args: readonly string[], cwd: string): Promise<void> {
+	if (args[0] === "check") return ticketCheck(args.slice(1), cwd);
 	const [mode, title, ...options] = args;
 	if (mode !== "new" || !title || title.startsWith("--") || /[\r\n]/.test(title) || !title.trim()) throw new Error(HELP);
 	let lane: "planned" | "active" = "planned";
@@ -92,4 +95,18 @@ export async function ticketCommand(args: readonly string[], cwd: string): Promi
 	await mkdir(join(root, "spec", "features", lane, `${code}-${slug}`));
 	await writeFile(join(root, path), text, { flag: "wx" });
 	console.log(path);
+}
+
+/** The land gate on demand, so a hand merge or a keeper can check a branch before it reaches the plant branch. */
+async function ticketCheck(args: readonly string[], cwd: string): Promise<void> {
+	if (args.length > 1 || args[0]?.startsWith("-")) throw new Error(HELP);
+	const repository = repoRoot(cwd);
+	const plant = process.env.LIMEN_CONTEXT_ROOT ?? limenRoot(cwd);
+	const target = currentBranch(plant);
+	const branch = args[0] ?? currentBranch(repository);
+	if (branch === target) throw new Error(`ticket check compares a branch with ${target}; name the branch to check: limen ticket check BRANCH`);
+	const gate = await landTicketCheck(repository, plant, branch, target);
+	if (!gate.tickets.length) console.log(`no ticket changes on ${branch} against ${target}`);
+	for (const line of gate.lines) (gate.ok ? console.log : console.error)(line);
+	if (!gate.ok) process.exitCode = 1;
 }

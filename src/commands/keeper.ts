@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readRun } from "../job/group-cabinet.ts";
 import { resolveJob } from "../job/lookup.ts";
 import { branchCommit, branchExists, commitHasFile, limenRoot, workspaceRepository } from "../project/git.ts";
 import { ownerAlive } from "../runtime/reap.ts";
@@ -28,14 +29,17 @@ export async function keeperCommand(args: readonly string[], cwd: string): Promi
 	if (!code) throw new Error(`keeper needs a ticket path like spec/features/active/FNNN-slug/ticket.md, not ${options.ticket}`);
 	const root = limenRoot(cwd);
 	const jobs = [];
-	for (const query of options.jobs) {
+	// A group's keeper reads every member's transcript; the lead names the group, not each member.
+	const queries = [...options.jobs];
+	if (options.group) for (const member of (await readRun(root, options.group)).members) if (!queries.includes(member.id)) queries.push(member.id);
+	for (const query of queries) {
 		const { id, jobDir } = await resolveJob(root, query, "control");
 		const state = await text(`${jobDir}/state`);
 		if (state === "running" || (await ownerAlive(jobDir))) throw new Error(`job ${id} is still running; a keeper never commits beside a live job; wait for it, or stop it`);
 		jobs.push({ id, jobDir, state, branch: await text(`${jobDir}/branch`), repo: await text(`${jobDir}/repo`) });
 	}
 	const [first] = jobs;
-	if (!first) throw new Error("keeper requires --job ID");
+	if (!first) throw new Error("keeper requires --job ID or --group GROUP-ID");
 	if (!options.candidate && jobs.length > 1) throw new Error("several jobs need one candidate; pass --candidate <integration branch>");
 	const candidate = options.candidate ?? first.branch;
 	if (!candidate) throw new Error(`job ${first.id} has no recorded branch; pass --candidate BRANCH`);
@@ -150,7 +154,7 @@ function parseKeeperArgs(args: readonly string[]): KeeperOptions {
 	}
 	const [ticket, ...extra] = positional;
 	if (!ticket || extra.length) throw new Error("keeper requires exactly one <ticket-path>");
-	if (jobs.length === 0) throw new Error("keeper requires --job ID");
+	if (jobs.length === 0 && !group) throw new Error("keeper requires --job ID or --group GROUP-ID");
 	for (const flag of ROUTE) if (!route.includes(flag)) throw new Error(`keeper requires --engine --provider --model --thinking; missing ${flag}`);
 	return { ticket, jobs, route, timeout, ...(candidate ? { candidate } : {}), ...(group ? { group } : {}) };
 }
