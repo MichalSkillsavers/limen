@@ -1,8 +1,10 @@
 # Team 1 · How spec structures reach each reader
 
-Answer: the coordinator pane gets the ticket rules as long prose every turn, but no reader is told the template path, the next-free-number method, the place ids for `touches`, or the strict command. A worker does get the ticket rules (the speech register's Specs section rides every job's system prompt), so the original hypothesis is half wrong: the gap is not prose, it is the four facts a writer needs at the moment of writing. The strict check, even when run, exits 0 on every known miss, because missing front matter, duplicate numbers and stale map sources are warnings. Nothing at finish or at land reads tickets.
+Answer: the coordinator pane gets the ticket rules as long prose every turn, but no reader is told the template path, the next-free-number method, the place ids for `touches`, or the strict command. A worker does get the ticket rules (the speech register's Specs section rides every job's system prompt, `hook/communication.ts:85-86`), so the starting hypothesis is half wrong: the gap is not prose, it is the four facts a writer needs at the moment of writing. The strict check, even when run, exits 0 on every known miss, because missing front matter, duplicate numbers and stale map sources are warnings. Nothing at finish or at land reads tickets, and nothing reads the board against the tickets.
 
-Draft 1, 2026-10-06. Package paths are relative to this repository; plant paths are under `/Users/overment/.overment/limen`.
+The failure survey (`team-1-failures.md`) adds the time axis this map cannot show: the front matter contract reached `main` only with the F780 merge `b27db47` (2026-10-06 08:26). Writers before it read the template and followed it; only one copied a neighbor ticket.
+
+Final, 2026-10-06. Package paths are relative to this repository; plant paths are under `/Users/overment/.overment/limen`.
 
 ## Readers and their channels
 
@@ -44,7 +46,7 @@ Legend: **full** = text in the system prompt every call. **ref** = a path or nam
 - **A method for the next free number.** `agents.md:56` states the rule; no command exists; `readTickets` sees duplicates only after the fact (`src/picture/tickets.ts:46-58`).
 - **The strict command, to any job.** A worker that runs `limen picture build --strict` in its worktree gets `No map yet in <worktree>/.limen/picture` and exit 1 (run 2026-10-06 in this worktree). The working form is `limen picture build --dir <plant>/.limen/picture --strict`, which reads the worktree's tickets (`src/commands/picture.ts:45-53`) against the plant map. No text gives that form. Every job already has the plant root in `LIMEN_CONTEXT_ROOT` (`src/commands/spawn.ts:255`), so `limen picture build --dir "$LIMEN_CONTEXT_ROOT/.limen/picture" --strict` works from any worktree; run in this worktree, it printed the same six warnings and exit 0.
 - **Place ids, to any job but the picture job.** `touches` must name ids from `nodes/` (`CONTRACT.md:59`); the dataset is gitignored and lives only under the plant root.
-- **Map upkeep after a lane move, to anyone.** Moving a ticket folder changes only `spec/`, which the tick ignores (`picture-tick.ts:142`); the picture watch is off on this plant (`limen picture watch` prints `picture watch off`), and the last picture job is `2026-10-03-architecture-picture-through-cf6-bad3beb1`.
+- **Map upkeep after a lane move, to anyone.** Moving a ticket folder changes only `spec/`, which the tick ignores (`picture-tick.ts:142`). The picture watch is off on this plant (`limen picture watch` prints `picture watch off`). The dataset's `job` file names `2026-10-03-architecture-picture-through-cf6-bad3beb1`, the plant `revision` is `1cecf60`, and the dataset files last changed on 2026-10-03 (failure rows 8–9).
 - **The shop manual, to a lead run as a job.** It writes tickets, the board and the packet with the worker preamble that forbids board edits.
 
 ## What checks links today
@@ -61,11 +63,15 @@ Legend: **full** = text in the system prompt every call. **ref** = a path or nam
 
 Today's plant: `node bin/limen picture build --dir /Users/overment/.overment/limen/.limen/picture --out /tmp/f783-team-1/map-coord.html --strict` printed four `source.missing` (F741 journey, F728 twice, F740), one `ticket.duplicate-id` (F778), one `ticket.no-touches` (F782), and exit 0.
 
-A land gate only in `limen land` would miss most merges: since 2026-09-01, 49 of 83 first-parent merges on `main` carry a hand-written message (`git log --first-parent --merges --since=2026-09-01 main`), and `limen land` always uses `--no-edit` (`src/project/git.ts:162-165`). [INFERENCE] those 49 were ordinary Git merges by a coordinator or lead, for example `b27db47` (F780) and `cbc5391` (F781).
+A land gate only in `limen land` would miss most spec changes. `limen land` records nothing of its own and runs `git merge --no-edit` (`src/commands/land.ts:29-31`, `src/project/git.ts:162-165`), so a merge commit with a hand-written message cannot come from it. Since 2026-10-03, 26 of 30 first-parent merge commits on `main` have a hand-written message (`git log --first-parent --merges --since=2026-10-03 main`); since 2026-09-01, 49 of 83. Most spec changes do not merge at all: the plant's `main` reflog since 2026-10-03 has 110 updates, of which 64 are direct commits or cherry-picks, and 53 of those touch `spec/features/` or `spec/build.md` (41 touch only `spec/`). Examples: `9be55f9` (second F778, reflog `commit:`), `c0c0e29` (`cherry-pick:`). Fast-forwards (25) cannot be split between `limen land` and a hand `git merge`. Command: `git reflog show --date=iso --format='%gd|%H|%gs' main` in the plant, filtered to dates ≥ 2026-10-03.
+
+Team 4's throwaway plant (group event `00000031`) confirms the board row: a removed board line printed no diagnostic.
 
 ## What this means for Teams 2 and 3
 
-- The ten-line worker contract should carry the four missing facts, not more shape prose: template path (or `limen ticket new`), the numbering method, where place ids come from, and the exact strict command with `--dir <plant>/.limen/picture`.
+- The ten-line worker contract should carry the four missing facts, not more shape prose: template path (or `limen ticket new`), the numbering method, where place ids come from, and the exact strict command `limen picture build --dir "$LIMEN_CONTEXT_ROOT/.limen/picture" --strict`.
 - The strict check must turn today's misses into errors for the tickets a branch adds or changes, or the land gate passes every known failure.
-- The gate needs a home that ordinary `git merge` also passes through, or the keeper step must be in the coordinator and lead text (`agents.md` steps 5–7, the completion wake), not only in `limen land`.
+- The gate needs a home that ordinary `git merge` also passes through. The keeper step and a by-hand ticket check belong in the coordinator and lead text (`agents.md` steps 5–7, the completion wake), not only in `limen land`.
+- Most spec edits are direct coordinator commits on `main` (53 of 64 direct commits since 2026-10-03). No land gate sees them. Only the coordinator's own habit, or a check it runs before such a commit, can.
+- A lane-only number scan does not stop the F778 class: the first F778 lived only in a job's `task.md` and branch when the second was committed on `main` (failure rows 1, 2, 12). Team 2 declined a branch and job-label scan as outside its scope (group event `00000047`); the lead should carry it as a remaining risk.
 - A lead run as a job needs the ticket contract through its task or role; it gets neither the shop manual nor lead hook steps.

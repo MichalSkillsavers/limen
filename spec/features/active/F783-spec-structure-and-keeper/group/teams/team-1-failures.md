@@ -55,7 +55,7 @@ At worker finish:
 At `limen land`:
 
 - `src/commands/land.ts` (71 lines) reads no ticket, board or map. It runs `git merge --no-edit` (`src/project/git.ts:164`).
-- Most landings bypass it anyway. Since 2026-10-03, 4 of 30 first-parent merges on `main` have the `Merge branch 'limen/…'` message. Spec commits `9be55f9`, `c0c0e29`, `56a5887` and `be71876` went straight to `main`. [INFERENCE] I read the merge path from the message shape.
+- Most landings bypass it anyway. Since 2026-10-03, 4 of 30 first-parent merge commits on `main` have the `Merge branch 'limen/…'` message; the other 26 have hand-written messages, which `limen land` cannot write. The plant's `main` reflog since 2026-10-03 shows 64 direct commits or cherry-picks, 53 of them touching `spec/features/` or `spec/build.md`; `9be55f9` is a direct `commit:` and `c0c0e29` a `cherry-pick:`. `56a5887` (F782) and `be71876` (F783 packet) arrived as fast-forwards of job branches, which leave no merge commit, so the land or hand path is unknown for them. Details: team-1 map, "What checks links today".
 
 On demand:
 
