@@ -11,12 +11,15 @@ const MODEL_FLAGS = ["--engine", "--provider", "--model", "--thinking"];
 export async function pictureCommand(args: readonly string[], cwd: string): Promise<void> {
 	const [mode, ...options] = args;
 	if (mode !== "build" && mode !== "tick" && mode !== "watch") throw new Error(HELP);
-	const watch = mode !== "watch" ? undefined : options[0] === "on" || options[0] === "off" ? options[0] : "status";
+	let watch: "on" | "off" | "status" | undefined;
+	if (mode === "watch") watch = options[0] === "on" || options[0] === "off" ? options[0] : "status";
 	const rest = watch === "on" || watch === "off" ? options.slice(1) : options;
 	const values = new Map<string, string>();
 	let strict = false;
 	let dryRun = false;
-	const allowed = mode === "build" ? ["--dir", "--out", "--json"] : watch === "off" || watch === "status" ? [] : ["--dir", "--branch", ...MODEL_FLAGS];
+	let allowed = ["--dir", "--branch", ...MODEL_FLAGS];
+	if (mode === "build") allowed = ["--dir", "--out", "--json"];
+	else if (watch === "off" || watch === "status") allowed = [];
 	for (let i = 0; i < rest.length; i++) {
 		const flag = rest[i] ?? "";
 		if (flag === "--strict" && mode === "build") strict = true;

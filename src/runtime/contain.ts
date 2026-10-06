@@ -64,7 +64,9 @@ async function listEscapedDescendants(rootPid: number): Promise<readonly JobProc
 	const captured = await Promise.all(
 		escaped.map(async (row): Promise<JobProcess | undefined> => {
 			const outcome = await processInfo(row.pid, deadline);
-			return outcome.kind === "present" ? outcome.process : outcome.kind === "unavailable" ? { ...row, born: "identity-unavailable", command: "identity unavailable" } : undefined;
+			if (outcome.kind === "present") return outcome.process;
+			if (outcome.kind === "unavailable") return { ...row, born: "identity-unavailable", command: "identity unavailable" };
+			return undefined;
 		}),
 	);
 	return captured.filter((process): process is JobProcess => process !== undefined);

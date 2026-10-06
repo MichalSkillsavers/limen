@@ -102,12 +102,12 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		}
 	}
 	const herdr = herdrAvailable();
-	const tab = parsed.detached ? false : parsed.tab || herdr;
+	const hosted = parsed.detached ? false : parsed.tab || herdr;
 	if (parsed.tab && parsed.detached) throw new Error("--tab and --detached cannot be combined");
-	if (tab && parsed.timeoutMs) throw new Error("hosted jobs have no timeout; omit --timeout or use --detached");
-	if (tab && !herdr) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
+	if (hosted && parsed.timeoutMs) throw new Error("hosted jobs have no timeout; omit --timeout or use --detached");
+	if (hosted && !herdr) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
 	const loaded = await readSpawnTask(parsed.task, parsed.taskFile, cwd);
-	const options = { ...parsed, tab, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
+	const options = { ...parsed, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
 	const profile = resolveSpawnEngine(options.engine);
 	const engine = profile.id;
 	const model = options.model ?? defaultModel(options.review);
@@ -124,9 +124,13 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const source = group ? (group.run.planningSource ?? "committed") : (inherited?.source ?? planningSource(root));
 	if (workspace && !options.repo) throw new Error("workspace spawn requires --repo <immediate-child>");
 	if (!workspace && options.repo) throw new Error("--repo is available only from a non-Git workspace coordinator");
-	const repository = workspace ? workspaceRepository(root, options.repo ?? "") : group ? root : currentRoot;
+	let repository = currentRoot;
+	if (workspace) repository = workspaceRepository(root, options.repo ?? "");
+	else if (group) repository = root;
 	const repo = options.repo ?? inherited?.repo;
-	let task = loaded.raw ? loaded.text : workspace ? workspaceTask(options.task, root, options.repo ?? "") : options.task;
+	let task = options.task;
+	if (loaded.raw) task = loaded.text;
+	else if (workspace) task = workspaceTask(options.task, root, options.repo ?? "");
 	// Private planning: check every pointer now, before a job record or worktree exists.
 	let privatePacket = "";
 	if (source === "private") {
@@ -180,7 +184,9 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const candidate = options.review ? branchCommit(repository, branch) : undefined;
 	const base = options.base ?? baseCommit;
 	// Private planning may rewrite ticket pointers, so its task is the checked text, not the raw bytes.
-	let taskBody: string | Uint8Array = loaded.raw && source === "committed" ? loaded.bytes : candidate ? `${task.trim()}\n\nCandidate commit: ${candidate}.\n` : `${task.trim()}\n`;
+	let taskBody: string | Uint8Array = `${task.trim()}\n`;
+	if (loaded.raw && source === "committed") taskBody = loaded.bytes;
+	else if (candidate) taskBody = `${task.trim()}\n\nCandidate commit: ${candidate}.\n`;
 	if (group && member) {
 		const guidance = await readFile(`${PACKAGE_ROOT}/templates/group-member.md`, "utf8");
 		const approach = privatePacket || `Approach note:\n${await readFile(`${root}/${group.run.feature}/group/teams/${group.team}.md`, "utf8")}`;
@@ -198,7 +204,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		planningSource: source,
 		finishAuthor: captureFinishAuthor(cwd, loaded.text, Boolean(workspace)),
 		...(repo ? { repo } : {}),
-		...(options.tab ? { agentName: hostedAgentName(id) } : {}),
+		...(hosted ? { agentName: hostedAgentName(id) } : {}),
 		...(!group && notificationSession ? { notificationSession } : {}),
 		...(coordinatorTab ? { originTab: coordinatorTab } : {}),
 		...(coordinatorPane ? { originPane: coordinatorPane } : {}),
@@ -219,7 +225,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const versions = capturedVersions(profile).then((text) => writeFile(`${jobDir}/versions`, text, { flag: "wx", flush: true }));
 	await atomicWrite(`${jobDir}/state`, "running\n");
 	if (group) await syncLifecycle(group.run, "skip");
-	if (options.tab) {
+	if (hosted) {
 		await startHosted({
 			jobDir,
 			id,
@@ -475,9 +481,9 @@ export async function capturedVersions(profile: EngineProfile): Promise<string> 
 	const herdr = herdrBinary();
 	const hunk = hunkBinary();
 	const version = (await probeVersion(engineBinary(profile) || profile.binaryDefault)) || "unavailable";
-	const extra = herdr && (await probeVersion(herdr));
+	const herdrVersion = herdr && (await probeVersion(herdr));
 	const hunkVersion = hunk && (await probeVersion(hunk));
-	return `${profile.id} ${version}\n${extra ? `herdr ${extra}\n` : ""}${hunkVersion ? `hunk ${hunkVersion}\n` : ""}`;
+	return `${profile.id} ${version}\n${herdrVersion ? `herdr ${herdrVersion}\n` : ""}${hunkVersion ? `hunk ${hunkVersion}\n` : ""}`;
 }
 function workspaceTask(task: string, root: string, repo: string): string {
 	let rewritten = task;

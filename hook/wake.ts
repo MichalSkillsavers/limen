@@ -628,7 +628,9 @@ export default function limenWake(pi: PiApi): void {
 		},
 		handler(args, commandContext) {
 			const request = args.trim();
-			muted = request === "on" ? false : request === "off" ? true : !muted;
+			if (request === "on") muted = false;
+			else if (request === "off") muted = true;
+			else muted = !muted;
 			if (active && session && jobsDir) {
 				if (muted) setStatus(undefined);
 				else sweep();
