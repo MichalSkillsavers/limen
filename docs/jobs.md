@@ -113,7 +113,7 @@ Finished jobs keep their files in `.limen/jobs/`, but not their worktrees. The n
 | Command | Effect |
 |---|---|
 | `limen prune` | Removes finished worktrees, as the next spawn does. |
-| `limen prune --retire` | Deletes the records of finished jobs whose branches are already merged or dropped. |
+| `limen prune --retire` | Deletes finished, failed, or stopped job records whose branch is landed (ancestor or cherry-pick) or deleted. |
 | `limen prune --retire --dry-run` | Prints the IDs and removes nothing. |
 
 Spawn and sweep never retire records.

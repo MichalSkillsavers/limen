@@ -44,7 +44,7 @@ Three rituals pin the lifecycle so no step gets skipped. Each is the shop manual
 
 1. Find `spec/features/planned/FNNN-<slug>/` and read its `ticket.md`. If the folder is missing or the ticket is not executable as written, stop and say what's wrong.
 2. Move the whole folder to `spec/features/active/` and update `spec/build.md` (🟠 ACTIVE, NOW/NEXT) in the same change. In committed mode, commit that change, because workers see only committed files.
-3. Print the spawn command ready to run: short coordinator instruction, `--label "FNNN <short name>"`, `Ticket:` pointing at the active folder. Do not spawn it unless asked in the same breath.
+3. Print the spawn command ready to run: short coordinator instruction, `--label "what this changes · FNNN"` (the shop manual's label rule: feature number last), `Ticket:` pointing at the active folder. Do not spawn it unless asked in the same breath.
 4. Mirror, if on: in the configured team/project, set the issue titled `FNNN:` to the **started**-type state (create it from the ticket first if it doesn't exist yet).
 
 ### File a review (a verdict arrives)

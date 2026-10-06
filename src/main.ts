@@ -79,16 +79,18 @@ usage:
   limen init --drop-leftovers
   limen workspace init
   limen planning [committed|private]                # inspect or persist the project planning source; default committed
-  limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
+  limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--team-model team-N=provider/model] [--detached|--tab] [--new-run]
   limen group status [GROUP-ID] [--json]  # short roster by default; --json keeps the full record
-  limen group publish|wait|stop|close [GROUP-ID]  # members inherit verified membership; lead supplies ID
+  limen group publish [GROUP-ID] [--team team-N] "finding"  # members inherit verified membership; lead supplies ID
+  limen group wait [GROUP-ID] [--timeout D]
+  limen group stop|close [GROUP-ID]
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "Implement FNNN: <outcome>. Start by writing <slice>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L] [--branch B] [--role NAME] [--timeout 20m; default 90m] [--task-file F|-] [--prepare CMD]
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "Short title" --task-file F|-  # the file is the task; the positional words become the label
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "…" [--label L]  # selected engine's flags; in Herdr: hosted, else detached
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --tab "…"  # force hosted (requires Herdr; no --timeout)
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --detached "…"  # force background worker + log-tail tab
   limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --repo R "Implement FNNN: <outcome>. Ticket: spec/features/active/FNNN-slug/ticket.md" [--label L]
-  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L "Review the FNNN candidate against spec/features/active/FNNN-slug/ticket.md"
+  limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L [--base SHA] [--head SHA] "Review the FNNN candidate against spec/features/active/FNNN-slug/ticket.md"
   limen continue <id|suffix|label> "follow-up instruction" [--review] [--label L] [--engine pi|omp] [--provider P] [--model X] [--thinking T] [--tab|--detached]
                                   # resume a finished job in its own engine session — full context, same worktree; Herdr default is hosted
   limen steer <id|suffix|label> | --running "correction"
@@ -98,7 +100,7 @@ usage:
   limen stop <id|suffix|label> [reason]
   limen jobs [--running|--active|--all|--label PREFIX|<id|suffix|label>]
   limen status [--all]                          # plant inbox: running, candidates to inspect, needs a decision (last 7 days), coordinator tabs
-  limen prune [--retire [--dry-run]]           # retire finished job records whose branches are landed (ancestry or cherry-pick) or gone
+  limen prune [--retire [--dry-run]]           # --retire deletes finished, failed, or stopped job records whose branch is landed (ancestor or cherry-pick) or deleted
   limen watch <id|suffix|label> | --running
   limen unwatch <id|suffix|label> | --all
   limen open <id|suffix|label>
@@ -107,14 +109,15 @@ usage:
   limen sweep [--install|--uninstall]
   limen linear [on [--team T --project P]|off|status]   # Linear mirror toggle — renames spec/linear.md ↔ .off; --team/--project write a fresh config
   limen github connect|disconnect|status|doctor  # bind projects and diagnose seat safety
-  limen picture build [--dir D] [--out F] [--json F] [--strict]  # local offline architecture map, no model call
-  limen picture tick [--dir D] [--branch B] [--dry-run] --engine E --provider P --model M --thinking T  # quiet one-tip pass
-  limen picture watch [off | on [--branch B] [--dir D] --engine E --provider P --model M --thinking T]  # per-project, off by default: one tick when the top branch moves
   limen github ensure [registered-root]       # require a live registered Herdr coordinator
   limen github poll                           # run one polling pass as the isolated App user
+  limen github deliver <root> <claim-id> <handoff-nonce>  # poller only: hand one claim to the live coordinator
   limen github review <root> <claim-id> --engine E --provider P --model M --thinking T  # hosted review for one doorbell claim
   limen github work <root> <claim-id> --engine E --provider P --model M --thinking T --task "…"  # hosted task for one doorbell claim
   limen github resolve <root> <claim-id> <handoff-nonce> "answer"  # explicit no-job answer for one doorbell claim
+  limen picture build [--dir D] [--out F] [--json F] [--strict]  # local offline architecture map, no model call
+  limen picture tick [--dir D] [--branch B] [--dry-run] --engine E --provider P --model M --thinking T  # quiet one-tip pass
+  limen picture watch [off | on [--branch B] [--dir D] --engine E --provider P --model M --thinking T]  # per-project, off by default: one tick when the top branch moves
 Pass a short coordinator instruction, not $(cat ticket.md). The ticket is a pointer, not the prompt.`;
 export async function main(args: readonly string[], cwd = process.cwd()): Promise<void> {
 	try {
@@ -134,7 +137,7 @@ export async function main(args: readonly string[], cwd = process.cwd()): Promis
 		if (!(name in COMMANDS)) throw new Error(`unknown command ${JSON.stringify(name)}\n\n${HELP}`);
 		const flags = rest.slice(0, rest.includes("--") ? rest.indexOf("--") : undefined);
 		if (flags.includes("--help") || flags.includes("-h")) {
-			console.log(HELP);
+			console.log(commandHelp(name));
 			return;
 		}
 		await COMMANDS[name as keyof typeof COMMANDS](rest, cwd);
@@ -143,4 +146,16 @@ export async function main(args: readonly string[], cwd = process.cwd()): Promis
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
 	}
+}
+
+// One command's usage: its `limen <command>` lines from HELP, with their indented comment lines.
+function commandHelp(name: string): string {
+	const lines = ["usage:"];
+	let inside = false;
+	for (const line of HELP.split("\n")) {
+		if (line.startsWith("  limen ")) inside = line === `  limen ${name}` || line.startsWith(`  limen ${name} `);
+		else if (!/^\s+#/.test(line)) inside = false;
+		if (inside) lines.push(line);
+	}
+	return lines.join("\n");
 }

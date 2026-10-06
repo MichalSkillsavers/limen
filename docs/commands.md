@@ -2,7 +2,7 @@
 
 [README](../README.md) · [Setup](setup.md) · [Jobs](jobs.md)
 
-The coordinator runs job commands. The operator runs setup commands. Run `limen --help` for the installed command list.
+The coordinator runs job commands. The operator runs setup commands. Run `limen --help` for the installed command list. Run `limen <command> --help`, for example `limen picture --help`, for the usage lines of one command.
 
 Where the reference shows them, IDs, unique suffixes, and unique labels work the same.
 
@@ -15,11 +15,13 @@ The coordinator runs these from its Herdr pane during ordinary work.
 Start a worker, a reviewer, or a job in one child repository, or continue a finished job.
 
 ```text
-limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "instruction" [--label L] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD]
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "instruction" [--label L] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD] [--tab|--detached]
 limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --repo R "instruction" [--label L]
-limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L "instruction"
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L [--base SHA] [--head SHA] "instruction"
 limen continue <id|suffix|label> "follow-up instruction" [--review] [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--tab|--detached]
 ```
+
+`--base` and `--head` take full commit SHAs and pin the range that a review reads. They require `--review`.
 
 ### Inspect jobs
 
@@ -88,12 +90,14 @@ limen picture tick --engine E --provider P --model M --thinking T [--dir D] [--b
 Start a team group, and show the status of, publish, wait for, stop, or close it.
 
 ```text
-limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
+limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--team-model team-N=provider/model] [--detached|--tab] [--new-run]
 limen group status [GROUP-ID] [--json]
-limen group publish|wait|stop|close [GROUP-ID]
+limen group publish [GROUP-ID] [--team team-N] "finding"
+limen group wait [GROUP-ID] [--timeout D]
+limen group stop|close [GROUP-ID]
 ```
 
-Members get their group from their recorded membership. The group lead gives the group ID.
+Members get their group from their recorded membership. The group lead gives the group ID. Repeat `--team-model` to give more than one team its own model. See [Groups](groups.md).
 
 ### GitHub comments
 
@@ -111,13 +115,16 @@ You run these one time for each project or seat, or a scheduler runs them.
 
 ### Project setup
 
-Create the project files, or set up a parent workspace for child repositories.
+Create the project files, set up a parent workspace for child repositories, or choose where group planning files live.
 
 ```text
 limen init
 limen init --drop-leftovers
 limen workspace init
+limen planning [committed|private]
 ```
+
+`limen planning` prints the current planning source. `committed` is the default.
 
 ### Seat sweep
 
@@ -137,12 +144,13 @@ limen linear [on [--team T --project P]|off|status]
 
 ### GitHub
 
-Connect projects to GitHub, diagnose the seat, and run one polling pass.
+Connect projects to GitHub, diagnose the seat, and run one polling pass. The poller runs `deliver` to hand one claim to the live coordinator.
 
 ```text
 limen github connect|disconnect|status|doctor
 limen github ensure [registered-root]
 limen github poll
+limen github deliver <root> <claim-id> <handoff-nonce>
 ```
 
 `github poll` runs as the isolated App user. It never runs as the worker account.
