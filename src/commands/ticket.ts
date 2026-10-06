@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -17,8 +18,9 @@ async function directories(path: string): Promise<string[]> {
 	return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 }
 
-async function nextFeatureNumber(base: string): Promise<number> {
+async function nextFeatureNumber(root: string, plant: string): Promise<number> {
 	let highest = 0;
+	const base = join(root, "spec", "features");
 	for (const lane of ["planned", "active", "done", "dropped"]) {
 		const lanePath = join(base, lane);
 		const parents = lane === "done" || lane === "dropped" ? (await directories(lanePath)).map((month) => join(lanePath, month)) : [lanePath];
@@ -29,6 +31,11 @@ async function nextFeatureNumber(base: string): Promise<number> {
 			}
 		}
 	}
+	// A number can live only on a branch or in a job before its folder reaches this checkout (the two F778 tickets).
+	const branches = spawnSync("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads/limen/"], { cwd: root, encoding: "utf8" }).stdout ?? "";
+	const jobs = join(plant, ".limen", "jobs");
+	const labels = await Promise.all((await directories(jobs)).map(async (id) => `${id}\n${await readFile(join(jobs, id, "label"), "utf8").catch(() => "")}`));
+	for (const match of `${branches}\n${labels.join("\n")}`.matchAll(/\bf(\d{3,4})\b/gi)) highest = Math.max(highest, Number(match[1]));
 	return highest + 1;
 }
 
@@ -57,9 +64,10 @@ export async function ticketCommand(args: readonly string[], cwd: string): Promi
 		.replace(/^-|-$/g, "");
 	if (!slug) throw new Error(HELP);
 	const root = repoRoot(cwd);
+	const plant = process.env.LIMEN_CONTEXT_ROOT ?? root;
 	if (touches.length) {
 		const local = join(root, ".limen", "picture");
-		const map = await readPicture(existsSync(local) ? local : join(process.env.LIMEN_CONTEXT_ROOT ?? root, ".limen", "picture"));
+		const map = await readPicture(existsSync(local) ? local : join(plant, ".limen", "picture"));
 		if (map.diagnostics.some((item) => item.level === "error")) throw new Error("the picture has errors; fix them before linking a ticket");
 		const places = new Set(map.nodes.map((node) => node.id));
 		if (map.project.rootId) places.add(map.project.rootId);
@@ -67,7 +75,7 @@ export async function ticketCommand(args: readonly string[], cwd: string): Promi
 		if (unknown) throw new Error(`unknown map place id "${unknown}"; choose an id from .limen/picture/nodes/`);
 	}
 	const base = join(root, "spec", "features");
-	const code = `F${String(await nextFeatureNumber(base)).padStart(3, "0")}`;
+	const code = `F${String(await nextFeatureNumber(root, plant)).padStart(3, "0")}`;
 	const path = join("spec", "features", lane, `${code}-${slug}`, "ticket.md");
 	const now = new Date();
 	const opened = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;

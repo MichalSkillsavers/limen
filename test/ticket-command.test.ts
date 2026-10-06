@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -18,6 +20,20 @@ parent: null
 ---
 A test plant.
 `;
+// Each test file runs in its own process; a job's plant root must not leak its real jobs into the number scan.
+delete process.env.LIMEN_CONTEXT_ROOT;
+
+test("ticket new skips a number reserved only by a limen branch or a job label", async (t) => {
+	const scratch = await scratchRepo();
+	t.after(scratch.cleanup);
+	await mkdir(join(scratch.root, "spec", "features", "active", "F789-old"), { recursive: true });
+	execFileSync("git", ["branch", "limen/2026-10-06-f790-reserved"], { cwd: scratch.root });
+	const job = join(scratch.root, ".limen", "jobs", "2026-10-06-other-work-1a2b3c4d");
+	await mkdir(job, { recursive: true });
+	await writeFile(join(job, "label"), "picture work · F791\n");
+	await ticketCommand(["new", "People see reserved numbers"], scratch.root);
+	assert.ok(existsSync(join(scratch.root, "spec/features/planned/F792-people-see-reserved-numbers/ticket.md")));
+});
 
 test("ticket new allocates above numbers used in done and dropped monthly folders", async (t) => {
 	const scratch = await scratchRepo();

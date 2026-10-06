@@ -1,10 +1,10 @@
 ---
-opened: 2026-10-06
+opened: YYYY-MM-DD
 ---
 
 # FNNN · What becomes true
 
-> Example front matter: replace the date with today. Prefer `limen ticket new "what becomes true"` to copying this file. Add `touches:` only for verified map place ids. Source: [picture contract](../../../templates/picture/CONTRACT.md). Delete this note.
+> Prefer `limen ticket new "what becomes true"` to copying this file: it picks the next free number and fills the front matter. If you copy it, replace `YYYY-MM-DD` with today; an unedited date fails `limen picture build --strict`. Add `touches:` only with place ids from the map's `nodes/`. Rules: the picture contract, `templates/picture/CONTRACT.md` in the Limen package. Delete this note.
 
 ## Outcome
 
