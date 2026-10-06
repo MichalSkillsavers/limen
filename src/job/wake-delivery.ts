@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 // The notify/ record of who heard a job: claims, delivered slots, unconfirmed attempts, subscribers, and the ready marker.
 const DEFAULT_FALLBACK_GRACE_MS = 5 * 60_000;
 export const CLAIM_STALE_MS = 30_000;
+const WAKE_ATTEMPTS = 2;
 export function deliverySettled(job: string, session: string): boolean {
 	if (!isTerminal(text(join(job, "state")))) return false;
 	if (claimSlots(job).length > 0) return false;
@@ -22,7 +23,7 @@ export type DeliveryCallbacks = {
 export function claimDelivery(job: string, slot: string, eligible: () => boolean, send: () => false | void | Promise<void>, callbacks: DeliveryCallbacks): boolean {
 	const claim = join(job, "notify", "claims", slot);
 	const delivered = join(job, "notify", "delivered", slot);
-	if (unsuccessfulAttempts(claim) >= 2) return false;
+	if (unsuccessfulAttempts(claim) >= WAKE_ATTEMPTS) return false;
 	mkdirSync(join(job, "notify", "claims"), { recursive: true });
 	mkdirSync(join(job, "notify", "delivered"), { recursive: true });
 	if (!callbacks.protected(claim)) {
@@ -47,7 +48,8 @@ export function claimDelivery(job: string, slot: string, eligible: () => boolean
 		return false;
 	}
 	const sameKind = claimSlots(job).filter((name) => receiptFamily(name) === receiptFamily(slot));
-	if (!eligible() || sameKind.length + unsuccessfulAttempts(claim) > 2) {
+	// Claims in flight count as attempts: same-family claims plus failures never exceed the ceiling.
+	if (!eligible() || sameKind.length + unsuccessfulAttempts(claim) > WAKE_ATTEMPTS) {
 		rmSync(claim, { recursive: true, force: true });
 		return false;
 	}
@@ -120,22 +122,25 @@ export function recordUnconfirmed(claim: string, reason = "wake turn errored, ab
 		// Append atomically: competing subscribers must not overwrite each other's failure.
 		appendFileSync(attemptsFile, "1\n");
 		const attempts = unsuccessfulAttempts(claim);
-		if (attempts < 2) rmSync(claim, { recursive: true, force: true });
-		else writeFileSync(join(claim, "blocked"), "automatic retries stopped after two unsuccessful attempts\n", { flag: "wx" });
+		if (attempts < WAKE_ATTEMPTS) rmSync(claim, { recursive: true, force: true });
+		else writeFileSync(join(claim, "blocked"), `automatic retries stopped after ${WAKE_ATTEMPTS} unsuccessful attempts\n`, { flag: "wx" });
 		try {
-			const stopped = attempts >= 2 ? "; automatic retries stopped; claim retained for human recovery" : "";
-			appendFileSync(join(dirname(dirname(dirname(claim))), "log"), `[limen ${new Date().toISOString()}] ${reason}; unsuccessful wake attempt ${attempts}/2${stopped}\n`);
+			const stopped = attempts >= WAKE_ATTEMPTS ? "; automatic retries stopped; claim retained for human recovery" : "";
+			appendFileSync(
+				join(dirname(dirname(dirname(claim))), "log"),
+				`[limen ${new Date().toISOString()}] ${reason}; unsuccessful wake attempt ${attempts}/${WAKE_ATTEMPTS}${stopped}\n`,
+			);
 		} catch {
 			// The allowance and retained claim remain authoritative if logging fails.
 		}
-		return attempts >= 2;
+		return attempts >= WAKE_ATTEMPTS;
 	} catch {
 		return false;
 	}
 }
 export function confirmClaim(claim: string, delivered: string): void {
 	try {
-		if (!existsSync(join(claim, "accepted")) || existsSync(join(claim, "blocked")) || unsuccessfulAttempts(claim) >= 2) return;
+		if (!existsSync(join(claim, "accepted")) || existsSync(join(claim, "blocked")) || unsuccessfulAttempts(claim) >= WAKE_ATTEMPTS) return;
 		if (!existsSync(delivered)) renameSync(claim, delivered);
 		else rmSync(claim, { recursive: true, force: true });
 	} catch {

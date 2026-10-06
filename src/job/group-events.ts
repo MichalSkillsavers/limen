@@ -4,6 +4,10 @@ import { processAlive } from "../runtime/contain.ts";
 import type { GroupIdentity, GroupRun } from "./group-cabinet.ts";
 import { groupLock, groupPath, readRun, saveJson } from "./group-cabinet.ts";
 
+const PUBLICATION_CHARACTERS = 4_000;
+const DELIVERY_ATTEMPTS = 2;
+const CLAIM_STALE_MS = 30_000;
+
 export type GroupEvent = { id: string; at: number; author: string; team: string; kind: "finding" | "lifecycle"; text: string; target?: string };
 export type GroupReceipt = {
 	event: string;
@@ -19,7 +23,7 @@ export type GroupReceipt = {
 };
 export type EventBatch = { token: string; events: GroupEvent[]; omitted: number; text: string };
 export async function publishEvent(identity: GroupIdentity, text: string, kind: GroupEvent["kind"] = "finding", target?: string): Promise<GroupEvent> {
-	if (!text.trim() || text.length > 4_000) throw new Error("group publication requires 1–4000 characters; link larger artifacts");
+	if (!text.trim() || text.length > PUBLICATION_CHARACTERS) throw new Error(`group publication requires 1–${PUBLICATION_CHARACTERS} characters; link larger artifacts`);
 	return groupLock(groupPath(identity.run), async () => {
 		const run = await readRun(identity.run.root, identity.run.id);
 		if (run.closed) throw new Error("group is closed");
@@ -125,8 +129,8 @@ async function eligibleEvents(identity: GroupIdentity, now: number) {
 	for (const event of await groupEvents(identity.run)) {
 		if (ancestry.has(event.author) || (event.target && identity.member && event.target !== identity.member.team)) continue;
 		const recorded = await receipt(identity.run, identity.recipient, event.id);
-		if (recorded.state === "processed" || recorded.attempts >= 2) continue;
-		if (recorded.token && (((recorded.owner ?? 0) > 0 && processAlive(recorded.owner ?? 0)) || now - (recorded.at ?? now) < 30_000)) continue;
+		if (recorded.state === "processed" || recorded.attempts >= DELIVERY_ATTEMPTS) continue;
+		if (recorded.token && (((recorded.owner ?? 0) > 0 && processAlive(recorded.owner ?? 0)) || now - (recorded.at ?? now) < CLAIM_STALE_MS)) continue;
 		// Continuation inherits only proven processing, never its predecessor's failed attempts.
 		let inherited = false;
 		for (const ancestor of ancestry)

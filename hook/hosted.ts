@@ -24,6 +24,10 @@ type PiApi = {
 	}): void;
 };
 
+// Herdr drops pane metadata after its TTL; an unchanged label is re-sent well before then.
+const METADATA_TTL_MS = 180_000;
+const METADATA_REFRESH_MS = 60_000;
+
 /** Keep `.limen/jobs/<id>/` truthful for a Herdr-hosted pi (no JSON stream). */
 export default function limenHosted(pi: PiApi): void {
 	if (process.env.LIMEN_HOSTED !== "1" || process.env.LIMEN_JOB !== "1") return;
@@ -50,7 +54,7 @@ export default function limenHosted(pi: PiApi): void {
 			}
 			const state = release ? "" : readFileSync(join(jobDir, "state"), "utf8").trim();
 			const body = ["running", "done", "failed", "stopped"].includes(state) ? `job ${state.toUpperCase()}` : "job state unknown";
-			if (!release && body === metadata && Date.now() - metadataAt < 60_000) return;
+			if (!release && body === metadata && Date.now() - metadataAt < METADATA_REFRESH_MS) return;
 			metadata = body;
 			metadataAt = Date.now();
 			const change = release
@@ -65,7 +69,7 @@ export default function limenHosted(pi: PiApi): void {
 						"--state-label",
 						`done=${body} · pane ready`,
 						"--ttl-ms",
-						"180000",
+						String(METADATA_TTL_MS),
 					];
 			execFile(herdr.binary, ["pane", "report-metadata", herdr.pane, "--source", "limen", "--seq", String((seq += 1)), ...change], { timeout: 2_000 }, () => {}).unref();
 		} catch {

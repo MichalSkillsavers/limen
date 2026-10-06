@@ -7,6 +7,7 @@ import { claimId, claimPath, type GithubBinding, githubDir, originRepository, re
 import { type GithubClaim, githubSubject, matchedGithubJob } from "./github-review.ts";
 
 const API = "https://api.github.com";
+const PAGE = 100;
 type Comment = { id: number; body: string | null; created_at: string; html_url: string; issue_url: string; user: { login: string } | null };
 type Pull = {
 	number: number;
@@ -131,12 +132,12 @@ async function persist(root: string, state: string, claim: GithubClaim): Promise
 async function existingReceipt(repo: string, pr: number, marker: string, token: string): Promise<number | undefined> {
 	for (let page = 1; ; page++) {
 		const comments = await api<Array<{ id: number; body: string | null; performed_via_github_app: { id: number } | null }>>(
-			`/repos/${repo}/issues/${pr}/comments?per_page=100&page=${page}`,
+			`/repos/${repo}/issues/${pr}/comments?per_page=${PAGE}&page=${page}`,
 			token,
 		);
 		const found = comments.find((comment) => comment.performed_via_github_app?.id === Number(process.env.LIMEN_GITHUB_APP_ID) && comment.body?.includes(marker));
 		if (found) return found.id;
-		if (comments.length < 100) return undefined;
+		if (comments.length < PAGE) return undefined;
 	}
 }
 
@@ -319,7 +320,7 @@ async function request(root: string, state: string, binding: GithubBinding, trig
 		]) {
 			let entries: Array<{ id: number; body: string | null; user: { login: string } | null }>;
 			try {
-				entries = await api<typeof entries>(`${endpoint}?per_page=100`, token);
+				entries = await api<typeof entries>(`${endpoint}?per_page=${PAGE}`, token);
 			} catch (error) {
 				if (!endpoint.includes("/issues/") && /HTTP (403|404)/.test(String(error))) {
 					discussion.push(`[${endpoint.split("/").at(-1)} unavailable via App; see ${link}]`);
@@ -339,7 +340,7 @@ async function request(root: string, state: string, binding: GithubBinding, trig
 				discussion.push(line);
 				used += line.length;
 			}
-			if (entries.length === 100) discussion.push(`[More ${endpoint.split("/").at(-1)} may exist; first 100 fetched at ${link}]`);
+			if (entries.length === PAGE) discussion.push(`[More ${endpoint.split("/").at(-1)} may exist; first ${PAGE} fetched at ${link}]`);
 		}
 		const excerpt = discussion.join("\n");
 		claim = {
@@ -420,7 +421,7 @@ export async function pollGithubIssues(root: string, state: string, binding: Git
 	);
 	const since = new Date(Date.parse(cursor.createdAt) - 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 	for (let page = 1; ; page++) {
-		const issues = await api<Issue[]>(`/repos/${binding.repo}/issues?state=all&sort=created&direction=asc&since=${encodeURIComponent(since)}&per_page=100&page=${page}`, token);
+		const issues = await api<Issue[]>(`/repos/${binding.repo}/issues?state=all&sort=created&direction=asc&since=${encodeURIComponent(since)}&per_page=${PAGE}&page=${page}`, token);
 		for (const issue of issues) {
 			const created = Date.parse(issue.created_at);
 			const mark = Date.parse(cursor.createdAt);
@@ -432,7 +433,7 @@ export async function pollGithubIssues(root: string, state: string, binding: Git
 			await writeFile(temp, `${JSON.stringify(cursor)}\n`, { flag: "wx", mode: 0o600 });
 			await rename(temp, cursorPath);
 		}
-		if (issues.length < 100) break;
+		if (issues.length < PAGE) break;
 	}
 }
 
@@ -474,7 +475,7 @@ async function project(root: string, stateDir: string, jwt: string): Promise<voi
 		const since = new Date(Math.max(Date.parse(binding.connectedAt), Date.parse(cursor.createdAt) - 1000)).toISOString().replace(/\.\d{3}Z$/, "Z");
 		for (let page = 1; ; page++) {
 			const comments = await api<Comment[]>(
-				`/repos/${binding.repo}/issues/comments?sort=created&direction=asc&since=${encodeURIComponent(since)}&per_page=100&page=${page}`,
+				`/repos/${binding.repo}/issues/comments?sort=created&direction=asc&since=${encodeURIComponent(since)}&per_page=${PAGE}&page=${page}`,
 				token,
 			);
 			for (const comment of comments) {
@@ -486,7 +487,7 @@ async function project(root: string, stateDir: string, jwt: string): Promise<voi
 				await writeFile(temp, `${JSON.stringify(cursor)}\n`, { flag: "wx", mode: 0o600 });
 				await rename(temp, cursorPath);
 			}
-			if (comments.length < 100) break;
+			if (comments.length < PAGE) break;
 		}
 		await pollGithubIssues(root, state, binding, token);
 	} finally {

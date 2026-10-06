@@ -66,6 +66,9 @@ type PiApi = {
 };
 
 const CACHE_REFRESH_MS = 30_000;
+// Herdr drops pane metadata after its TTL; an unchanged label is re-sent well before then.
+const METADATA_TTL_MS = 180_000;
+const METADATA_REFRESH_MS = 60_000;
 const TAB_TAIL = /(?:\s*·\s*\d+\s+(?:running|finished))+$/;
 type FinishedJob = { readonly id: string; readonly label: string; readonly state: string; readonly finishedAt: number };
 type HerdrPane = { readonly binary: string; readonly pane: string };
@@ -127,13 +130,13 @@ export default function limenWake(pi: PiApi): void {
 		const label = `${jobs} · ${body}`;
 		const agent = herdrDisplayAgent(pulses, session?.isIdle() === true);
 		const signature = `${title}\0${label}\0${agent}`;
-		if (signature === herdrMetadata && Date.now() - herdrMetadataAt < 60_000) return;
+		if (signature === herdrMetadata && Date.now() - herdrMetadataAt < METADATA_REFRESH_MS) return;
 		herdrMetadata = signature;
 		herdrMetadataAt = Date.now();
 		const change = body
 			? ["--title", title, "--display-agent", agent, "--token", `limen=${label}`, "--state-label", `idle=${label}`, "--state-label", `done=${label}`]
 			: ["--clear-title", "--display-agent", "Limen coordinator", "--clear-token", "limen", "--clear-state-labels"];
-		herdrCall(["pane", "report-metadata", herdr.pane, "--source", "limen", "--seq", String((herdrSeq += 1)), ...change, "--ttl-ms", "180000"]);
+		herdrCall(["pane", "report-metadata", herdr.pane, "--source", "limen", "--seq", String((herdrSeq += 1)), ...change, "--ttl-ms", String(METADATA_TTL_MS)]);
 	};
 	const releaseHerdr = () => {
 		if (!herdr) return;
