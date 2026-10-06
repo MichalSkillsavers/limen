@@ -2,7 +2,7 @@
 
 [README](../README.md) · [Setup](setup.md) · [Jobs](jobs.md)
 
-The coordinator runs job commands. The operator runs setup commands. Run `limen --help` for the installed command list.
+The coordinator runs job commands. The operator runs setup commands. Run `limen --help` for the installed command list. Run `limen <command> --help`, for example `limen picture --help`, for the usage lines of one command.
 
 Where the reference shows them, IDs, unique suffixes, and unique labels work the same.
 

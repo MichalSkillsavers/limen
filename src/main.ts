@@ -107,14 +107,15 @@ usage:
   limen sweep [--install|--uninstall]
   limen linear [on [--team T --project P]|off|status]   # Linear mirror toggle — renames spec/linear.md ↔ .off; --team/--project write a fresh config
   limen github connect|disconnect|status|doctor  # bind projects and diagnose seat safety
-  limen picture build [--dir D] [--out F] [--json F] [--strict]  # local offline architecture map, no model call
-  limen picture tick [--dir D] [--branch B] [--dry-run] --engine E --provider P --model M --thinking T  # quiet one-tip pass
-  limen picture watch [off | on [--branch B] [--dir D] --engine E --provider P --model M --thinking T]  # per-project, off by default: one tick when the top branch moves
   limen github ensure [registered-root]       # require a live registered Herdr coordinator
   limen github poll                           # run one polling pass as the isolated App user
+  limen github deliver <root> <claim-id> <handoff-nonce>  # poller only: hand one claim to the live coordinator
   limen github review <root> <claim-id> --engine E --provider P --model M --thinking T  # hosted review for one doorbell claim
   limen github work <root> <claim-id> --engine E --provider P --model M --thinking T --task "…"  # hosted task for one doorbell claim
   limen github resolve <root> <claim-id> <handoff-nonce> "answer"  # explicit no-job answer for one doorbell claim
+  limen picture build [--dir D] [--out F] [--json F] [--strict]  # local offline architecture map, no model call
+  limen picture tick [--dir D] [--branch B] [--dry-run] --engine E --provider P --model M --thinking T  # quiet one-tip pass
+  limen picture watch [off | on [--branch B] [--dir D] --engine E --provider P --model M --thinking T]  # per-project, off by default: one tick when the top branch moves
 Pass a short coordinator instruction, not $(cat ticket.md). The ticket is a pointer, not the prompt.`;
 export async function main(args: readonly string[], cwd = process.cwd()): Promise<void> {
 	try {
@@ -134,7 +135,7 @@ export async function main(args: readonly string[], cwd = process.cwd()): Promis
 		if (!(name in COMMANDS)) throw new Error(`unknown command ${JSON.stringify(name)}\n\n${HELP}`);
 		const flags = rest.slice(0, rest.includes("--") ? rest.indexOf("--") : undefined);
 		if (flags.includes("--help") || flags.includes("-h")) {
-			console.log(HELP);
+			console.log(commandHelp(name));
 			return;
 		}
 		await COMMANDS[name as keyof typeof COMMANDS](rest, cwd);
@@ -143,4 +144,16 @@ export async function main(args: readonly string[], cwd = process.cwd()): Promis
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
 	}
+}
+
+// One command's usage: its `limen <command>` lines from HELP, with their indented comment lines.
+function commandHelp(name: string): string {
+	const lines = ["usage:"];
+	let inside = false;
+	for (const line of HELP.split("\n")) {
+		if (line.startsWith("  limen ")) inside = line === `  limen ${name}` || line.startsWith(`  limen ${name} `);
+		else if (!/^\s+#/.test(line)) inside = false;
+		if (inside) lines.push(line);
+	}
+	return lines.join("\n");
 }
