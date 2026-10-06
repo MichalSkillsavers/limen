@@ -40,16 +40,12 @@ Adam can read **one** offline page. It stays current.
 	assert.deepEqual(diagnostics, []);
 	assert.equal(tickets[0]?.purpose, "Adam can read one offline page.");
 	assert.deepEqual(tickets[0]?.touches, ["plant.viewer", "plant.misspelled"]);
-	assert.deepEqual(checkTickets(tickets, new Set(["plant.viewer"])), [
-		{
-			level: "error",
-			code: "ticket.unknown-touch",
-			message: 'unknown place id "plant.misspelled"',
-			source: "spec/features/active/F780-live-picture/ticket.md",
-			id: "f780",
-			line: 4,
-		},
-	]);
+	const [unknown] = checkTickets(tickets, new Set(["plant.viewer"]));
+	assert.ok(unknown);
+	assert.equal(unknown?.level, "error");
+	assert.equal(unknown?.code, "ticket.unknown-touch");
+	assert.equal(unknown?.source, "spec/features/active/F780-live-picture/ticket.md");
+	assert.equal(unknown?.line, 4);
 });
 
 test("bad ticket fields, impossible dates, and incomplete dated flags report their own lines", async (t) => {
@@ -84,7 +80,7 @@ wrong-on: 2026-10-06
 	assert.equal(tickets[0]?.needsAdam, null);
 });
 
-test("missing flag dates and orphan dates fail; missing active touches warn without rejecting a legacy ticket", async (t) => {
+test("missing flag dates and orphan dates fail; missing front matter on active tickets is an error", async (t) => {
 	const root = await fixture(t);
 	await addTicket(
 		root,
@@ -123,7 +119,7 @@ landed: 2026-10-06
 			["error", "ticket.bad-field", "f782", 3],
 			["error", "ticket.bad-field", "f782", 4],
 			["warn", "ticket.no-touches", "f782", 1],
-			["warn", "ticket.no-touches", "f783", 1],
+			["error", "ticket.no-front-matter", "f783", 1],
 		],
 	);
 });
@@ -160,7 +156,7 @@ wrong-on: 2026-10-04
 	);
 });
 
-test("two folders with one feature number keep the first work item and warn on the second", async (t) => {
+test("two folders with one feature number keep the first work item and warn with a repair on the second", async (t) => {
 	const root = await fixture(t);
 	await addTicket(root, "active", "F778-finish-signal", "---\nopened: 2026-10-06\n---\n# F778 · Finish signal\n");
 	await addTicket(root, "active", "F778-job-done", "# F778 · Job done\n");
@@ -171,10 +167,27 @@ test("two folders with one feature number keep the first work item and warn on t
 		["spec/features/active/F778-finish-signal/ticket.md"],
 	);
 	assert.deepEqual(
-		diagnostics.filter((d) => d.code === "ticket.duplicate-id").map((d) => [d.level, d.source, d.message]),
+		diagnostics.filter((d) => d.code === "ticket.duplicate-id").map((d) => [d.level, d.source, d.line]),
 		[
-			["warn", "spec/features/active/F778-job-done/ticket.md", "F778 is also spec/features/active/F778-finish-signal/ticket.md; this ticket is left out"],
-			["warn", "spec/features/done/2026-10/F778-older/ticket.md", "F778 is also spec/features/active/F778-finish-signal/ticket.md; this ticket is left out"],
+			["warn", "spec/features/active/F778-job-done/ticket.md", 1],
+			["warn", "spec/features/done/2026-10/F778-older/ticket.md", 1],
 		],
 	);
+	assert.ok(diagnostics.every((d) => /; fix: \S.+/.test(d.message)));
+});
+
+test("all ticket diagnostics give a source line and a concrete fix", async (t) => {
+	const root = await fixture(t);
+	await addTicket(root, "active", "F788-no-front-matter", "# F788 · Unlinked\n");
+	await addTicket(root, "active", "F789-invalid", "---\ntouches:\n  - missing.place\nopened: 2026-02-30\nwrong-on: 2026-10-06\n---\n# F789 · Invalid\n");
+	const { tickets, diagnostics: parsed } = await readTickets(root);
+	const diagnostics = [...parsed, ...checkTickets(tickets, new Set(["present.place"]))];
+	assert.ok(diagnostics.some((d) => d.code === "ticket.no-front-matter"));
+	assert.ok(diagnostics.some((d) => d.code === "ticket.unknown-touch"));
+	for (const item of diagnostics) {
+		assert.match(item.code, /^ticket\./);
+		assert.match(item.source ?? "", /\/ticket\.md$/);
+		assert.ok(item.line !== null && item.line > 0);
+		assert.match(item.message, /; fix: \S.+/);
+	}
 });

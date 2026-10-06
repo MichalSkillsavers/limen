@@ -2,7 +2,7 @@
 
 The picture is a map a cold reader takes in at one sitting: the places a project is made of, how they connect, and later which features and journeys cross them. This file is the reusable contract between three parties: the picture worker that writes the dataset, `limen picture build` that renders it, and `limen picture tick` that decides when a refresh is worth a model call.
 
-The dataset and the rendered map are local, gitignored artifacts. They are never committed, merged, or landed onto a tip, and nothing in this contract gates spawn or land. The map is not a live feature list: a feature or journey says which places it crosses, never whether it is planned, active, or done. The board owns feature state.
+The dataset and rendered map are local, gitignored artifacts. They are never committed or merged. The map is not a live feature list: the board owns state. The map itself does not gate land; ticket errors on changed tickets can refuse a land.
 
 Schema: `architecture-map/1`. It is the schema of the first dataset (Alice, 2026-10-02) plus the fields marked **new**.
 
@@ -52,19 +52,21 @@ A trailing body line `owner: <name>`, alone on its line, is metadata, not prose.
 
 ## Ticket front matter
 
-`spec/features/<lane>/…/ticket.md` starts with YAML between `---` lines, before its `# FNNN` heading. Use the same scalar and block-list syntax as map files. The board owns state; ticket fields supply dated work and decisions to the offline picture.
+Create tickets with `limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]`. It chooses the next free F number across `spec/features/` and writes a ticket that passes a clean `limen picture build --strict` without editing. The board owns status; the lane holds it.
 
-| Field | Meaning |
-| --- | --- |
-| `touches` | Optional block list of exact plant or module ids from `nodes/`; do not guess a place. |
-| `opened` | Ticket creation date, `YYYY-MM-DD`. |
-| `needs-adam` + `needs-adam-on` | Optional one-line decision request and its `YYYY-MM-DD` date; use both or neither. |
-| `wrong` + `wrong-on` | Optional one-line problem and its `YYYY-MM-DD` date; use both or neither. |
-| `landed` | `YYYY-MM-DD` for a done ticket with known landing evidence. |
+Example front matter, with a known map place:
 
-Remove `needs-adam` and its date when Adam answers. Remove `wrong` and its date when the problem is fixed. The pin then leaves the live picture.
+```yaml
+---
+touches:
+  - limen.picture.build
+opened: 2026-10-06
+---
+```
 
-An unknown `touches` id is `ticket.unknown-touch` (error). Invalid keys, dates, pairs, or multiline requests are `ticket.bad-field` (error). Missing front matter or `touches` on an active ticket is `ticket.no-touches` (warning). A second folder with the same feature number is `ticket.duplicate-id` (warning); the first folder in lane order (planned, active, done, dropped) is the work item and the second stays out of the picture. Diagnostics name the ticket path and line. `limen picture build --strict` exits 1 for errors; a missing place never becomes a guessed link. Leave `touches` out when evidence is absent and accept the warning.
+Replace the date with the creation date. Omit `touches` when no place is known; never invent an id. An active ticket without touches warns. Optional one-line `needs-adam` with `needs-adam-on`, or `wrong` with `wrong-on`, needs a real `YYYY-MM-DD` date; remove both fields when resolved. A done ticket may have `landed: YYYY-MM-DD` when the landing date is known.
+
+Run `limen picture build --strict`. Each `ticket.*` diagnostic names the ticket path, line and `fix:` action. An active ticket without front matter is `ticket.no-front-matter` (error). Bad fields or pairs are `ticket.bad-field` (error), and an unknown `touches` id is `ticket.unknown-touch` (error). A duplicate F number is `ticket.duplicate-id` (warning); the second folder is not shown in the picture. Repair duplicates before landing a new ticket.
 
 ## Identifiers and relations
 
