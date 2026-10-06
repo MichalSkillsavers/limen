@@ -30,7 +30,7 @@ test("runtime remains dependency-free and TypeScript basenames stay unambiguous"
 // shrink, and its entry leaves this list in the commit that deletes the file. Every other file in test/ counts toward the cap.
 const oldSuite = new Map(
 	`communication-hook:504 continue-command:506 coordinator-wake:339 diff-command:137 engine:175 finalize:214 finish-receipt:154 finish-webhook-helper:427
-	finish-webhook:829 git-status:48 github-doctor:117 github-doorbell:700 github-issue-body:174 group-command:879 hosted-binding:322 hosted-hook:168
+	finish-webhook:829 git-status:48 github-doctor:117 github-doorbell:700 github-issue-body:174 group-command:880 hosted-binding:322 hosted-hook:168
 	hosted-spawn:1340 hosted-uncertainty:37 inherit:101 init-command:150 job:92 jobs-command:470 keeper-command:83 land-command:240 lead-step-finish:198
 	linear-command:37 open-command:252 picture-board:80 picture-generator:248 picture-layers:281 picture-overlay:154 picture-tick:207 picture-tickets:193
 	picture-viewer:328 picture-watch:117 picture-work:161 plant-events:263 prune-command:338 reaper:177 recovery:386 scratch.ts:195 spawn-command:1012
