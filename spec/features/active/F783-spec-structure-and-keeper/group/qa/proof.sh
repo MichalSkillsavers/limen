@@ -24,11 +24,16 @@ LIMEN_PKG=${LIMEN_PKG:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel)}
 ROUTE=(--engine omp --provider openai-codex --model gpt-6-sol --thinking low)
 LOG=$PROOF/transcript.md
 
+# Jobs on the plant call `limen` from PATH; this shim makes that the checkout under test, not the live install.
+mkdir -p "$PROOF/bin"
+printf '#!/bin/sh\nexec node "$LIMEN_PACKAGE/bin/limen" "$@"\n' >"$PROOF/bin/limen"
+chmod +x "$PROOF/bin/limen"
+
 # The plant must not inherit this session's group or job identity, the owner's seat registry, or Herdr.
 limen() {
 	env -u LIMEN_GROUP_ID -u LIMEN_JOB -u LIMEN_JOB_ID -u LIMEN_JOB_LABEL -u LIMEN_CONTEXT_ROOT -u LIMEN_TEAM_ID \
 		-u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u PI_SESSION_ID \
-		LIMEN_HOME="$PROOF/home" LIMEN_HERDR=0 LIMEN_PACKAGE="$LIMEN_PKG" \
+		LIMEN_HOME="$PROOF/home" LIMEN_HERDR=0 LIMEN_PACKAGE="$LIMEN_PKG" PATH="$PROOF/bin:$PATH" \
 		node "$LIMEN_PKG/bin/limen" "$@"
 }
 
