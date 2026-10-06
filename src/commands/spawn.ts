@@ -19,6 +19,7 @@ import {
 	branchExists,
 	commitHasFile,
 	repoRoot,
+	resolveCommit,
 	spawnBaseCommit,
 	workspaceRepository,
 	workspaceRoot,
@@ -144,8 +145,8 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		}
 	}
 	const role = options.review ? "reviewer" : (group?.role ?? options.role ?? "worker");
-	if (options.base && !/^[0-9a-f]{40}$/.test(options.base)) throw new Error("--base requires a full commit SHA");
-	if (options.head && !/^[0-9a-f]{40}$/.test(options.head)) throw new Error("--head requires a full commit SHA");
+	const pinnedBase = options.base ? resolveCommit(repository, options.base, "--base") : undefined;
+	const pinnedHead = options.head ? resolveCommit(repository, options.head, "--head") : undefined;
 	const preamble = resolvePreamble(root, role);
 	const id = makeJobId(options.label);
 	const jobsRoot = `${root}/.limen/jobs`;
@@ -163,7 +164,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		...(repo ? { repo } : {}),
 		...(options.branch ? { requestedBranch: options.branch } : {}),
 	});
-	if (options.head && branchCommit(repository, branch) !== options.head) throw new Error("pinned review head moved before spawn");
+	if (pinnedHead && branchCommit(repository, branch) !== pinnedHead) throw new Error(`pinned review head moved before spawn: ${branch} is not at ${pinnedHead}`);
 	const baseCommit = plan.kind === "add-new" ? spawnBaseCommit(repository) : branchCommit(repository, branch);
 	if (source === "committed") {
 		for (const { path } of ticketPointers(task))
@@ -182,7 +183,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	if (held) console.log("warning: a live job already holds this label");
 	const jobDir = `${jobsRoot}/${id}`;
 	const candidate = options.review ? branchCommit(repository, branch) : undefined;
-	const base = options.base ?? baseCommit;
+	const base = pinnedBase ?? baseCommit;
 	// Private planning may rewrite ticket pointers, so its task is the checked text, not the raw bytes.
 	let taskBody: string | Uint8Array = `${task.trim()}\n`;
 	if (loaded.raw && source === "committed") taskBody = loaded.bytes;
