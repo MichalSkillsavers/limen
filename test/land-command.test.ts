@@ -156,7 +156,7 @@ test("land refuses tickets that fail the strict check, prints the keeper command
 	const bad = await ticketJob(scratch, badTicket, "sample.nope");
 	const refused = limen(scratch, "land", bad, "--yes");
 	assert.equal(refused.status, 1);
-	assert.match(refused.stderr, new RegExp(`^${badTicket}:3: unknown place id "sample.nope"`, "m"));
+	assert.match(refused.stderr, new RegExp(`^error ${badTicket}:3: unknown place id "sample.nope"`, "m"));
 	assert.match(refused.stderr, new RegExp(`^fix: limen keeper ${badTicket} --job ${bad} --engine <engine> --provider <provider> --model <model> --thinking <level>$`, "m"));
 	assert.equal(git(scratch.root, "rev-parse", "HEAD"), main);
 

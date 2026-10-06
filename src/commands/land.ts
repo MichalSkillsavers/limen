@@ -82,7 +82,8 @@ export async function landTicketCheck(
 		execFileSync("tar", ["-x", "-C", tip], { input: archive });
 		const board = spawnSync("git", ["show", `${branch}:spec/build.md`], { cwd: repository, maxBuffer: 64 * 1024 * 1024 });
 		if (board.status === 0) await writeFile(join(tip, "spec/build.md"), board.stdout);
-		const entries = await readBoard(tip);
+		// A branch with no board at its tip gets no board warnings.
+		const entries = board.status === 0 ? await readBoard(tip) : undefined;
 		for (const path of tickets) {
 			const lane = path.split("/")[2];
 			const folder = path.split("/").at(-2) ?? "";
@@ -93,7 +94,7 @@ export async function landTicketCheck(
 					: lane === "done"
 						? { state: "PROVEN", line: `- \`${folder}\` (🟢 PROVEN): <one clause> under ## PROVEN` }
 						: undefined;
-			if (!want) continue;
+			if (!want || !entries) continue;
 			const entry = entries.get(code.toLowerCase());
 			if (!entry) lines.push(`warn spec/build.md: no board line for ${code}; fix: add ${want.line}`);
 			else if (entry.state !== want.state)
@@ -103,18 +104,22 @@ export async function landTicketCheck(
 		}
 		const read = await readTickets(tip);
 		const diagnostics = [...read.diagnostics, ...(placeIds ? checkTickets(read.tickets, placeIds) : [])].filter((d) => d.source !== null && changed.has(d.source));
-		const errors = diagnostics.filter((d) => d.level === "error").map((d) => `${d.source}:${d.line ?? 1}: ${d.message}`);
+		const failing = diagnostics.filter((d) => d.level === "error");
+		const errors = failing.map((d) => `error ${d.source}:${d.line ?? 1}: ${d.message}`);
+		let bad = failing[0]?.source ?? undefined;
 		const all = gitText(repository, ["ls-tree", "-r", "--name-only", branch, "--", "spec/features"]).split("\n");
 		for (const [path, status] of changed) {
 			if (status !== "A") continue;
 			const code = TICKET_PATH.exec(path)?.[1];
 			const other = all.find((candidate) => candidate !== path && TICKET_PATH.exec(candidate)?.[1] === code);
-			if (other) errors.push(`${path}:1: ${code} is also used by ${other}; fix: move this ticket to a free F number (limen ticket new picks one)`);
+			if (!other) continue;
+			errors.push(`error ${path}:1: ${code} is also used by ${other}; fix: move this ticket to a free F number (limen ticket new picks one)`);
+			bad ??= path;
 		}
 		for (const d of diagnostics) if (d.level === "warn") lines.push(`warn ${d.source}:${d.line ?? 1}: ${d.message}`);
 		lines.push(...errors);
 		if (errors.length === 0) return { ok: true, tickets, lines };
-		const bad = errors[0]?.slice(0, errors[0].indexOf(":")) ?? tickets[0];
+		bad ??= tickets[0];
 		lines.push(`fix: limen keeper ${bad} --job ${job} --engine <engine> --provider <provider> --model <model> --thinking <level>`);
 		return { ok: false, tickets, lines };
 	} finally {

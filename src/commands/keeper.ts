@@ -22,7 +22,7 @@ const ROUTE = ["--engine", "--provider", "--model", "--thinking"];
 
 /** After the work: a short job on its own branch at the candidate tip fixes the ticket, board and map links. */
 export async function keeperCommand(args: readonly string[], cwd: string): Promise<void> {
-	if (process.env.LIMEN_GROUP_ID) throw new Error("group members cannot start a keeper; the team coordinator or the owner-facing lead does");
+	if (process.env.LIMEN_GROUP_ID) throw new Error("group members cannot start a keeper; the owner-facing lead starts one after it merges the team branches");
 	const options = parseKeeperArgs(args);
 	const code = TICKET_PATH.exec(options.ticket)?.[1];
 	if (!code) throw new Error(`keeper needs a ticket path like spec/features/active/FNNN-slug/ticket.md, not ${options.ticket}`);
@@ -42,7 +42,17 @@ export async function keeperCommand(args: readonly string[], cwd: string): Promi
 	const repository = first.repo ? workspaceRepository(root, first.repo) : root;
 	if (!branchExists(repository, candidate)) throw new Error(`candidate branch ${candidate} does not exist`);
 	const tip = branchCommit(repository, candidate);
-	if (!commitHasFile(repository, tip, options.ticket)) throw new Error(`ticket ${options.ticket} is missing at ${candidate} (${tip.slice(0, 7)})`);
+	let ticket = options.ticket;
+	if (!commitHasFile(repository, tip, ticket)) {
+		// A job that moved its ticket to another lane leaves the old path in its task; follow the one folder with this number.
+		const moved = execFileSync("git", ["ls-tree", "-r", "--name-only", tip, "--", "spec/features"], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+			.split("\n")
+			.filter((path) => TICKET_PATH.exec(path)?.[1] === code);
+		if (moved.length !== 1 || !moved[0])
+			throw new Error(`ticket ${ticket} is missing at ${candidate} (${tip.slice(0, 7)})${moved.length ? `; ${code} is at ${moved.join(", ")}` : ""}`);
+		console.log(`ticket moved: ${ticket} -> ${moved[0]}`);
+		ticket = moved[0];
+	}
 	const keeperBranch = `limen/keeper-${code.toLowerCase()}-${tip.slice(0, 7)}`;
 	if (branchExists(repository, keeperBranch)) throw new Error(`keeper branch ${keeperBranch} already exists; land or delete it first`);
 
@@ -69,14 +79,15 @@ export async function keeperCommand(args: readonly string[], cwd: string): Promi
 	const packet = [
 		`Spec keeper for ${code}. Fix the ticket, board and map links for this work; commit on this branch.`,
 		"",
-		`Ticket: ${options.ticket}`,
+		`Ticket: ${ticket}`,
 		"Board: spec/build.md",
 		`Map: ${existsSync(map) ? map : "none"}`,
 		`Group: ${options.group ?? "none"}`,
 		`Candidate: ${candidate} at ${tip}`,
 		`Changed tickets: ${gate.tickets.length ? gate.tickets.join(", ") : "none"}`,
 		"Land check now:",
-		...(gate.ok && gate.lines.length === 0 ? ["no error"] : gate.lines.map((line) => `  ${line}`)),
+		// The fix line names limen keeper; the keeper itself must not start another one.
+		...(gate.ok && gate.lines.length === 0 ? ["no error"] : gate.lines.filter((line) => !line.startsWith("fix: ")).map((line) => `  ${line}`)),
 		"",
 		...blocks,
 		"",

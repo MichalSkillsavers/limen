@@ -114,8 +114,9 @@ Use these steps in this order:
 
 `limen keeper <ticket> --job <id> [--job <id> …] [--candidate <branch>] [--group <id>]` starts a short detached job (default timeout 20 minutes) that fixes the spec links of finished work: ticket front matter, the board line and map sources. The coordinator starts it; no hook does.
 
-- It refuses while a listed job is still running, so it never races a worker.
+- It refuses while a listed job is still running, so it never races a worker. In a group, only the lead starts it.
 - It creates `limen/keeper-<fnnn>-<tip>` at the candidate tip: the single job's branch, or `--candidate` for several jobs on one integration branch. The keeper commits only there.
+- When the job moved its ticket to another lane, the old path still works: the keeper follows the one folder at the tip with that number and prints `ticket moved: <old> -> <new>`.
 - Its task is a packet: the ticket, board and map paths, the candidate, the changed tickets, the current land check, and per job the label, state, branch with base and tip, worktree, session transcript and task. Both engines write the transcript as `.limen/jobs/<id>/session/<time>_<uuid>.jsonl`; the packet names the newest one.
 - The keeper edits only `spec/features/**`, `spec/build.md`, and map files that cite a changed ticket. Map edits apply in place and do not land.
 - Land the keeper job: it carries the work and the fixes. If the keeper commits nothing, land the original job.

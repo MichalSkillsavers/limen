@@ -55,10 +55,12 @@ export function completionWake(job: string, label: string, state: string, id: st
 	if (fallback) instruction = "The subscribed coordinator is busy. Do not spawn, stop, steer, or land on behalf of another coordinator unless the human asks.";
 	return joinWake(lead, handoffExcerpt(job), [facts, handoff].filter(Boolean).join("\n\n"), routeInstruction ?? instruction);
 }
-/** The done-wake sentence that sends spec work to the keeper; the ticket comes from the job task's first `Ticket:` pointer. */
+/** The done-wake sentence that sends spec work to the keeper; the ticket comes from the job task's first `Ticket:` pointer (keeper follows a moved one). */
 export function keeperHint(job: string, id: string): string {
+	// A keeper always changes a ticket; sending it to another keeper would loop.
+	if (text(join(job, "role")) === "keeper") return "This is the spec keeper: land it, since it carries the work and the spec fixes. If it made no commit, land the original job.";
 	const ticket = ticketPointers(text(join(job, "task.md")))[0]?.path ?? "<ticket>";
-	return `If it added, moved or changed a ticket, start limen keeper ${ticket} --job ${id} and land the keeper job instead.`;
+	return `If it added, moved or changed a ticket, start limen keeper ${ticket} --job ${id} --engine <engine> --provider <provider> --model <model> --thinking <level> and land the keeper job instead.`;
 }
 export type LeadFallback = { readonly group: string; readonly feature: string; readonly lead: string; readonly team: string; readonly finished: number; readonly total: number };
 /** A team coordinator's finish for a lead whose group hook is not running: the group events that normally carry it cannot reach the pane. */

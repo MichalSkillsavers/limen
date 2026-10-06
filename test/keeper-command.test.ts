@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import { completionWake } from "../src/job/wake-text.ts";
 import { git, limen, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
 const ROUTE = ["--engine", "pi", "--provider", "unused", "--model", "unused", "--thinking", "low"];
@@ -54,8 +55,10 @@ test("keeper starts a keeper job on a new branch at the candidate tip", async (c
 	assert.equal(missing.status, 1);
 	assert.match(missing.stderr, /ticket spec\/features\/active\/F009-absent\/ticket\.md is missing at/);
 
-	const started = limen(scratch, "keeper", TICKET, "--job", id, ...ROUTE);
+	// The worker's task may still name the lane it started in; the keeper follows the one folder with that number.
+	const started = limen(scratch, "keeper", "spec/features/planned/F001-keeper-proof/ticket.md", "--job", id, ...ROUTE);
 	assert.equal(started.status, 0, started.stderr);
+	assert.match(started.stdout, new RegExp(`^ticket moved: spec/features/planned/F001-keeper-proof/ticket\\.md -> ${TICKET}$`, "m"));
 	const keeperId = onlyJobId(started.stdout);
 	const keeper = join(scratch.root, ".limen/jobs", keeperId);
 	const keeperBranch = `limen/keeper-f001-${tip.slice(0, 7)}`;
@@ -71,6 +74,9 @@ test("keeper starts a keeper job on a new branch at the candidate tip", async (c
 	// The worker branch is untouched; a second keeper at the same tip is refused.
 	assert.equal(git(scratch.root, "rev-parse", branch), tip);
 	await waitForState(scratch.root, keeperId, "done");
+	// The worker's done wake points at the keeper; the keeper's own done wake must not start another keeper.
+	assert.match(completionWake(job, "F001 work", "done", id, branch, "", false), new RegExp(`start limen keeper \\S+ --job ${id} --engine`));
+	assert.doesNotMatch(completionWake(keeper, "spec keeper · F001", "done", keeperId, keeperBranch, "", false), /start limen keeper/);
 	const again = limen(scratch, "keeper", TICKET, "--job", id, ...ROUTE);
 	assert.equal(again.status, 1);
 	assert.match(again.stderr, new RegExp(`keeper branch ${keeperBranch} already exists`));
