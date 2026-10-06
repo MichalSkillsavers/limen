@@ -25,6 +25,7 @@ import { noteHostedUncertainty } from "./hosted-uncertainty.ts";
 import { prepareRecoveredOwner } from "./recovery.ts";
 import { observeToolStall, type ToolStallWatch } from "./stalled-tool.ts";
 import { assistantStopReason, assistantText } from "./stream.ts";
+import { readWorkerExtensions } from "./worker-extensions.ts";
 
 const PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const HOSTED_UNKNOWN_SAMPLES = 5;
@@ -204,7 +205,10 @@ async function startHostedAgent(jobDir: string): Promise<string | undefined> {
 		...(skillConfig ? { skillConfig } : {}),
 		label: requiredEnvironment("LIMEN_LABEL"),
 		preamble: requiredEnvironment("LIMEN_PREAMBLE"),
-		extensions: ["hosted", "steering", "communication", ...((await jobMembership(jobDir)) ? ["group-peer"] : [])].map((name) => `${PACKAGE_ROOT}/hook/${name}.ts`),
+		extensions: [
+			...["hosted", "steering", "communication", ...((await jobMembership(jobDir)) ? ["group-peer"] : [])].map((name) => `${PACKAGE_ROOT}/hook/${name}.ts`),
+			...(await readWorkerExtensions(jobDir, profile.id)),
+		],
 		...(process.env.LIMEN_PROVIDER ? { provider: process.env.LIMEN_PROVIDER } : {}),
 		...(process.env.LIMEN_MODEL ? { model: process.env.LIMEN_MODEL } : {}),
 		...(process.env.LIMEN_THINKING ? { thinking: process.env.LIMEN_THINKING } : {}),

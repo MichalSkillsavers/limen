@@ -121,6 +121,21 @@ Two exceptions apply:
 
 **Auth.** Pi and OMP keep separate auth stores (`~/.pi` and `~/.omp`). Authenticate each engine you use. Limen does not change the settings or credentials of either engine. One wrapper and one stream parser serve both engines.
 
+### Personal model routes and Pi extensions
+
+An owner can describe an approved model route in their active personal coordinator instructions or a session handoff: the request name, exact engine/provider/model/thinking choices, and trusted local extension paths. Keep personal paths outside shared project Git. Limen does not parse aliases, scan installed packages, or choose a route from installation alone. Resolve conflicts with project policy before launching; do not silently substitute an engine, provider or model.
+
+For a Pi worker, pass each selected path explicitly:
+
+```text
+limen spawn --engine pi --provider <provider> --model <model> --thinking <level> \
+  --extension /path/to/trusted-entry.ts --label "what this changes" "instruction"
+```
+
+`--extension` accepts local files and package directories in both hosted and detached modes. Limen does not install or import them; Pi loads them. A directory can expose several extensions and other package resources, so prefer the exact entry file when that is the intended selection. Ambient extensions stay disabled. See [command details](commands.md#start-and-continue-jobs) for path rules and continuation replacement.
+
+Extensions run with the worker process's permissions and can read files, credentials and session data. Path validation does not prove API compatibility, provider availability, instruction forwarding or successful inference. Keep installation, native model-catalog registration and a successful worker check as separate claims. The optional `LIMEN_PREFLIGHT=auth` check does not load session extensions and can reject an extension-only provider; Limen does not bypass it. Selection does not automatically propagate through managed groups, GitHub launches, picture jobs or native subagents.
+
 ### Start a coordinator in a Herdr pane
 
 To start a coordinator in an existing Herdr pane, use a shell prompt with the project as the working directory:

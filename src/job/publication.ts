@@ -15,6 +15,7 @@ type NewJob = {
 	readonly base: string;
 	readonly role: string;
 	readonly engine: EngineId;
+	readonly extensions?: readonly string[];
 	readonly planningSource: string;
 	readonly repo?: string;
 	readonly agentName?: string;
@@ -47,6 +48,7 @@ export async function publishJob(jobDir: string, job: NewJob): Promise<void> {
 			base: `${job.base}\n`,
 			role: `${job.role}\n`,
 			engine: `${job.engine}\n`,
+			"extensions.json": `${JSON.stringify(job.extensions ?? [])}\n`,
 			"planning-source": `${job.planningSource}\n`,
 			"tool-calls": "0\n",
 			"last-tool": "",

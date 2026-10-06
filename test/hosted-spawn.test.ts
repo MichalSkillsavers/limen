@@ -1,4 +1,4 @@
-// F925 old suite, frozen at 1341 lines. Delete this file when its replacement lands; never add to it.
+// F925 old suite, frozen at 1347 lines. Delete this file when its replacement lands; never add to it.
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -507,14 +507,16 @@ test("hosted start records PATH with /usr/bin and HERDR_ENV=1; detached watch ta
 	assert.ok(!(creates[1] ?? []).includes("--env"));
 });
 
-test("hosted spawn and continuation forward literal Pi launch flags", async (context) => {
+test("hosted spawn and continuation forward literal Pi launch flags and the selected extension", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
 	assert.equal(limen(scratch, "init").status, 0);
 	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
 	const env = { HERDR_ENV: "1", LIMEN_HERDR: herdr.bin, FAKE_HERDR_STATE: herdr.dir, LIMEN_WORKER_MODEL: "xai/grok-4.6:xhigh" };
 	const flags = ["--provider", "openai-codex", "--model", "gpt-6-astra", "--thinking", "high"];
-	const launched = limenWithEnv(scratch, env, "spawn", "--tab", "--engine", "pi", ...flags, "first slice");
+	const extension = join(scratch.fakeBin, "selected.ts");
+	await writeFile(extension, "export default () => {};\n");
+	const launched = limenWithEnv(scratch, env, "spawn", "--tab", "--engine", "pi", ...flags, "--extension", extension, "first slice");
 	assert.equal(launched.status, 0, launched.stderr);
 	const parent = onlyJobId(launched.stdout);
 	await waitForState(scratch.root, parent, "done");
@@ -530,9 +532,13 @@ test("hosted spawn and continuation forward literal Pi launch flags", async (con
 		.map((line) => JSON.parse(line) as string[])
 		.filter((args) => args[0] === "agent" && args[1] === "start");
 	assert.equal(starts.length, 2);
+	const selected = await realpath(extension);
 	for (const args of starts) {
 		const piArgs = args.slice(args.indexOf("--") + 1);
 		assert.deepEqual(piArgs.slice(piArgs.indexOf("--provider"), piArgs.indexOf("--provider") + flags.length), flags);
+		// The continuation inherits the parent's list; required hooks stay beside it.
+		assert.equal(piArgs.filter((value) => value === selected).length, 1);
+		assert.ok(piArgs.some((value) => value.endsWith("/hosted.ts")));
 	}
 });
 
