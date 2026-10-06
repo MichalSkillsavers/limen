@@ -2,8 +2,10 @@ import { copyFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import type { EngineId } from "../runtime/engine.ts";
 
-const HOSTED_NOTE =
-	"Hosted job: weaker guarantees. No 90-minute timeout, no tool-call cap, no F007 process containment. Herdr owns the process tree. Closing the tab ends the worker.\n";
+function hostedNote(deadline: number | undefined): string {
+	const limits = deadline ? `Group deadline ${new Date(deadline).toISOString()}, no tool-call cap` : "No 90-minute timeout, no tool-call cap";
+	return `Hosted job: weaker guarantees. ${limits}, no process-group containment (stop cannot kill child processes the agent started). Herdr owns the process tree. Closing the tab ends the worker.\n`;
+}
 
 type NewJob = {
 	readonly task: string | Uint8Array;
@@ -53,7 +55,7 @@ export async function publishJob(jobDir: string, job: NewJob): Promise<void> {
 		};
 		if (job.repo) files.repo = `${job.repo}\n`;
 		if (job.agentName) {
-			files.hosted = HOSTED_NOTE;
+			files.hosted = hostedNote(job.group?.deadline);
 			files["agent-name"] = `${job.agentName}\n`;
 		}
 		if (job.notificationSession) {
