@@ -590,57 +590,21 @@ held, then observed for target 1 after release, with no second send. The record
 is the [bot-turn receipt outcome](../spec/features/done/2026-09/F091-finish-job-shows-bot-turn-receipt/outcome.md).
 Do not repeat that proof for ordinary setup.
 
-## Offline positive/negative harness
-
-From the Limen checkout, choose an absolute retained directory outside the
-worktree. This lane uses only synthetic configuration and intercepted transport;
-there are no real requests or receiver API calls.
+## Checks
 
 ```sh
-EVIDENCE=/absolute/outside/worktree/f091-offline
-mkdir -p "$EVIDENCE"
-LIMEN_TEST_FINISH_EVIDENCE="$EVIDENCE" node --test --test-concurrency=1 \
-  --test-timeout=60000 test/finish-receipt.test.ts test/finish-webhook.test.ts \
-  > "$EVIDENCE/harness.log" 2>&1
-result=$?
-printf 'offline harness exit=%s\n' "$result"
+node --test test/u2-webhook-trust.test.ts test/s7-webhooks.test.ts
 ```
 
-Read `two-target-204/inspection.txt` (HTTP accepted, both turns unobserved),
-`one-observed.txt` (matching target-1 export only; the other target's wrong event rejected),
-and `both-observed.txt` (both correlated exports), each containing both views.
-`proof.txt` records two requests before and after repeat finalization, never four.
-The `two-target-503` and `two-target-stall` cases show observed exports independent
-of rejected/unknown HTTP. Exports are explicitly **synthetic**, not actual turns.
-Unit negatives also cover no explicit source, local flags, wrong mapping, incomplete
-turns, malformed/oversized files, symlinks and secret-bearing/extra fields.
-
-## Focused helper/lifecycle checks
-
-```sh
-node --test --test-concurrency=1 test/finish-webhook-helper.test.ts test/finish-webhook.test.ts test/finish-receipt.test.ts test/finalize.test.ts test/jobs-command.test.ts test/view.test.ts
-```
-
-The tests execute the real helper with synthetic env files, an intercepted Node
-transport (no sockets or endpoint calls), and real Git repositories/worktrees.
-They verify payload round-trips, auth rejection before transport, no credential
-output/argv, no redirect following, non-2xx failures, canonical project selection
-and no home inheritance inside Git. The timeout fixture accelerates the timer
-while asserting the requested production deadline is exactly 10,000 ms.
-Lifecycle tests additionally exercise automatic hosted/detached finalization,
-worktree/workspace selection, continuation, one-send claims, safe failures and
-bounded shutdown with synthetic executables. Empty-result checks cover missing,
-zero-byte and whitespace results in all three terminal states, non-empty
-failed/stopped handoffs, unreadable results, visible skip receipts, and immutable
-claims when results change after finalization. A combined test invokes the actual
-canonical helper through automatic finalization with intercepted transport.
-Retired-key checks reject `TONY_*`-only URL/auth configuration before any request
-and show that the retired env-path override cannot select a file or opt in a job.
-Multi-target checks assert distinct routes and credentials, no implicit
-recipient, full validation before transport, and second-bot delivery despite a
-failed or stalled first bot. Automatic two-route tests exercise both all-accepted
-and partial-failure outcomes after durable terminal state. These HTTP-only
-receivers create no bot turn; their receipts must not claim a wake.
+`test/u2-webhook-trust.test.ts` runs the real sender helper with synthetic env
+files: a bad credential, destination, target list or author map sends nothing,
+no run prints a secret, and the private receipt channel drops malformed and
+secret-bearing lines. `test/s7-webhooks.test.ts` runs real jobs on a throwaway
+plant: an unconfigured job sends nothing, a finished job pings only the target
+its ticket author maps to, a failed job with an empty result still sends one
+ping, a continuation keeps the parent's route, and the secret appears only in
+the `Authorization` header. Both answer requests from the test plant's
+intercepted transport; no real endpoint is called.
 
 ## How it works
 
