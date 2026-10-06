@@ -150,7 +150,7 @@ export function hostedTerminalReason(status: HostedAgentStatus, sessionEnded: bo
 	if (status === "missing") return "hosted agent ended";
 }
 
-/** Live target for a hosted job whose recorded target stopped resolving cleanly: the agent found under a moved pane ID, or an unclassifiable but present process on the recorded pane. Undefined means genuinely gone. */
+/** Live target for a hosted job whose recorded target stopped resolving cleanly: the agent found under a moved pane ID, or an unclassifiable but present process on the recorded pane. Undefined means genuinely gone. With `concrete`, returns "unknown" when Herdr cannot tell. */
 export function locateHostedAgent(target: string, engine: EngineId, agentName = "", concrete = false): string | undefined {
 	const status = hostedAgentStatus(target, concrete);
 	if (concrete && status === "unknown") return "unknown";

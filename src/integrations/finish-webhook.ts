@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -188,10 +188,8 @@ export async function deliverLeadStepWebhook(stepDir: string, root: string, feat
 	}
 	const name = basename(feature);
 	const label = `${/^F\d+/.exec(name)?.[0] ?? name} lead ${step}`;
-	// Group packets say "Do not land" in the brief as often as in the ticket; the lead handoff never suggests landing.
-	const packet = await Promise.all([`${feature}/ticket.md`, `${feature}/group/brief.md`].map((path) => readFile(`${root}/${path}`, "utf8").catch(() => "")));
 	const next = step === "close" ? "owner decision" : "owner decision on group/synthesis.md, or close the group";
-	const handoff = `Lead step done: ${label}. Next step: ${next}.${/\b(?:do not|don't|never|not to) land\b/i.test(packet.join("\n")) ? " The feature says do not land." : ""}`;
+	const handoff = `Lead step done: ${label}. Next step: ${next}.`;
 	const login = captureFinishAuthor(root, `Ticket: ${feature}/ticket.md`).split("\n")[0] ?? "";
 	const event: PlantEvent = {
 		kind: "lead.step-done",

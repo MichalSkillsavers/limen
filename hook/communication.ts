@@ -86,10 +86,10 @@ function guidancePrompt(cwd: string, job: boolean): string {
 	if (register) parts.push(register);
 	if (hasJevgrep()) parts.push(registerCue(cwd, "Search"));
 	if (!job) {
-		const vision = boundFile(cwd, "spec/vision.md", "Vision");
+		const vision = boundFile(cwd, VISION_FILE, "Vision");
 		if (vision) parts.push(vision);
 	}
-	const style = boundFile(cwd, ".agents/limen/styleguide.md", "Styleguide");
+	const style = boundFile(cwd, STYLE_FILE, "Styleguide");
 	if (style) parts.push(style);
 	if (!job) {
 		const digest = boardDigest(cwd);
@@ -117,7 +117,7 @@ function turnCue(cwd: string, job: boolean, wake: boolean, lastTouch: string | u
 		const ticket = jobTicket(cwd);
 		if (ticket) lines.push(`Ticket: ${ticket}`);
 		const prefix = privatePlanning(cwd, job) ? `${cwd}/` : "";
-		if (readOptional(join(cwd, "spec/vision.md")) !== undefined) {
+		if (readOptional(join(cwd, VISION_FILE)) !== undefined) {
 			lines.push(`Vision (read-only): \`${prefix}spec/vision.md\` — durable intent. Load it before choosing or starting work.`);
 		}
 		if (readOptional(join(cwd, "spec/build.md")) !== undefined) {

@@ -70,7 +70,7 @@ test("only a move of the top branch runs a tick; worker branches and worktrees r
 		commitAsMover(s, worker, "worker commit");
 		git(s.root, "branch", "side");
 		commitAsMover(s, s.root, "landed");
-		const text = await logMatching(join(s.root, ".limen/picture-watch.log"), /start the first picture by hand/);
+		const text = await logMatching(join(s.root, ".limen/picture-watch.log"), /no map yet/);
 		const moves = text.split("\n").filter((line) => line.includes("moved to"));
 		assert.equal(moves.length, 1, text);
 		assert.match(moves[0] ?? "", new RegExp(` refs/heads/main moved to ${git(s.root, "rev-parse", "main")}$`));

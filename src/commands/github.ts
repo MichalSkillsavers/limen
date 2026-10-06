@@ -174,7 +174,8 @@ Read the registered project's spec/build.md for standing model policy. Decide wh
 		}
 		return;
 	}
-	if (rest.length || !["connect", "disconnect", "status"].includes(mode ?? "")) throw new Error("github takes connect, disconnect, status, doctor, ensure, or poll");
+	if (rest.length || !["connect", "disconnect", "status"].includes(mode ?? ""))
+		throw new Error("github takes connect, disconnect, status, doctor, ensure, poll, deliver, review, work, or resolve; run limen github --help");
 	const root = repoRoot(cwd);
 	if (mode === "status") {
 		const binding = await readBinding(root);

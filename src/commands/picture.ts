@@ -9,10 +9,6 @@ const HELP =
 const MODEL_FLAGS = ["--engine", "--provider", "--model", "--thinking"];
 
 export async function pictureCommand(args: readonly string[], cwd: string): Promise<void> {
-	if (args[0] === "--help" || args[0] === "-h") {
-		console.log(HELP);
-		return;
-	}
 	const [mode, ...options] = args;
 	if (mode !== "build" && mode !== "tick" && mode !== "watch") throw new Error(HELP);
 	const watch = mode !== "watch" ? undefined : options[0] === "on" || options[0] === "off" ? options[0] : "status";

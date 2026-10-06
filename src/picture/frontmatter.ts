@@ -1,5 +1,5 @@
 // Frontmatter parser for the strict YAML subset of the dataset schema (architecture-map/1).
-// Caller: model.ts. Never throws on bad input: every problem becomes
+// Caller: picture-model.ts. Never throws on bad input: every problem becomes
 // { line, message } in `errors`, and parsing resumes at the next line.
 //
 // Supported: `key: value` scalars (plain, "double", 'single', numbers, booleans,
@@ -62,7 +62,7 @@ export function parseFrontmatter(text: string): Frontmatter {
 	let i = 0;
 	while (i < fm.length) {
 		const raw = fm[i]!;
-		if (isBlankOrComment(raw)) {
+		if (isCommentOrEmpty(raw)) {
 			i++;
 			continue;
 		}
@@ -93,7 +93,7 @@ export function parseFrontmatter(text: string): Frontmatter {
 			const block: number[] = [];
 			while (j < fm.length) {
 				const r = fm[j]!;
-				if (!isBlankOrComment(r)) {
+				if (!isCommentOrEmpty(r)) {
 					if (leading(r).length === 0 && !/^-(?: |$)/.test(r.trimEnd())) break;
 					block.push(j);
 				}
@@ -327,10 +327,6 @@ function stripComment(s: string): string {
 function isCommentOrEmpty(s: string): boolean {
 	const t = s.trim();
 	return t === "" || t[0] === "#";
-}
-
-function isBlankOrComment(line: string): boolean {
-	return isCommentOrEmpty(line);
 }
 
 function leading(line: string): string {
