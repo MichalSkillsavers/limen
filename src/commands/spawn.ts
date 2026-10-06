@@ -166,10 +166,12 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 			if (path.startsWith("spec/") && !commitHasFile(repository, baseCommit, path)) throw new Error(`ticket ${path} is missing from the base commit`);
 	}
 	const member = group ? await claimMember(group.run, group.team, group.role, id) : undefined;
-	let running = 0,
-		held = false;
+	let running = 0;
+	let held = false;
 	for (const entry of await readdir(jobsRoot, { withFileTypes: true })) {
-		if (entry.isDirectory() && (await liveJob(`${jobsRoot}/${entry.name}`))) (running += 1), (held ||= (await text(`${jobsRoot}/${entry.name}/label`)) === options.label);
+		if (!entry.isDirectory() || !(await liveJob(`${jobsRoot}/${entry.name}`))) continue;
+		running += 1;
+		if ((await text(`${jobsRoot}/${entry.name}/label`)) === options.label) held = true;
 	}
 	if (running > 0) console.log(`note: ${running} job${running === 1 ? "" : "s"} already running; starting another`);
 	if (/^F\d{3,}$/i.test(options.label)) console.log("warning: label is only a feature number");
@@ -533,7 +535,10 @@ export async function waitForHandshake(jobDir: string, wrapperPid: number, owner
 		await new Promise((resolve) => setTimeout(resolve, HANDSHAKE_POLL_MS));
 	}
 	signalProcessGroup(wrapperPid, "SIGTERM");
-	if (!(await waitForProcessGroup(wrapperPid, 1_000))) signalProcessGroup(wrapperPid, "SIGKILL"), await waitForProcessGroup(wrapperPid, 1_000);
+	if (!(await waitForProcessGroup(wrapperPid, 1_000))) {
+		signalProcessGroup(wrapperPid, "SIGKILL");
+		await waitForProcessGroup(wrapperPid, 1_000);
+	}
 	await finalizeJob(jobDir, "failed", `${owner} did not become ready`);
 	throw new Error(`${owner} did not start; inspect the job record`);
 }

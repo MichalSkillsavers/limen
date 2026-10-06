@@ -158,60 +158,63 @@ export async function runInternalJob(): Promise<void> {
 		await atomicWrite(`${jobDir}/advisory`, `${line}\n`);
 		await appendLimenLog(jobDir, line);
 	};
-	const stallTimer = setInterval(() => {
+	const clearUncertain = async () => {
+		if (!ownershipWarning) return;
+		ownershipWarning = false;
+		await rm(`${jobDir}/advisory`, { force: true });
+	};
+	const observeStall = async (pid: number) => {
+		const identity = await processInfo(pid);
+		if (identity.kind !== "present" || identity.process.ppid !== process.pid || identity.process.pgid !== process.pid) {
+			stallWatch.previous = undefined;
+			stallWatch.started = Date.now();
+			await warnUncertain("detached engine ownership unavailable");
+			return;
+		}
+		const result = await observeToolStall(stallWatch, pid, `${tools}:${seen.tool}:${seen.progress}`);
+		if (result === "uncertain") {
+			await warnUncertain("CPU or process identity unavailable");
+			return;
+		}
+		if (result !== "stalled") {
+			await clearUncertain();
+			return;
+		}
+		const [owner, engine] = await Promise.all([processInfo(process.pid), processInfo(pid)]);
+		if (
+			owner.kind !== "present" ||
+			owner.process.pgid !== process.pid ||
+			engine.kind !== "present" ||
+			engine.process.born !== stallWatch.born ||
+			engine.process.ppid !== process.pid ||
+			engine.process.pgid !== process.pid
+		) {
+			await warnUncertain("process group ownership changed");
+			return;
+		}
+		const descendants = await ownedToolDescendants(process.pid, owner.process.born);
+		if (!descendants || !descendants.some((member) => member.pid === pid) || descendants.length < 2) {
+			await warnUncertain("child ownership changed before termination");
+			return;
+		}
+		if (seen.activity !== "tool" || (await observeToolStall(stallWatch, pid, `${tools}:${seen.tool}:${seen.progress}`)) !== "stalled") return;
+		await clearUncertain();
+		exhaust(`stalled tool ${seen.tool}: ${stallWatch.previous?.children.length ? "CPU-idle child" : "child exited"} for ${Math.round(toolStallMs() / 1000)}s`, descendants);
+	};
+	const checkStall = () => {
 		if (observing || exhausted || stopRequested || !enginePid) return;
 		if (seen.activity !== "tool") {
-			if (ownershipWarning) {
-				ownershipWarning = false;
-				void rm(`${jobDir}/advisory`, { force: true });
-			}
+			void clearUncertain();
 			return;
 		}
 		observing = true;
-		void (async () => {
-			const identity = await processInfo(enginePid);
-			if (identity.kind !== "present" || identity.process.ppid !== process.pid || identity.process.pgid !== process.pid) {
-				stallWatch.previous = undefined;
-				stallWatch.started = Date.now();
-				await warnUncertain("detached engine ownership unavailable");
-				return;
-			}
-			const result = await observeToolStall(stallWatch, enginePid, `${tools}:${seen.tool}:${seen.progress}`);
-			if (result === "stalled") {
-				const [owner, engine] = await Promise.all([processInfo(process.pid), processInfo(enginePid)]);
-				if (
-					owner.kind !== "present" ||
-					owner.process.pgid !== process.pid ||
-					engine.kind !== "present" ||
-					engine.process.born !== stallWatch.born ||
-					engine.process.ppid !== process.pid ||
-					engine.process.pgid !== process.pid
-				) {
-					await warnUncertain("process group ownership changed");
-					return;
-				}
-				const descendants = await ownedToolDescendants(process.pid, owner.process.born);
-				if (!descendants || !descendants.some((member) => member.pid === enginePid) || descendants.length < 2) {
-					await warnUncertain("child ownership changed before termination");
-					return;
-				}
-				if (seen.activity !== "tool" || (await observeToolStall(stallWatch, enginePid, `${tools}:${seen.tool}:${seen.progress}`)) !== "stalled") return;
-				if (ownershipWarning) {
-					ownershipWarning = false;
-					await rm(`${jobDir}/advisory`, { force: true });
-				}
-				exhaust(`stalled tool ${seen.tool}: ${stallWatch.previous?.children.length ? "CPU-idle child" : "child exited"} for ${Math.round(toolStallMs() / 1000)}s`, descendants);
-			} else if (result === "uncertain") await warnUncertain("CPU or process identity unavailable");
-			else if (ownershipWarning) {
-				ownershipWarning = false;
-				await rm(`${jobDir}/advisory`, { force: true });
-			}
-		})()
+		void observeStall(enginePid)
 			.catch(failLog)
 			.finally(() => {
 				observing = false;
 			});
-	}, 3_000);
+	};
+	const stallTimer = setInterval(checkStall, 3_000);
 	const timeout = setTimeout(() => exhaust(`timeout after ${timeoutMs}ms`), timeoutMs);
 	const result = await outcome;
 	clearTimeout(timeout);
@@ -255,7 +258,10 @@ async function recordEvents(
 			await appendFile(`${jobDir}/log`, event.detail ? `${event.name} ${event.detail}\n` : `${event.name}\n`);
 		} else if (event.kind === "activity") {
 			await atomicWrite(`${jobDir}/activity`, `${event.name}\n`);
-			if (seen.activity !== event.name) await appendFile(`${jobDir}/log`, `${(seen.activity = event.name)}\n`);
+			if (seen.activity !== event.name) {
+				seen.activity = event.name;
+				await appendFile(`${jobDir}/log`, `${event.name}\n`);
+			}
 		} else if (event.kind === "assistant") {
 			seen.assistant = event.text;
 			seen.stop = event.stopReason ?? "";

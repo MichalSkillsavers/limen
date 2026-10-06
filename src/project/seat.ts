@@ -47,10 +47,10 @@ export async function uninstallSeatSweep(): Promise<void> {
 	console.log(`removed ${path}`);
 }
 function withRegistryLock<T>(action: () => T): T {
-	const path = projectsFile(),
-		lock = `${path}.lock`,
-		reclaimer = `${process.pid}.${Date.now()}`,
-		deadline = Date.now() + 10_000;
+	const path = projectsFile();
+	const lock = `${path}.lock`;
+	const reclaimer = `${process.pid}.${Date.now()}`;
+	const deadline = Date.now() + 10_000;
 	fs.mkdirSync(dirname(path), { recursive: true });
 	while (true) {
 		try {

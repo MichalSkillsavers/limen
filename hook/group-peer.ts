@@ -29,9 +29,10 @@ type PiApi = {
 
 /** Peer data stays in tool/custom messages. Never use owner steering for group delivery. */
 export default function groupPeer(pi: PiApi): void {
-	let leadRoot: string | undefined, leadSession: string | undefined;
-	let timer: NodeJS.Timeout | undefined,
-		sweeping = false;
+	let leadRoot: string | undefined;
+	let leadSession: string | undefined;
+	let timer: NodeJS.Timeout | undefined;
+	let sweeping = false;
 	const observed = new Map<string, { identity: GroupIdentity; token: string }>();
 	const leased = new Map<string, { identity: GroupIdentity; token: string }>();
 	const seenTokens = new Set<string>();
@@ -78,25 +79,26 @@ export default function groupPeer(pi: PiApi): void {
 		await mkdir(`${leadRoot}/.limen/group-leads`, { recursive: true });
 		await writeFile(registration, `${process.pid}\n`, { flush: true });
 		await leadSteps();
-		timer = setInterval(() => {
+		const deliver = async () => {
+			for (const identity of await identities(context)) {
+				if ([...leased.values()].some((entry) => entry.identity.run.id === identity.run.id)) continue;
+				const batch = await acceptBatch(identity, Date.now(), "skip");
+				if (!batch) continue;
+				leased.set(batch.token, { identity, token: batch.token });
+				try {
+					await pi.sendMessage({ customType: "limen-group-progress", content: batch.text, display: true, attribution: "agent" }, { deliverAs: "nextTurn", triggerTurn: true });
+					await acceptTransport(identity, batch.token);
+				} catch (error) {
+					await releaseBatch(identity, batch.token);
+					leased.delete(batch.token);
+					throw error;
+				}
+			}
+		};
+		const sweep = () => {
 			if (sweeping) return;
 			sweeping = true;
-			void (async () => {
-				for (const identity of await identities(context)) {
-					if ([...leased.values()].some((entry) => entry.identity.run.id === identity.run.id)) continue;
-					const batch = await acceptBatch(identity, Date.now(), "skip");
-					if (!batch) continue;
-					leased.set(batch.token, { identity, token: batch.token });
-					try {
-						await pi.sendMessage({ customType: "limen-group-progress", content: batch.text, display: true, attribution: "agent" }, { deliverAs: "nextTurn", triggerTurn: true });
-						await acceptTransport(identity, batch.token);
-					} catch (error) {
-						await releaseBatch(identity, batch.token);
-						leased.delete(batch.token);
-						throw error;
-					}
-				}
-			})()
+			void deliver()
 				// The registration's mtime is the heartbeat that `group start` and the finish path read; only a completed sweep refreshes it.
 				// A removed registration stays removed: its absence is the signal that this pane is not the lead.
 				.then(() => utimes(registration, new Date(), new Date()).catch(() => {}))
@@ -104,7 +106,8 @@ export default function groupPeer(pi: PiApi): void {
 				.finally(() => {
 					sweeping = false;
 				});
-		}, 1_000);
+		};
+		timer = setInterval(sweep, 1_000);
 		timer.unref();
 	});
 	pi.on("tool_call", (event) =>
