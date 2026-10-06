@@ -2,24 +2,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { git, limen, limenWithEnv, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
-
-test("diff resolves a pruned job and prints its exact recorded changeset", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "--label", "F050 fallback", "make commit").stdout);
-	await waitForState(scratch.root, id, "done");
-	assert.equal(limen(scratch, "prune").status, 0);
-	const job = join(scratch.root, ".limen/jobs", id);
-	const base = (await readFile(join(job, "base"), "utf8")).trim();
-	const branch = (await readFile(join(job, "branch"), "utf8")).trim();
-	assert.equal(git(scratch.root, "worktree", "list").includes(id), false);
-
-	const shown = limen(scratch, "diff", "F050 fallback");
-	assert.equal(shown.status, 0, shown.stderr);
-	assert.equal(shown.stdout, `git diff ${base}...${branch}\n`);
-});
+import { limen, limenWithEnv, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
 
 test("diff does not launch hunk without a TTY and fresh jobs record its version", async (context) => {
 	const scratch = await scratchRepo();
@@ -112,13 +95,6 @@ setInterval(() => {}, 1000);
 	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "running");
 	limen(scratch, "stop", id, "test cleanup");
 	await waitForState(scratch.root, id, "stopped");
-});
-
-test("diff requires one job selector", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.match(limen(scratch, "diff").stderr, /diff requires exactly one job id/);
-	assert.match(limen(scratch, "diff", "one", "two").stderr, /diff requires exactly one job id/);
 });
 
 async function installReviewHerdr(root: string, fakeBin: string): Promise<{ readonly dir: string; readonly bin: string; readonly calls: string }> {

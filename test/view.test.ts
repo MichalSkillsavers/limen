@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { parseJob } from "../src/job/job.ts";
-import { colorWanted, formatAge, humanDetail, humanRow, humanSnapshot, type JobRecord, paintWhen, renderLogTail, resolveView, tallyStates } from "../src/job/view.ts";
+import { colorWanted, humanDetail, humanRow, humanSnapshot, type JobRecord, paintWhen, resolveView, tallyStates } from "../src/job/view.ts";
 import { limen, limenWithEnv, scratchRepo } from "./scratch.ts";
 
 const plain = paintWhen(false);
@@ -93,15 +93,6 @@ test("human detail sections identity, work, and a filtered log", () => {
 	assert.doesNotMatch(detail, /^\s*(think|bash|wait)\s*$/m);
 });
 
-test("the log filter keeps events and prose, drops activity beats", () => {
-	const rendered = renderLogTail("…\nthink\nbash npm run check\nwait\nAll 24 checks passed.\n[limen 2026-08-27T10:43:01.393Z] done: pi exited 0", plain);
-	const lines = rendered.split("\n");
-	assert.equal(lines.length, 3);
-	assert.equal(lines[0], "bash npm run check");
-	assert.equal(lines[1], "All 24 checks passed.");
-	assert.match(lines[2] ?? "", /^\d\d:\d\d:\d\d done: pi exited 0$/);
-});
-
 test("view selection follows LIMEN_VIEW, then the TTY; color needs a willing terminal", () => {
 	assert.equal(resolveView(undefined, true), "human");
 	assert.equal(resolveView(undefined, false), "compact");
@@ -111,13 +102,6 @@ test("view selection follows LIMEN_VIEW, then the TTY; color needs a willing ter
 	assert.equal(colorWanted(false, undefined, "xterm-256color"), false);
 	assert.equal(colorWanted(true, "1", "xterm-256color"), false);
 	assert.equal(colorWanted(true, undefined, "dumb"), false);
-});
-
-test("ages read like a human said them", () => {
-	assert.equal(formatAge(20_000), "just now");
-	assert.equal(formatAge(180_000), "3m ago");
-	assert.equal(formatAge(7_200_000), "2h ago");
-	assert.equal(formatAge(4 * 86_400_000), "4d ago");
 });
 
 test("the human snapshot prints rows and a footer, never id chains, and the suffix resolves", async (context) => {

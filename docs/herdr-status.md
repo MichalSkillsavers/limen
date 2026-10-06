@@ -14,8 +14,10 @@ as landed when it is an ancestor of the checked-out branch or a patch-equivalent
 copy of one there (cherry-pick, or through an integration branch), the same test
 `limen prune --retire` uses. Jobs with no unlanded commits appear under no
 heading. Both lists cover the last seven days; `Older: N records` counts the
-rest, and `limen status --all` lists them under the same headings. The status
-command also lists agent tabs whose working directory is the plant or one of its
+rest, and `limen status --all` lists them under the same headings.
+Open groups appear once with their member-branch count and `limen group status <id>`;
+the lead decides what lands. Closed groups leave the inbox.
+The status command also lists agent tabs whose working directory is the plant or one of its
 repositories. If global Herdr agent discovery fails, `status` checks recent
 recorded origin tabs directly and labels them incomplete: a visible tab is not
 proof of its coordinator role, and other tabs may be missing. If neither query
@@ -50,10 +52,16 @@ recorded tabs. If several spaces have the same qualified label, Limen logs an
 Limen adds labels to native `idle` and `done`, without changing Herdr's lifecycle.
 For example, `2 RUNNING · 1 watched · 1 unwatched` means there are two unfinished
 job records visible here even though the coordinator can take input. The job
-names and activity follow. Then each finished job of this coordinator follows
-with its state, for example `F012 done F014 failed`. Details stop after three
-jobs in each group, but counts include all RUNNING jobs. The footer status line
-shows the same job line.
+names and activity follow, with useful words before the feature number:
+`team-2 coordinator · F773 tool`, or `session repair · F012 done`.
+Legacy feature-first group labels use the same word order in the display.
+Details stop after three jobs in each group, but counts include all RUNNING jobs.
+The footer shows the same job line. A warning such as `1 of 14 needs attention`
+counts only dead jobs, not every running job.
+
+The footer, `limen jobs`, and the reaper use the wrapper's PID and recorded birth
+identity to judge its owner. Hosted agent status is a separate fact in `jobs`;
+an idle or live agent cannot make a missing or reused wrapper PID look alive.
 
 A finished job stays on the job line until it lands or closes. It lands when
 its recorded commits are in the checked-out branch, by the same test as

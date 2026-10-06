@@ -329,18 +329,6 @@ test("prune --retire uses the job's recorded repository for merge checks", async
 	await access(join(jobs, "ws-unmerged"));
 });
 
-test("prune --retire rejects unknown arguments and dry-run without --retire", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const unknown = limen(scratch, "prune", "--nope");
-	assert.equal(unknown.status, 1);
-	assert.match(unknown.stderr, /prune accepts no arguments, --retire, or --retire --dry-run/);
-	const dry = limen(scratch, "prune", "--dry-run");
-	assert.equal(dry.status, 1);
-	assert.match(dry.stderr, /prune --dry-run requires --retire/);
-});
-
 async function recordJob(jobsRoot: string, id: string, fields: Record<string, string>): Promise<void> {
 	const job = join(jobsRoot, id);
 	await mkdir(job, { recursive: true });

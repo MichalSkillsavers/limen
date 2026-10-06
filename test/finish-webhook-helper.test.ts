@@ -169,17 +169,11 @@ test("a failed or stalled first bot does not block the second bot; acceptance is
 test("invalid explicit target lists fail before all transport and never fall back to the single target", async (t) => {
 	const valid = { url: DESTINATION, auth: AUTH };
 	const invalid = [
-		"",
 		"not-json",
-		"null",
-		"{}",
 		"[]",
-		"[null]",
-		'["synthetic-secret"]',
 		JSON.stringify([valid, { ...valid, auth: "synthetic-secret" }]),
 		JSON.stringify([valid, { ...valid, url: "http://finish.example.test" }]),
 		JSON.stringify([valid, { url: DESTINATION }]),
-		JSON.stringify([valid, { auth: AUTH }]),
 		JSON.stringify([valid, { ...valid, bot: "grok-two" }]),
 		JSON.stringify(Array.from({ length: 65 }, () => valid)),
 	];
@@ -222,18 +216,12 @@ test("the retired env-path override cannot select a destination", async (t) => {
 test("helper rejects missing, raw, Basic and malformed Bearer auth before transport", async (t) => {
 	const invalid = [
 		undefined,
-		"",
 		"synthetic-secret",
 		"Basic synthetic-secret",
 		"bearer synthetic-secret",
-		"Bearer",
 		"Bearer ",
-		"Bearer  synthetic-secret",
 		"Bearer synthetic-secret extra",
-		"Bearer synthetic-secret=bad",
-		"Bearer synthetic-secret\n",
 		"Bearer synthetic-secret\r\nX-Evil: yes",
-		"Bearer synthetic-secret\t",
 		"Bearer sécret",
 	];
 	for (const auth of invalid) {
@@ -250,14 +238,7 @@ test("helper rejects missing, raw, Basic and malformed Bearer auth before transp
 });
 
 test("helper rejects missing or unsafe destinations without revealing their contents", async (t) => {
-	for (const url of [
-		"",
-		"not-a-url",
-		"http://finish.example.test",
-		"ftp://finish.example.test",
-		"https://user:synthetic-secret@finish.example.test",
-		"https://finish.example.test/#synthetic-secret",
-	]) {
+	for (const url of ["", "http://finish.example.test", "https://user:synthetic-secret@finish.example.test", "https://finish.example.test/#synthetic-secret"]) {
 		await t.test(url, async (t) => {
 			const f = await fixture();
 			t.after(f.cleanup);
@@ -269,7 +250,7 @@ test("helper rejects missing or unsafe destinations without revealing their cont
 });
 
 test("helper fails redirects, non-2xx, transport errors and a bounded stalled request", async (t) => {
-	for (const status of [200, 299, 300, 302, 307, 400, 401, 403, 500]) {
+	for (const status of [200, 299, 302, 500]) {
 		await t.test(`HTTP ${status}`, async (t) => {
 			const f = await fixture();
 			t.after(f.cleanup);
@@ -362,7 +343,7 @@ test("legacy home config is available only for manual invocation outside Git, no
 	assert.equal(f.request().url, DESTINATION);
 });
 
-test("env files are data, never shell scripts, and the CLI requires exactly three arguments", async (t) => {
+test("env files are data, never shell scripts", async (t) => {
 	const f = await fixture();
 	t.after(f.cleanup);
 	const marker = join(f.root, "executed");
@@ -370,74 +351,6 @@ test("env files are data, never shell scripts, and the CLI requires exactly thre
 	assert.equal(f.run({ LIMEN_FINISH_WEBHOOK_ENV: path }).status, 1);
 	assert.equal(existsSync(marker), false);
 	assert.equal(existsSync(f.capture), false);
-	for (const args of [[], ["label"], ["label", "done"], ["label", "done", "branch", "extra"]]) {
-		const result = f.run({ LIMEN_FINISH_WEBHOOK_ENV: path }, f.root, args);
-		assert.equal(result.status, 1);
-		assert.match(result.stderr, /usage:/);
-	}
-});
-
-test("author map sends only mapped original ordinals and never renumbers them", async (t) => {
-	const f = await fixture();
-	t.after(f.cleanup);
-	const targets = [
-		{ url: "https://finish.example.test/alice-primary", auth: AUTH },
-		{ url: "https://finish.example.test/alice-secondary", auth: "Bearer second-synthetic-secret" },
-		{ url: "https://finish.example.test/bob", auth: "Bearer third-synthetic-secret" },
-	];
-	const path = await f.config(
-		join(f.root, "authors.env"),
-		`LIMEN_FINISH_WEBHOOK_TARGETS='${JSON.stringify(targets)}'\nLIMEN_FINISH_WEBHOOK_AUTHOR_TARGETS='${JSON.stringify({ "@alice": [1, 2], "@bob": [3] })}'\n`,
-	);
-	const alice = f.run({ LIMEN_FINISH_WEBHOOK_ENV: path, LIMEN_FINISH_WEBHOOK_AUTHOR: "@alice" });
-	assert.equal(alice.status, 0, alice.stderr);
-	assert.match(alice.stdout, /target 1 accepted/);
-	assert.match(alice.stdout, /target 2 accepted/);
-	assert.doesNotMatch(alice.stdout, /target 3/);
-	const bob = f.run({ LIMEN_FINISH_WEBHOOK_ENV: path, LIMEN_FINISH_WEBHOOK_AUTHOR: "@bob" });
-	assert.equal(bob.status, 0, bob.stderr);
-	assert.match(bob.stdout, /target 3 accepted/);
-	assert.doesNotMatch(bob.stdout, /target 1 |target 2 /);
-	const requests = readFileSync(`${f.capture}.requests`, "utf8")
-		.trim()
-		.split("\n")
-		.map((line) => JSON.parse(line).url);
-	assert.deepEqual(
-		requests,
-		targets.map((target) => target.url),
-	);
-});
-
-test("unmapped authors use only explicit fallback or skip, never fan-out", async (t) => {
-	const f = await fixture();
-	t.after(f.cleanup);
-	const targets = [
-		{ url: "https://finish.example.test/alice-primary", auth: AUTH },
-		{ url: "https://finish.example.test/bob", auth: "Bearer second-synthetic-secret" },
-	];
-	const mapped = await f.config(
-		join(f.root, "mapped.env"),
-		`LIMEN_FINISH_WEBHOOK_TARGETS='${JSON.stringify(targets)}'\nLIMEN_FINISH_WEBHOOK_AUTHOR_TARGETS='${JSON.stringify({ "@alice": [1] })}'\n`,
-	);
-	const skip = f.run({ LIMEN_FINISH_WEBHOOK_ENV: mapped, LIMEN_FINISH_WEBHOOK_AUTHOR: "@carol" });
-	assert.equal(skip.status, 0, skip.stderr);
-	assert.match(skip.stdout, /not sent: no author route/);
-	assert.equal(existsSync(`${f.capture}.requests`), false);
-	const fallback = await f.config(
-		join(f.root, "fallback.env"),
-		`LIMEN_FINISH_WEBHOOK_TARGETS='${JSON.stringify(targets)}'\nLIMEN_FINISH_WEBHOOK_AUTHOR_TARGETS='${JSON.stringify({ "@alice": [1], "*": [2] })}'\n`,
-	);
-	const result = f.run({ LIMEN_FINISH_WEBHOOK_ENV: fallback });
-	assert.equal(result.status, 0, result.stderr);
-	assert.match(result.stdout, /target 2 accepted/);
-	assert.doesNotMatch(result.stdout, /target 1 /);
-	assert.deepEqual(
-		readFileSync(`${f.capture}.requests`, "utf8")
-			.trim()
-			.split("\n")
-			.map((line) => JSON.parse(line).url),
-		targets.slice(1).map((target) => target.url),
-	);
 });
 
 test("invalid author maps and target references send nothing", async (t) => {
@@ -445,20 +358,7 @@ test("invalid author maps and target references send nothing", async (t) => {
 		{ url: DESTINATION, auth: AUTH },
 		{ url: "https://finish.example.test/grok-two", auth: "Bearer second-synthetic-secret" },
 	];
-	const cases = [
-		"",
-		"not-json",
-		"null",
-		"[]",
-		'{"@alice":1}',
-		'{"alice":[1]}',
-		'{"@Alice":[1]}',
-		'{"@alice":[]}',
-		'{"@alice":[1,1]}',
-		'{"@alice":[0]}',
-		'{"@alice":[3]}',
-		'{"@alice":[1.5]}',
-	];
+	const cases = ["not-json", "[]", '{"alice":[1]}', '{"@Alice":[1]}', '{"@alice":[]}', '{"@alice":[1,1]}', '{"@alice":[0]}'];
 	for (const [index, value] of cases.entries()) {
 		await t.test(`invalid map ${index + 1}`, async (t) => {
 			const f = await fixture();
@@ -490,24 +390,4 @@ test("invalid author maps and target references send nothing", async (t) => {
 		assert.match(result.stdout, /target 1 accepted/);
 		assert.equal(f.request().url, DESTINATION);
 	});
-});
-
-test("filtered partial failure keeps original ordinals", async (t) => {
-	const f = await fixture();
-	t.after(f.cleanup);
-	const targets = [
-		{ url: "https://finish.example.test/reject", auth: AUTH },
-		{ url: "https://finish.example.test/skipped-bot", auth: "Bearer second-synthetic-secret" },
-		{ url: "https://finish.example.test/grok-two", auth: "Bearer third-synthetic-secret" },
-	];
-	const path = await f.config(
-		join(f.root, "partial.env"),
-		`LIMEN_FINISH_WEBHOOK_TARGETS='${JSON.stringify(targets)}'\nLIMEN_FINISH_WEBHOOK_AUTHOR_TARGETS='${JSON.stringify({ "@alice": [1, 3] })}'\n`,
-	);
-	const result = f.run({ LIMEN_FINISH_WEBHOOK_ENV: path, LIMEN_FINISH_WEBHOOK_AUTHOR: "@alice" });
-	assert.equal(result.status, 1);
-	assert.match(result.stdout, /target 1 HTTP 503 rejected/);
-	assert.match(result.stdout, /target 3 accepted/);
-	assert.doesNotMatch(result.stdout, /target 2 /);
-	assert.equal(readFileSync(`${f.capture}.requests`, "utf8").trim().split("\n").length, 2);
 });

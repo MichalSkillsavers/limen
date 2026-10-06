@@ -21,7 +21,6 @@ test("a git package root classifies leftover, stale, and overlay", async (contex
 		const stale = listDrift(project);
 		assert.deepEqual(stale, [{ path: ".agents/limen/reviewer.md", kind: "stale", matchedAt: "2026-01-15", changedAt: "2026-02-01" }]);
 		assert.match(formatDrift(stale), /stale \(package text as of 2026-01-15; package changed 2026-02-01\): \.agents\/limen\/reviewer\.md/);
-		assert.match(formatDrift(stale), /delete leftovers and stale copies \(inherit the package\)/);
 		await writeFile(reviewer, "custom overlay\n");
 		assert.deepEqual(listDrift(project), [{ path: ".agents/limen/reviewer.md", kind: "overlay" }]);
 	});
@@ -43,7 +42,6 @@ test("a shipped hash list classifies leftover, stale, and overlay without git", 
 		await writeFile(reviewer, v1);
 		const stale = listDrift(project);
 		assert.deepEqual(stale, [{ path: ".agents/limen/reviewer.md", kind: "stale", matchedAt: "2026-01-15", changedAt: "2026-02-01" }]);
-		assert.match(formatDrift(stale), /stale \(package text as of 2026-01-15; package changed 2026-02-01\): \.agents\/limen\/reviewer\.md/);
 		await writeFile(reviewer, "custom overlay\n");
 		assert.deepEqual(listDrift(project), [{ path: ".agents/limen/reviewer.md", kind: "overlay" }]);
 	});

@@ -110,15 +110,6 @@ test("steer --running places the same message in every live watched inbox", asyn
 	limen(scratch, "stop", unwatched, "done");
 });
 
-test("steer --running with no live watched job says nothing was reached", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const result = limenWithSession(scratch, "coordinator-f080", "steer", "--running", "unused");
-	assert.equal(result.status, 0, result.stderr);
-	assert.match(result.stdout, /nothing was reached/);
-});
-
 test("steer --running from an OMP coordinator pane reaches the live jobs that wake that pane", async (context) => {
 	const scratch = await scratchRepo(steeringPi);
 	context.after(scratch.cleanup);

@@ -20,14 +20,14 @@ test("workspace coordinates explicit child repositories while its specs stay out
 	assert.equal(traversal.status, 1);
 	assert.match(traversal.stderr, /immediate child/);
 	const worker = onlyJobId(
-		limen(workspace, "spawn", "--repo", "api", "--label", "F003 api slice", "make commit Ticket: spec/features/active/F003-workspace-coordinator/ticket.md").stdout,
+		limen(workspace, "spawn", "--repo", "api", "--label", "F003 api slice", "make commit (Ticket:  spec/features/active/F003-workspace-coordinator/ticket.md).").stdout,
 	);
 	await waitForState(workspace.root, worker, "done");
 	const job = join(workspace.root, ".limen/jobs", worker);
 	assert.equal(await readFile(join(job, "repo"), "utf8"), "api\n");
 	const task = await readFile(join(job, "task.md"), "utf8");
 	assert.match(task, /^Repository: api\. Work only in this repository\.\n\n/);
-	assert.match(task, /\bTicket: \/.+\/workspace\/spec\/features\/active\/F003-workspace-coordinator\/ticket\.md\n$/);
+	assert.match(task, /\bTicket:  \/.+\/workspace\/spec\/features\/active\/F003-workspace-coordinator\/ticket\.md\)\.\n$/);
 	const apiWorktrees = git(workspace.repositories.api, "worktree", "list", "--porcelain");
 	assert.match(apiWorktrees, new RegExp(`worktree .*${worker}`));
 	assert.match(apiWorktrees, new RegExp(`branch refs/heads/limen/${worker}`));

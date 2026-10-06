@@ -32,6 +32,15 @@ Remove a Needs Adam request and its date after Adam answers. Remove a Wrong prob
 
 The coordinator starts the first map by hand, as an interactive `--role picture` job (`--tab`). It uses `--detached` only when the interactive start fails.
 
+Start it from the project repository, with the engine and model flags chosen for the job:
+
+```sh
+limen spawn --role picture --tab --engine E --provider P --model M --thinking T \
+  'Create the first local architecture map in .limen/picture. Read templates/picture/CONTRACT.md; commit nothing.'
+```
+
+With no dataset, both `limen picture build` and `limen picture tick` point to this command and `docs/picture.md`. Build exits with an error; tick skips the refresh without starting a job. A dataset with no recorded revision gets the same first-map hint from tick. Existing dataset validation errors still appear.
+
 After that, `limen picture tick --engine E --provider P --model M --thinking T` does one quiet pass. It compares the commit recorded in the map with `HEAD`. It starts a detached refresh job only in two cases:
 
 - files were added, deleted, or renamed, or

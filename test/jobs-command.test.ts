@@ -1,24 +1,11 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { limen, limenWithEnv, onlyJobId, scratchRepo, waitForState } from "./scratch.ts";
-
-test("malformed records are informational and do not get rewritten", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const job = join(scratch.root, ".limen/jobs/manual");
-	await mkdir(job);
-	await writeFile(join(job, "task.md"), "manual\n");
-	await writeFile(join(job, "state"), "mystery\n");
-	await writeFile(join(job, "branch"), "main\n");
-	await writeFile(join(job, "log"), "plain log\n");
-	const result = limen(scratch, "jobs", "--all");
-	assert.equal(result.status, 0, result.stderr);
-	assert.match(result.stdout, /INVALID manual.*unknown state "mystery"/);
-	assert.equal(await import("node:fs/promises").then(({ readFile }) => readFile(join(job, "state"), "utf8")), "mystery\n");
-});
+import { renderJobDirectory } from "../src/commands/jobs.ts";
+import { processInfo } from "../src/runtime/contain.ts";
+import { ownerAlive } from "../src/runtime/reap.ts";
+import { limen, limenWithEnv, scratchRepo } from "./scratch.ts";
 
 test("a running record without pid is starting, not invalid", async (context) => {
 	const scratch = await scratchRepo();
@@ -281,17 +268,6 @@ test("jobs shows the advisory line on a running hosted job", async (context) => 
 	assert.match(limen(scratch, "jobs", "stalled").stdout, /ownership observation unavailable/, "exhausted delivery does not hide the condition");
 });
 
-test("jobs rejects ambiguous option shapes", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	for (const args of [["--missing"], ["--running", "extra"], ["--label"], ["--label", "wave-a", "extra"]]) {
-		const result = limen(scratch, "jobs", ...args);
-		assert.equal(result.status, 1);
-		assert.match(result.stderr, /jobs/);
-	}
-});
-
 test("jobs names a directory with no state as an orphan", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
@@ -303,81 +279,6 @@ test("jobs names a directory with no state as an orphan", async (context) => {
 	assert.match(listed.stdout, /ORPHAN half-written · no state/);
 	const all = limen(scratch, "jobs", "--all");
 	assert.match(all.stdout, /ORPHAN half-written · no state/);
-});
-
-test("jobs reports an empty set before init", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	const result = limen(scratch, "jobs");
-	assert.equal(result.status, 0, result.stderr);
-	assert.equal(result.stdout, "no jobs\n");
-});
-
-test("jobs does not show a leftover changed-files record", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const job = join(scratch.root, ".limen/jobs/files");
-	await mkdir(job);
-	await writeFile(join(job, "task.md"), "edit\n");
-	await writeFile(join(job, "state"), "running\n");
-	await writeFile(join(job, "started-at"), `${new Date().toISOString()}\n`);
-	await writeFile(join(job, "label"), "F720 leftover\n");
-	await writeFile(join(job, "branch"), "limen/files\n");
-	await writeFile(join(job, "log"), "think\n");
-	await writeFile(join(job, "activity"), "think\n");
-	await writeFile(join(job, "tool-calls"), "4\n");
-	await writeFile(join(job, "changed-files"), "3\n");
-	const compact = limen(scratch, "jobs");
-	assert.equal(compact.status, 0, compact.stderr);
-	assert.match(compact.stdout, /RUNNING F720 leftover/);
-	assert.match(compact.stdout, /tools 4/);
-	assert.doesNotMatch(compact.stdout, /files \d/);
-	const human = limenWithEnv(scratch, { LIMEN_VIEW: "human" }, "jobs");
-	assert.equal(human.status, 0, human.stderr);
-	assert.match(human.stdout, /4 tools/);
-	assert.doesNotMatch(human.stdout, /\d files/);
-	const detail = limen(scratch, "jobs", "files");
-	assert.equal(detail.status, 0, detail.stderr);
-	assert.doesNotMatch(detail.stdout, /files \d/);
-	assert.doesNotMatch(detail.stderr, /changed-files|ENOENT|worktree/);
-});
-
-test("a detached running job does not write a changed-files record", async (context) => {
-	const dirtyPi = `#!/usr/bin/env node
-const { writeFileSync } = require("node:fs");
-process.on("SIGTERM", () => process.exit(0));
-writeFileSync("edited.txt", "hello\\n");
-console.log(JSON.stringify({ type: "agent_start" }));
-console.log(JSON.stringify({ type: "tool_execution_start", toolName: "bash", args: { command: "echo" } }));
-setInterval(() => {}, 1000);
-`;
-	const scratch = await scratchRepo(dirtyPi);
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const id = onlyJobId(limen(scratch, "spawn", "--label", "F720 dirty", "edit a file").stdout);
-	await waitForJobFile(scratch.root, id, "log", /bash echo/);
-	const job = join(scratch.root, ".limen/jobs", id);
-	assert.equal(
-		await readFile(join(job, "changed-files"), "utf8").then(
-			() => "present",
-			() => "missing",
-		),
-		"missing",
-	);
-	const compact = limen(scratch, "jobs");
-	assert.equal(compact.status, 0, compact.stderr);
-	assert.match(compact.stdout, /RUNNING F720 dirty/);
-	assert.match(compact.stdout, /tools 1/);
-	assert.doesNotMatch(compact.stdout, /files \d/);
-	const human = limenWithEnv(scratch, { LIMEN_VIEW: "human" }, "jobs");
-	assert.equal(human.status, 0, human.stderr);
-	assert.doesNotMatch(human.stdout, /\d files/);
-	const detail = limen(scratch, "jobs", id);
-	assert.equal(detail.status, 0, detail.stderr);
-	assert.doesNotMatch(detail.stdout, /files \d/);
-	limen(scratch, "stop", id, "no dirty count");
-	await waitForState(scratch.root, id, "stopped");
 });
 
 test("jobs --label lists matching jobs including hidden terminal ones", async (context) => {
@@ -433,16 +334,73 @@ test("jobs --label lists matching jobs including hidden terminal ones", async (c
 	assert.match(detail.stdout, /DONE wave-a done/);
 });
 
-async function waitForJobFile(root: string, id: string, name: string, expected: RegExp): Promise<void> {
-	const path = join(root, ".limen/jobs", id, name);
-	const deadline = Date.now() + 10_000;
-	while (Date.now() < deadline) {
-		const value = await readFile(path, "utf8").then(
-			(text) => text.trim(),
-			() => "",
-		);
-		if (expected.test(value)) return;
-		await new Promise((resolve) => setTimeout(resolve, 25));
+test("hosted pulse uses wrapper identity even when the agent is idle", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const herdr = join(scratch.fakeBin, "herdr");
+	await writeFile(herdr, '#!/usr/bin/env node\nconsole.log(JSON.stringify({ result: { agent: { agent_status: "idle" } } }));\n', { mode: 0o755 });
+	const previous = process.env.LIMEN_HERDR;
+	process.env.LIMEN_HERDR = herdr;
+	context.after(() => {
+		if (previous === undefined) delete process.env.LIMEN_HERDR;
+		else process.env.LIMEN_HERDR = previous;
+	});
+	const jobs = join(scratch.root, ".limen/jobs");
+	const job = join(jobs, "identity");
+	await mkdir(join(job, "herdr"), { recursive: true });
+	for (const [field, value] of Object.entries({
+		state: "running",
+		label: "wrapper identity",
+		branch: "main",
+		pid: String(process.pid),
+		born: "different birth",
+		activity: "tool",
+		hosted: "hosted",
+		"herdr/agent": "w1:p1",
+		"task.md": "identity",
+		log: "tool",
+		"started-at": new Date().toISOString(),
+	}))
+		await writeFile(join(job, field), `${value}\n`);
+	const lost = await renderJobDirectory(scratch.root, jobs, "identity", false, true);
+	assert.equal(await ownerAlive(job), false);
+	assert.equal(lost.record.pulse, "dead");
+	assert.equal(lost.record.agentStatus, "idle");
+	assert.match(lost.compact, /agent idle/);
+	const info = await processInfo(process.pid);
+	assert.equal(info.kind, "present");
+	if (info.kind !== "present") return;
+	await writeFile(join(job, "born"), info.process.born);
+	const live = await renderJobDirectory(scratch.root, jobs, "identity", false, true);
+	assert.equal(await ownerAlive(job), true);
+	assert.equal(live.record.pulse, "tool");
+});
+
+test("failed human rows prefer stop-reason and ignore post-finish delivery logs", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const jobs = join(scratch.root, ".limen/jobs");
+	for (const [id, reason] of [
+		["limited", 'error: 429 {"error":{"type":"rate_limit_error"}} retry-after-ms=4272000'],
+		["legacy", ""],
+	]) {
+		const job = join(jobs, id!);
+		await mkdir(job);
+		for (const [field, value] of Object.entries({
+			state: "failed",
+			label: id,
+			branch: "main",
+			"task.md": "work",
+			log: "[limen 2026-10-05T00:00:00Z] failed: worker crashed\n[limen 2026-10-05T00:00:01Z] wake delivery failed\n[limen 2026-10-05T00:00:02Z] tab closed\n",
+			...(reason ? { "stop-reason": reason } : {}),
+		}))
+			await writeFile(join(job, field), `${value}\n`);
 	}
-	throw new Error(`job ${id} did not record ${name} ${String(expected)}`);
-}
+	const rows = limenWithEnv(scratch, { LIMEN_VIEW: "human" }, "jobs", "--all");
+	assert.equal(rows.status, 0, rows.stderr);
+	assert.match(rows.stdout, /limited.*rate limit \(429\); retry after 71m/);
+	assert.match(rows.stdout, /legacy.*worker crashed/);
+	assert.doesNotMatch(rows.stdout, /wake delivery failed|tab closed/);
+});

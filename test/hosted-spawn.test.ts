@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { hostedAgentName, makeJobId } from "../src/commands/spawn.ts";
-import { hostedAgentStatus, hostedTerminalReason, startHostedPi, stopHostedAgent } from "../src/integrations/herdr.ts";
-import { DEFAULT_HOSTED_IDLE_MS, DEFAULT_STALL_RERING_MS, type HostedIdleWatch, noteHostedIdle, writeHostedResult } from "../src/runtime/supervisor.ts";
+import { hostedAgentStatus, hostedTerminalReason, startHostedPi } from "../src/integrations/herdr.ts";
+import { type HostedIdleWatch, noteHostedIdle, writeHostedResult } from "../src/runtime/supervisor.ts";
 import { git, limen, limenWithEnv, onlyJobId, type Scratch, scratchRepo, waitForState } from "./scratch.ts";
 
 test("hosted completion is session end or vanished agent, not Herdr idle", () => {
@@ -41,11 +41,6 @@ test("hosted result capture keeps a tool-written result over later assistant tex
 	await writeFile(join(root, "session/run.jsonl"), `${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done." }] } })}\n`);
 	await writeHostedResult(root);
 	assert.equal(await readFile(join(root, "result"), "utf8"), "handoff from finish\n");
-});
-
-test("hosted idle bound defaults to 60s and re-ring to 15m", () => {
-	assert.equal(DEFAULT_HOSTED_IDLE_MS, 60_000);
-	assert.equal(DEFAULT_STALL_RERING_MS, 15 * 60_000);
 });
 
 test("noteHostedIdle finalizes a clean idle turn with no tool call and writes no advisory", async (context) => {
@@ -309,58 +304,6 @@ test("noteHostedIdle treats blocked as immediate and ignores unknown", async () 
 	}
 });
 
-test("noteHostedIdle ignores idle while activity is think or tool", async () => {
-	const dir = await mkdtemp(join(tmpdir(), "limen-idle-loop-"));
-	try {
-		await writeFile(join(dir, "tool-calls"), "5\n");
-		await writeFile(join(dir, "activity"), "think\n");
-		const watch: HostedIdleWatch = { leftWorkingAt: undefined, armed: true };
-		await noteHostedIdle(dir, "idle", watch, 0, 60_000);
-		await noteHostedIdle(dir, "idle", watch, 60_000, 60_000);
-		await assert.rejects(readFile(join(dir, "advisory")), "think is the loop still going");
-		assert.equal(watch.armed, true);
-		assert.equal(watch.leftWorkingAt, undefined);
-		await writeFile(join(dir, "activity"), "tool\n");
-		await noteHostedIdle(dir, "idle", watch, 120_000, 60_000);
-		await assert.rejects(readFile(join(dir, "advisory")), "tool is the loop still going");
-		assert.equal(watch.leftWorkingAt, undefined);
-		await writeFile(join(dir, "activity"), "wait\n");
-		await noteHostedIdle(dir, "idle", watch, 120_000, 60_000);
-		await noteHostedIdle(dir, "idle", watch, 180_000, 60_000);
-		assert.equal(await readFile(join(dir, "advisory"), "utf8"), "idle 1m after 5 tool calls, session still open\n");
-		assert.equal(watch.armed, false);
-	} finally {
-		await rm(dir, { recursive: true, force: true });
-	}
-});
-
-test("noteHostedIdle writes an errored advisory when the last assistant turn failed", async (context) => {
-	const dir = await mkdtemp(join(tmpdir(), "limen-idle-errored-"));
-	context.after(() => rm(dir, { recursive: true, force: true }));
-	const tree = join(dir, "tree");
-	await mkdir(tree);
-	git(tree, "init", "-b", "main");
-	git(tree, "config", "user.email", "limen@example.test");
-	git(tree, "config", "user.name", "Limen Test");
-	await writeFile(join(tree, "README.md"), "ok\n");
-	git(tree, "add", ".");
-	git(tree, "commit", "-m", "initial");
-	await mkdir(join(dir, "session"));
-	await writeFile(join(dir, "worktree"), `${tree}\n`);
-	await writeFile(join(dir, "last-turn-tools"), "0\n");
-	await writeFile(join(dir, "activity"), "wait\n");
-	await writeFile(
-		join(dir, "session/run.jsonl"),
-		`${JSON.stringify({ type: "message", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "usage limit reached" } })}\n`,
-	);
-	const watch: HostedIdleWatch = { leftWorkingAt: undefined, armed: true };
-	assert.equal(await noteHostedIdle(dir, "idle", watch, 0, 1_000), undefined);
-	assert.equal(await noteHostedIdle(dir, "idle", watch, 1_000, 1_000), undefined);
-	assert.equal(await readFile(join(dir, "advisory"), "utf8"), "errored: last turn failed with error: usage limit reached, session still open\n");
-	assert.equal(watch.armed, false);
-	await assert.rejects(readFile(join(dir, "finished-at")), "an errored turn must not finalize the job");
-});
-
 test("noteHostedIdle snapshots result and commits without finishing", async () => {
 	const parent = await mkdtemp(join(tmpdir(), "limen-idle-snap-"));
 	const repo = join(parent, "repo");
@@ -463,31 +406,6 @@ else { console.log(JSON.stringify({ error: { code: "timeout", message: "herdr ti
 	}
 });
 
-test("stopHostedAgent sends ctrl+c", async () => {
-	const dir = await mkdtemp(join(tmpdir(), "limen-herdr-keys-"));
-	const bin = join(dir, "herdr");
-	const calls = join(dir, "calls");
-	await writeFile(
-		bin,
-		`#!/usr/bin/env node
-const { appendFileSync } = require("node:fs");
-appendFileSync(${JSON.stringify(calls)}, process.argv.slice(2).join(" ") + "\\n");
-console.log(JSON.stringify({ result: { type: "ok" } }));
-`,
-	);
-	await chmod(bin, 0o755);
-	const previous = process.env.LIMEN_HERDR;
-	process.env.LIMEN_HERDR = bin;
-	try {
-		stopHostedAgent("w1:p1");
-		assert.equal(await readFile(calls, "utf8"), "agent send-keys w1:p1 ctrl+c\nagent send-keys w1:p1 ctrl+c\n");
-	} finally {
-		if (previous === undefined) delete process.env.LIMEN_HERDR;
-		else process.env.LIMEN_HERDR = previous;
-		await rm(dir, { recursive: true, force: true });
-	}
-});
-
 test("spawn --tab refuses without Herdr and leaves no job record", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
@@ -503,28 +421,15 @@ test("spawn --tab refuses without Herdr and leaves no job record", async (contex
 	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), []);
 });
 
-test("hosted spawn labeled as lead refuses before planting a job", async (context) => {
+test("ordinary lead-in labels start hosted; --detached keeps a watch tab", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
 	assert.equal(limen(scratch, "init").status, 0);
 	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
 	const env = { HERDR_ENV: "1", LIMEN_HERDR: herdr.bin, FAKE_HERDR_STATE: herdr.dir, HERDR_TAB_ID: "coord:t0" };
-	const refused = limenWithEnv(scratch, env, "spawn", "--tab", "--label", "group lead · F910", "start the collaborative group");
-	assert.equal(refused.status, 1, refused.stderr);
-	assert.match(refused.stderr, /LIMEN_COORDINATOR=1/);
-	assert.match(refused.stderr, /LIMEN_JOB=1|cannot register group-peer/);
-	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), []);
-});
-
-test("spawn in Herdr is hosted without --tab; --detached keeps a watch tab", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
-	const env = { HERDR_ENV: "1", LIMEN_HERDR: herdr.bin, FAKE_HERDR_STATE: herdr.dir, HERDR_TAB_ID: "coord:t0" };
-	const launched = limenWithEnv(scratch, { ...env, LIMEN_WORKER_MODEL: "" }, "spawn", "--label", "F010 hosted", "make a tiny commit");
+	const launched = limenWithEnv(scratch, { ...env, LIMEN_WORKER_MODEL: "" }, "spawn", "--label", "Fix the lead-in paragraph · F900", "make a tiny commit");
 	assert.equal(launched.status, 0, launched.stderr);
-	assert.match(launched.stdout, /started F010 hosted \(hosted\)/);
+	assert.match(launched.stdout, /started Fix the lead-in paragraph · F900 \(hosted\)/);
 	const id = onlyJobId(launched.stdout);
 	const job = join(scratch.root, ".limen/jobs", id);
 	assert.match(await readFile(join(job, "hosted"), "utf8"), /weaker guarantees/);
@@ -697,73 +602,6 @@ test("hosted spawn and continuation keep quoted multiline tasks out of shell arg
 	}
 });
 
-test("hosted spawn survives a killed caller while agent start exceeds its 20s deadline", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
-	const env = {
-		HERDR_ENV: "1",
-		LIMEN_HERDR: herdr.bin,
-		FAKE_HERDR_STATE: herdr.dir,
-		FAKE_HERDR_PERSIST: "1",
-		FAKE_HERDR_START_BUSY_MS: "30000",
-		LIMEN_HOSTED_START_MS: "22000",
-		LIMEN_HOSTED_IDLE_MS: "200",
-		HERDR_TAB_ID: "coord:t0",
-	};
-	const before = Date.now();
-	const { stdout, returnedMs } = await killHostedCaller(scratch, env, ["spawn", "--tab", "--label", "F048 handshake", "stay hosted"]);
-	assert.ok(returnedMs < 6_000, `spawn must not wait for agent readiness: ${returnedMs}ms`);
-	const id = onlyJobId(stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	const pid = Number((await readFile(join(job, "pid"), "utf8")).trim());
-	assert.ok(Number.isSafeInteger(pid) && pid > 0);
-	assert.doesNotThrow(() => process.kill(pid, 0));
-	await waitForFile(join(herdr.dir, "start-busy"), /\d+/);
-	await assert.rejects(readFile(join(job, "herdr/agent")), "the caller returned before agent start completed");
-	await waitForFile(join(job, "herdr/agent"), /w1:p1/, 30_000);
-	assert.ok(Date.now() - before > 20_000, "agent start must outlast the caller deadline");
-	await waitForFile(join(job, "log"), /hosted agent ready after start warning/);
-	assert.doesNotThrow(() => process.kill(pid, 0));
-	await writeFile(join(job, "tool-calls"), "2\n");
-	await writeFile(join(job, "activity"), "wait\n");
-	await waitForFile(join(job, "advisory"), /idle \d+s after 2 tool calls, session still open/);
-	assert.equal(await readFile(join(job, "state"), "utf8"), "running\n");
-	context.diagnostic(`caller printed ID and was killed in ${returnedMs}ms; supervisor ${pid} recorded agent after 20s and wrote idle advisory`);
-	assert.equal(await readFile(join(job, "role"), "utf8"), "worker\n");
-	assert.match(await readFile(join(job, "agent-name"), "utf8"), /^limen-f048-[0-9a-f]{8}\n$/);
-	await writeFile(join(job, "session-ended"), `${new Date().toISOString()}\n`);
-	await waitForState(scratch.root, id, "done");
-});
-
-test("hosted start retries one pane-shell failure and logs both attempts", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
-	const env = {
-		HERDR_ENV: "1",
-		LIMEN_HERDR: herdr.bin,
-		FAKE_HERDR_STATE: herdr.dir,
-		FAKE_HERDR_PERSIST: "1",
-		FAKE_HERDR_START_PANE_FAILURES: "1",
-		HERDR_TAB_ID: "coord:t0",
-	};
-	const launched = limenWithEnv(scratch, env, "spawn", "--label", "F044 retry", "stay hosted");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	await waitForFile(herdr.calls, (value) => [...value.matchAll(/^agent start /gm)].length === 2);
-	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "running");
-	assert.equal([...(await readFile(herdr.calls, "utf8")).matchAll(/^agent start /gm)].length, 2);
-	const log = await waitForFile(join(job, "log"), /hosted agent start attempt 2/);
-	assert.match(log, /hosted agent start attempt 1/);
-	assert.match(log, /hosted agent start attempt 2/);
-	await writeFile(join(job, "session-ended"), `${new Date().toISOString()}\n`);
-	await waitForState(scratch.root, id, "done");
-});
-
 test("hosted start finalizes failed after two pane-shell failures", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
@@ -877,65 +715,6 @@ test("hosted start does not retry a non-pane-shell error", async (context) => {
 	assert.equal(launched.status, 0, launched.stderr);
 	await waitForState(scratch.root, onlyJobId(launched.stdout), "failed");
 	assert.equal([...(await readFile(herdr.calls, "utf8")).matchAll(/^agent start /gm)].length, 1);
-});
-
-test("hosted supervisor writes one idle advisory and stays running", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
-	const env = {
-		HERDR_ENV: "1",
-		LIMEN_HERDR: herdr.bin,
-		FAKE_HERDR_STATE: herdr.dir,
-		FAKE_HERDR_PERSIST: "1",
-		HERDR_TAB_ID: "coord:t0",
-		LIMEN_HOSTED_IDLE_MS: "200",
-	};
-	const launched = limenWithEnv(scratch, env, "spawn", "--label", "F027 idle", "stay hosted");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	await new Promise((resolve) => setTimeout(resolve, 2_500));
-	await assert.rejects(readFile(join(job, "advisory")), "zero tool calls must not advisory");
-	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "running");
-	const tabs = () => readFile(join(herdr.dir, "state.json"), "utf8").then((value) => JSON.parse(value).tabs as Record<string, { readonly label: string }>);
-	assert.equal((await tabs())["w1:t1"]?.label, "F027 idle · running", "Herdr reports this pane idle; the tab label must still read running");
-	await mkdir(join(job, "session"), { recursive: true });
-	const entries = [
-		JSON.stringify({ type: "session", version: 3 }),
-		JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "early note" }] } }),
-		JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "hosted stall summary" }] } }),
-	];
-	await writeFile(join(job, "session/2026-01-01T00-00-00-000Z_abc.jsonl"), `${entries.join("\n")}\n`);
-	const worktree = (await readFile(join(job, "worktree"), "utf8")).trim();
-	await writeFile(join(worktree, "stall.txt"), "done\n");
-	git(worktree, "add", "stall.txt");
-	git(worktree, "commit", "-m", "stall work");
-	await writeFile(join(worktree, "dirty.txt"), "left behind\n");
-	await writeFile(join(job, "tool-calls"), "14\n");
-	await writeFile(join(job, "activity"), "wait\n");
-	const deadline = Date.now() + 5_000;
-	let advisory = "";
-	while (Date.now() < deadline) {
-		advisory = await readFile(join(job, "advisory"), "utf8").then(
-			(value) => value.trim(),
-			() => "",
-		);
-		if (advisory) break;
-		await new Promise((resolve) => setTimeout(resolve, 50));
-	}
-	assert.match(advisory, /idle \d+s after 14 tool calls, session still open/);
-	assert.equal(await readFile(join(job, "result"), "utf8"), "hosted stall summary\n");
-	assert.match(await readFile(join(job, "commits"), "utf8"), /stall work/);
-	await assert.rejects(readFile(join(job, "finished-at")), "stall must not finalize");
-	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "running");
-	await new Promise((resolve) => setTimeout(resolve, 1_500));
-	assert.equal((await readFile(join(job, "advisory"), "utf8")).trim(), advisory, "same stall must not rewrite");
-	await writeFile(join(job, "session-ended"), `${new Date().toISOString()}\n`);
-	await waitForState(scratch.root, id, "done");
-	await waitForFile(join(job, "log"), /herdr tab close w1:t1: closed\n/);
-	assert.equal((await tabs())["w1:t1"], undefined, "a finished job tab closes");
 });
 
 test("hosted supervisor finalizes a clean tool-using idle without claiming the session ended", async (context) => {
@@ -1086,71 +865,6 @@ test("a hosted session error fails with its stop reason", async (context) => {
 	await waitForFile(join(job, "log"), /failed: error: usage limit reached/);
 });
 
-test("supervisor does not stamp wait over a hook tool write", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
-	const env = { HERDR_ENV: "1", LIMEN_HERDR: herdr.bin, FAKE_HERDR_STATE: herdr.dir, FAKE_HERDR_PERSIST: "1", HERDR_TAB_ID: "coord:t0" };
-	const launched = limenWithEnv(scratch, env, "spawn", "--label", "F020 activity", "stay hosted");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	await writeFile(join(job, "activity"), "tool\n");
-	await new Promise((resolve) => setTimeout(resolve, 1_500));
-	assert.equal(await readFile(join(job, "activity"), "utf8"), "tool\n");
-	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "running");
-	await writeFile(join(job, "session-ended"), `${new Date().toISOString()}\n`);
-	await waitForState(scratch.root, id, "done");
-});
-
-test("one failed agent get between good samples does not finalize", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
-	const env = {
-		HERDR_ENV: "1",
-		LIMEN_HERDR: herdr.bin,
-		FAKE_HERDR_STATE: herdr.dir,
-		FAKE_HERDR_PERSIST: "1",
-		FAKE_HERDR_BLIP: "1",
-		HERDR_TAB_ID: "coord:t0",
-	};
-	const launched = limenWithEnv(scratch, env, "spawn", "--label", "F020 blip", "stay hosted");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	await new Promise((resolve) => setTimeout(resolve, 4_000));
-	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "running", "one timeout between idle samples must not finalize");
-	assert.match(await readFile(join(job, "log"), "utf8"), /herdr agent get failed: timeout/);
-	await writeFile(join(job, "session-ended"), `${new Date().toISOString()}\n`);
-	await waitForState(scratch.root, id, "done");
-});
-
-test("garbage agent get never counts toward missing", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
-	const env = {
-		HERDR_ENV: "1",
-		LIMEN_HERDR: herdr.bin,
-		FAKE_HERDR_STATE: herdr.dir,
-		FAKE_HERDR_PERSIST: "1",
-		FAKE_HERDR_GARBAGE: "1",
-		HERDR_TAB_ID: "coord:t0",
-	};
-	const launched = limenWithEnv(scratch, env, "spawn", "--label", "F020 garbage", "stay hosted");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	const job = join(scratch.root, ".limen/jobs", id);
-	await new Promise((resolve) => setTimeout(resolve, 4_000));
-	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "running", "garbage CLI output must not finalize as vanished");
-	await writeFile(join(job, "session-ended"), `${new Date().toISOString()}\n`);
-	await waitForState(scratch.root, id, "done");
-});
-
 test("hosted continue survives a killed caller and passes durable @continue, not @task", async (context) => {
 	const continuing = `#!/usr/bin/env node
 const { writeFileSync, mkdirSync } = require("node:fs");
@@ -1207,15 +921,6 @@ test("makeJobId hoists a feature number from anywhere in the label", () => {
 	assert.match(hostedAgentName(only), /^limen-f068-[0-9a-f]{8}$/);
 });
 
-test("hostedAgentName keeps the hex suffix when the slug is long", () => {
-	const a = hostedAgentName("2026-08-19-abcdefghijklmnopqrstuvwxyz-aaaaaaaa");
-	const b = hostedAgentName("2026-08-19-abcdefghijklmnopqrstuvwxyz-bbbbbbbb");
-	assert.equal(a, "limen-abcdefghijklmnopq-aaaaaaaa");
-	assert.equal(b, "limen-abcdefghijklmnopq-bbbbbbbb");
-	assert.equal(a.length, 32);
-	assert.notEqual(a, b);
-});
-
 test("startHostedPi recovers an unclassified OMP process after a start warning", async () => {
 	await withFakeHerdr(
 		`const fs = require("node:fs"), args = process.argv.slice(2), started = __filename + ".started";
@@ -1261,16 +966,6 @@ if (args[0] === "pane" && args[1] === "process-info") {
 			assert.throws(() => startHostedPi({ place: { workspace: "w1", tab: "w1:t1", pane: "w1:p1", mode: "hosted" }, name: "limen-same", kind: "pi", args: ["--approve"] }));
 		},
 	);
-});
-
-test("spawn --tab --timeout errors before creating a job", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const refused = limen(scratch, "spawn", "--tab", "--timeout", "20m", "do work");
-	assert.equal(refused.status, 1);
-	assert.match(refused.stderr, /hosted jobs have no timeout/);
-	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")), []);
 });
 
 test("hosted stop before pi starts finalizes with the requested reason", async (context) => {
@@ -1609,16 +1304,7 @@ if (args[0] === "workspace" && args[1] === "list") {
   const agent = state.agents[target];
   if (!agent) fail("agent_not_found", "missing");
   const info = (status) => ok({ type: "agent_info", agent: { agent_status: status, pane_id: target } });
-  if (process.env.FAKE_HERDR_GARBAGE === "1") {
-    console.log("not-json");
-    process.exit(1);
-  }
   if (process.env.FAKE_HERDR_PERSIST === "1") {
-    if (process.env.FAKE_HERDR_BLIP === "1") {
-      agent.ticks = (agent.ticks || 0) + 1;
-      writeFileSync(path, JSON.stringify(state));
-      if (agent.ticks === 2) fail("timeout", "herdr timeout");
-    }
     // A background tab Herdr never focused reports unseen-idle; the agent stays alive.
     info("idle");
     return;

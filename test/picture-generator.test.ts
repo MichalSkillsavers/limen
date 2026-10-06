@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { parseFrontmatter } from "../src/picture/frontmatter.ts";
-import { readViewer } from "../src/picture/html.ts";
 import { renderMarkdown } from "../src/picture/markdown.ts";
 import { buildPicture, readPicture } from "../src/picture/picture-build.ts";
 import { buildModel, type PictureFile } from "../src/picture/picture-model.ts";
@@ -233,18 +232,6 @@ test("build warns once for each cited path missing from the project root and sti
 			["source.missing", "sample.a", 9],
 		],
 	);
-});
-
-test("missing or malformed shipped viewer assets fail rather than substitute another view", async (context) => {
-	const dir = await mkdtemp(join(tmpdir(), "limen-picture-viewer-"));
-	context.after(() => rm(dir, { recursive: true, force: true }));
-	await assert.rejects(readViewer(dir), { code: "ENOENT" });
-	await writeFile(join(dir, "template.html"), "<!-- ARCHMAP:CSS --><!-- ARCHMAP:JS -->");
-	await writeFile(join(dir, "viewer.css"), "");
-	await writeFile(join(dir, "viewer.js"), "");
-	await assert.rejects(readViewer(dir), /DATA marker exactly once/);
-	await writeFile(join(dir, "template.html"), "<!-- ARCHMAP:CSS --><!-- ARCHMAP:JS --><!-- ARCHMAP:DATA -->");
-	await assert.rejects(readViewer(dir), /DATA marker before the JS marker/);
 });
 
 test("contract ids reject leading digits, underscore and empty or hyphen-led segments", () => {

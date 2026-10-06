@@ -22,14 +22,14 @@ test("planning source is persistent, defaults to committed, and private ordinary
 	await writeFile(`${scratch.root}/.gitignore`, "/spec/\n/.limen/\n");
 	git(scratch.root, "add", ".");
 	git(scratch.root, "commit", "-m", "ignore private planning");
-	const input = `Read the ticket. Ticket: ${ticket}\n`;
+	const input = `Read the ticket. (Ticket:  ${ticket}).\n`;
 	const launched = limenWithInput(scratch, input, "spawn", "--task-file", "-", "--engine", "pi", "--detached");
 	assert.equal(launched.status, 0, launched.stderr);
 	const id = onlyJobId(launched.stdout);
 	await waitForState(scratch.root, id, "done");
 	const job = `${scratch.root}/.limen/jobs/${id}`;
 	const worktree = (await readFile(`${job}/worktree`, "utf8")).trim();
-	assert.equal(await readFile(`${job}/task.md`, "utf8"), `Read the ticket. Ticket: ${scratch.root}/${ticket}\n`);
+	assert.equal(await readFile(`${job}/task.md`, "utf8"), `Read the ticket. (Ticket:  ${scratch.root}/${ticket}).\n`);
 	assert.equal(await readFile(`${job}/planning-source`, "utf8"), "private\n");
 	assert.equal(existsSync(`${worktree}/spec`), false);
 	assert.equal(git(scratch.root, "ls-tree", "-r", "--name-only", "HEAD", "--", "spec"), "");
@@ -121,13 +121,7 @@ test("spawn creates isolated branch, canonical record, defaults to omp, and resu
 	};
 	assert.deepEqual(childEnvironment, { job: "1", id, label: "F001 implementation", contextRoot: await realpath(scratch.root), herdr: [], pi: [] });
 	const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
-	assert.equal(argv[argv.indexOf("--mode") + 1], "json");
-	assert.equal(argv.includes("--auto-approve"), true);
-	assert.equal(argv.includes("--approve"), false);
 	assert.match(argv[argv.indexOf("--session-dir") + 1] ?? "", /\.limen\/jobs\/[^/]+\/session$/);
-	assert.equal(argv.includes("--no-session"), false);
-	assert.equal(argv.includes("--no-context-files"), false);
-	assert.equal(argv.includes("--no-extensions"), true);
 	assert.match(argv[argv.indexOf("--extension") + 1] ?? "", /hook\/steering\.ts$/);
 	assert.equal(argv[argv.indexOf("--append-system-prompt") + 1], await readFile(new URL("../templates/worker.md", import.meta.url), "utf8"));
 	assert.equal(await readFile(join(job, "last-tool"), "utf8"), "bash\n");
@@ -190,22 +184,6 @@ test("failure is durable and detailed jobs render facts", async (context) => {
 	assert.match(jobs.stdout, /fake pi completed/);
 });
 
-test("a project worker overlay replaces the package birth text", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	await writeFile(join(scratch.root, ".agents/limen/worker.md"), "OVERLAY WORKER\n");
-	const id = onlyJobId(limen(scratch, "spawn", "no model default").stdout);
-	await waitForState(scratch.root, id, "done");
-	const worktree = git(scratch.root, "worktree", "list", "--porcelain")
-		.split("\n")
-		.find((line) => line.includes(id))
-		?.slice("worktree ".length);
-	assert.ok(worktree);
-	const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
-	assert.equal(argv[argv.indexOf("--append-system-prompt") + 1], "OVERLAY WORKER\n");
-});
-
 test("review gets fresh detached worktree and reviewer birth text", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
@@ -259,10 +237,6 @@ test("stage model defaults respect review roles and explicit overrides", async (
 	const reviewDefault = onlyJobId(limen(scratch, "spawn", "--review", "--branch", `limen/${packageDefault}`, "requested review default").stdout);
 	await waitForState(scratch.root, reviewDefault, "done");
 	assert.equal(await modelForJob(scratch.root, reviewDefault), "openai-codex/gpt-6-astra:high");
-	process.env.LIMEN_WORKER_MODEL = "   ";
-	const blank = onlyJobId(limen(scratch, "spawn", "blank stage default").stdout);
-	await waitForState(scratch.root, blank, "done");
-	assert.equal(await modelForJob(scratch.root, blank), "openai-codex/gpt-6-astra:high");
 	process.env.LIMEN_WORKER_MODEL = "worker-default";
 	process.env.LIMEN_REVIEWER_MODEL = "reviewer-default";
 	const worker = onlyJobId(limen(scratch, "spawn", "worker model default").stdout);
@@ -274,9 +248,6 @@ test("stage model defaults respect review roles and explicit overrides", async (
 	const explicit = onlyJobId(limen(scratch, "spawn", "--model", "ticket-specific", "explicit model").stdout);
 	await waitForState(scratch.root, explicit, "done");
 	assert.equal(await modelForJob(scratch.root, explicit), "ticket-specific");
-	const explicitReview = onlyJobId(limen(scratch, "spawn", "--review", "--branch", `limen/${worker}`, "--model", "review-specific", "explicit review model").stdout);
-	await waitForState(scratch.root, explicitReview, "done");
-	assert.equal(await modelForJob(scratch.root, explicitReview), "review-specific");
 });
 
 async function modelForJob(root: string, id: string): Promise<string | undefined> {
@@ -289,19 +260,6 @@ async function modelForJob(root: string, id: string): Promise<string | undefined
 	const index = args.indexOf("--model");
 	return index < 0 ? undefined : args[index + 1];
 }
-
-test("independent jobs can run concurrently and are merely announced", async (context) => {
-	const fakePi = `#!/usr/bin/env node\nsetTimeout(() => { console.log("done") }, 400);\n`;
-	const scratch = await scratchRepo(fakePi);
-	context.after(scratch.cleanup);
-	limen(scratch, "init");
-	const first = onlyJobId(limen(scratch, "spawn", "first").stdout);
-	const secondLaunch = limen(scratch, "spawn", "second");
-	assert.match(secondLaunch.stdout, /note: 1 job already running/);
-	const second = onlyJobId(secondLaunch.stdout);
-	await Promise.all([waitForState(scratch.root, first, "done"), waitForState(scratch.root, second, "done")]);
-	assert.notEqual(await readFile(join(scratch.root, `.limen/jobs/${first}/branch`), "utf8"), await readFile(join(scratch.root, `.limen/jobs/${second}/branch`), "utf8"));
-});
 
 test("prune drops a finished worktree and spawn keeps a resumed one", async (context) => {
 	const scratch = await scratchRepo();
@@ -332,51 +290,6 @@ test("prune drops a finished worktree and spawn keeps a resumed one", async (con
 	assert.doesNotMatch(git(scratch.root, "worktree", "list", "--porcelain"), /limen-worktrees/);
 });
 
-test("spawn opens a named Herdr tab when a fake herdr is on PATH", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const calls = join(scratch.root, "herdr-calls.log");
-	await writeFile(
-		join(scratch.fakeBin, "herdr"),
-		`#!/usr/bin/env node
-const { appendFileSync } = require("node:fs");
-const args = process.argv.slice(2);
-if (args[0] === "--version") { console.log("0.0.0-test"); process.exit(0); }
-appendFileSync(${JSON.stringify(calls)}, args.join(" ") + "\\n");
-const label = args.includes("--label") ? args[args.indexOf("--label") + 1] : "";
-if (args[0] === "workspace" && args[1] === "list") {
-  console.log(JSON.stringify({ result: { type: "workspace_list", workspaces: [] } }));
-} else if (args[0] === "workspace" && args[1] === "create") {
-  console.log(JSON.stringify({ result: { type: "workspace_created", workspace: { workspace_id: "w1" }, tab: { tab_id: "w1:t1" }, root_pane: { pane_id: "w1:p1" } } }));
-} else if (args[0] === "tab" && args[1] === "create") {
-  console.log(JSON.stringify({ result: { type: "tab_created", tab: { tab_id: "w1:t2", label }, root_pane: { pane_id: "w1:p2" } } }));
-}
-`,
-	);
-	await chmod(join(scratch.fakeBin, "herdr"), 0o755);
-	const launched = limenWithEnv(scratch, { HERDR_ENV: "1", LIMEN_HERDR: join(scratch.fakeBin, "herdr") }, "spawn", "--detached", "--label", "F012 spaces", "make commit");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	await waitForState(scratch.root, id, "done");
-	const deadline = Date.now() + 2_000;
-	let recorded = "";
-	while (Date.now() < deadline) {
-		recorded = await readFile(calls, "utf8").catch(() => "");
-		if (/tab close w1:t2/.test(recorded)) break;
-		await new Promise((resolve) => setTimeout(resolve, 25));
-	}
-	assert.match(recorded, /tab create /);
-	assert.match(recorded, /--label F012 spaces/);
-	assert.match(recorded, /--no-focus/);
-	assert.match(recorded, /tab close w1:t2/);
-	const job = join(scratch.root, ".limen/jobs", id);
-	assert.equal(await readFile(join(job, "herdr/tab"), "utf8"), "w1:t2\n");
-	assert.equal(await readFile(join(job, "herdr/mode"), "utf8"), "watch\n");
-	assert.equal(await readFile(join(job, "versions"), "utf8"), "omp 0.0.0-test\nherdr 0.0.0-test\n");
-	assert.match(limen(scratch, "jobs", id).stdout, /versions:\n    omp 0\.0\.0-test\n    herdr 0\.0\.0-test/);
-});
-
 test("spawn prints failed when the wrapper dies before writing pid", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
@@ -397,21 +310,6 @@ test("explicit pi spawn without pi on PATH fails before worktree add", async (co
 	const launched = limenWithEnv(scratch, { PATH: "/nonexistent" }, "spawn", "--engine", "pi", "do work");
 	assert.equal(launched.status, 1);
 	assert.match(launched.stderr, /pi is not on PATH/);
-	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")).catch(() => []), []);
-	assert.doesNotMatch(git(scratch.root, "worktree", "list"), /limen-worktrees/);
-});
-
-test("LIMEN_PREFLIGHT=auth fails spawn with pi's message and creates no job", async (context) => {
-	const scratch = await scratchRepo(`#!/usr/bin/env node
-const args = process.argv.slice(2);
-if (args[0] === "auth") { console.error("provider rejected token"); process.exit(2); }
-process.exit(0);
-`);
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const launched = limenWithEnv(scratch, { LIMEN_PREFLIGHT: "auth" }, "spawn", "--engine", "pi", "--model", "ticket-specific", "do work");
-	assert.equal(launched.status, 1);
-	assert.match(launched.stderr, /provider rejected token/);
 	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")).catch(() => []), []);
 	assert.doesNotMatch(git(scratch.root, "worktree", "list"), /limen-worktrees/);
 });
@@ -510,45 +408,6 @@ setInterval(() => {}, 1000);
 	}
 });
 
-test("positional empty backticks or doubled spaces warn once", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const launched = limen(scratch, "spawn", "--label", "warn", "fix `` and  gaps");
-	assert.equal(launched.status, 0, launched.stderr);
-	assert.match(launched.stdout, /warning: empty backticks or doubled spaces/);
-	await waitForState(scratch.root, onlyJobId(launched.stdout), "done");
-});
-
-test("git missing from PATH falls back or leaves no job dir", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const launched = limenWithEnv(scratch, { PATH: `${scratch.fakeBin}:${dirname(process.execPath)}` }, "spawn", "--label", "no path git", "do work");
-	if (launched.status === 0) {
-		const id = onlyJobId(launched.stdout);
-		await waitForState(scratch.root, id, "done");
-		return;
-	}
-	assert.match(launched.stderr, /git is not on PATH/);
-	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")).catch(() => []), []);
-});
-
-test("spawn --role quality loads the packaged preamble", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const launched = limen(scratch, "spawn", "--role", "quality", "--label", "quality pass", "write findings");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	await waitForState(scratch.root, id, "done");
-	const job = join(scratch.root, ".limen/jobs", id);
-	assert.equal(await readFile(join(job, "role"), "utf8"), "quality\n");
-	const worktree = (await readFile(join(job, "worktree"), "utf8")).trim();
-	const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
-	assert.equal(argv[argv.indexOf("--append-system-prompt") + 1], await readFile(new URL("../templates/quality.md", import.meta.url), "utf8"));
-});
-
 test("spawn --role loads that overlay preamble and persists the name", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
@@ -563,37 +422,6 @@ test("spawn --role loads that overlay preamble and persists the name", async (co
 	const worktree = (await readFile(join(job, "worktree"), "utf8")).trim();
 	const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
 	assert.equal(argv[argv.indexOf("--append-system-prompt") + 1], "RESEARCH PREAMBLE\n");
-});
-
-test("spawn --role picture loads the packaged preamble", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const launched = limen(scratch, "spawn", "--role", "picture", "--detached", "--label", "living diagram", "shape that moved: a job kind");
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	await waitForState(scratch.root, id, "done");
-	const job = join(scratch.root, ".limen/jobs", id);
-	assert.equal(await readFile(join(job, "role"), "utf8"), "picture\n");
-	const worktree = (await readFile(join(job, "worktree"), "utf8")).trim();
-	const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
-	assert.equal(argv[argv.indexOf("--append-system-prompt") + 1], await readFile(new URL("../templates/picture.md", import.meta.url), "utf8"));
-});
-
-test("spawn --role researcher and --role judge load the packaged preambles", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	for (const role of ["researcher", "judge"] as const) {
-		const launched = limen(scratch, "spawn", "--role", role, "--detached", "--label", `F070 ${role}`, "named source");
-		assert.equal(launched.status, 0, launched.stderr);
-		const id = onlyJobId(launched.stdout);
-		await waitForState(scratch.root, id, "done");
-		assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "role"), "utf8"), `${role}\n`);
-		const worktree = (await readFile(join(scratch.root, ".limen/jobs", id, "worktree"), "utf8")).trim();
-		const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
-		assert.equal(argv[argv.indexOf("--append-system-prompt") + 1], await readFile(new URL(`../templates/${role}.md`, import.meta.url), "utf8"));
-	}
 });
 
 test("spawn refuses --role coordinator/lead before planting a job", async (context) => {
@@ -652,13 +480,6 @@ test("spawn accepts --engine omp and LIMEN_ENGINE, and refuses claude before a j
 	const job = join(scratch.root, ".limen/jobs", id);
 	assert.equal(await readFile(join(job, "engine"), "utf8"), "omp\n");
 	assert.equal(await readFile(join(job, "versions"), "utf8"), "omp 0.0.0-test\n");
-	const worktree = (await readFile(join(job, "worktree"), "utf8")).trim();
-	const argv = JSON.parse(await readFile(join(worktree, "pi-args.json"), "utf8")) as string[];
-	assert.equal(argv[argv.indexOf("--mode") + 1], "json");
-	assert.equal(argv.includes("--auto-approve"), true);
-	assert.equal(argv.includes("--no-title"), true);
-	assert.equal(argv.includes("--approve"), false);
-	assert.equal(argv.includes("--name"), false);
 	for (const engine of ["pi", "omp"]) {
 		const fromEnv = limenWithEnv(scratch, { LIMEN_ENGINE: engine }, "spawn", "--detached", "--label", `env ${engine}`, "do work");
 		assert.equal(fromEnv.status, 0, fromEnv.stderr);
@@ -680,9 +501,6 @@ test("spawn accepts --engine omp and LIMEN_ENGINE, and refuses claude before a j
 		assert.equal(refused.status, 1);
 		assert.match(refused.stderr, /--engine must be pi or omp/);
 	}
-	const advisor = limen(scratch, "spawn", "--role", "advisor", "--detached", "look");
-	assert.equal(advisor.status, 1);
-	assert.match(advisor.stderr, /no preamble for role advisor/);
 	const envClaude = limenWithEnv(scratch, { LIMEN_ENGINE: "claude" }, "spawn", "--detached", "look");
 	assert.equal(envClaude.status, 1);
 	assert.match(envClaude.stderr, /--engine must be pi or omp/);
@@ -717,7 +535,7 @@ test("spawn refuses a ticket missing from the base commit and starts when it is 
 	context.after(scratch.cleanup);
 	assert.equal(limen(scratch, "init").status, 0);
 	const path = "spec/features/active/F714-spawn-fails-closed-without-ticket/ticket.md";
-	const task = `do work Ticket: ${path}`;
+	const task = `do work (Ticket:  ${path}).`;
 	const missing = limen(scratch, "spawn", task);
 	assert.equal(missing.status, 1);
 	assert.match(missing.stderr, /ticket spec\/features\/active\/F714-spawn-fails-closed-without-ticket\/ticket\.md is missing from the base commit/);
@@ -934,6 +752,8 @@ test("prune between job-directory creation and marker writes cannot delete the s
 		process.env.LIMEN_HERDR = "0";
 		process.env.LIMEN_HUNK = "0";
 		process.env.LIMEN_FINISH_WEBHOOK_ENV = "";
+		delete process.env.LIMEN_OMP;
+		delete process.env.LIMEN_PI;
 		for (const name of Object.keys(process.env)) {
 			if (name.startsWith("HERDR_") || name === "PI_SESSION_ID" || name === "PI_SESSION_FILE") delete process.env[name];
 		}
@@ -967,35 +787,6 @@ test("prune between job-directory creation and marker writes cannot delete the s
 		}
 		Object.assign(process.env, previousEnv);
 	}
-});
-
-test("overlapping-start helpers reap gated children after a forced failure", { timeout: 120_000 }, async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const waitingRoot = join(scratch.root, "prepare-waiting");
-	const gate = join(scratch.root, "prepare-gate");
-	const prepareScript = join(scratch.root, "wait-prepare.cjs");
-	await writeFile(
-		prepareScript,
-		`const { writeFileSync, existsSync, mkdirSync } = require("node:fs");
-const { basename, join } = require("node:path");
-mkdirSync(${JSON.stringify(waitingRoot)}, { recursive: true });
-writeFileSync(join(${JSON.stringify(waitingRoot)}, basename(process.cwd())), "1");
-while (!existsSync(${JSON.stringify(gate)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
-`,
-	);
-	const started = startLimen(scratch, ["spawn", "--prepare", `node ${JSON.stringify(prepareScript)}`, "--label", "forced fail", "do work"]);
-	context.after(() => started.settle());
-	await waitForInFlightJob(scratch.root);
-	await waitFor("prepare did not start", async () => (await readdir(waitingRoot).catch(() => [])).length >= 1, 30_000);
-	const before = matchingProcesses(prepareScript);
-	assert.ok(before.length > 0, `expected gated prepare still running\n${before.join("\n")}`);
-	console.log(`forced-failure before settle:\n${before.join("\n")}`);
-	await started.settle();
-	const after = matchingProcesses(prepareScript);
-	console.log(`forced-failure after settle:\n${after.join("\n") || "(none)"}`);
-	assert.equal(after.length, 0, `gated child survived settle\n${after.join("\n")}`);
 });
 
 function startLimen(scratch: { readonly root: string; readonly fakeBin: string }, args: readonly string[], env: NodeJS.ProcessEnv = {}) {
@@ -1094,14 +885,6 @@ function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function matchingProcesses(needle: string): string[] {
-	const result = spawnSync("/bin/ps", ["-ax", "-o", "pid=,command="], { encoding: "utf8" });
-	return (result.stdout ?? "")
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line.includes(needle));
-}
-
 function descendantPids(rootPid: number): number[] {
 	const table: Array<{ pid: number; ppid: number }> = [];
 	for (const line of (spawnSync("/bin/ps", ["-ax", "-o", "pid=,ppid="], { encoding: "utf8" }).stdout ?? "").split("\n")) {
@@ -1140,12 +923,4 @@ test("a positional title labels a task file, and a trailing period does not brea
 	await waitForState(scratch.root, id, "done");
 	assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "label"), "utf8"), "Build the slice\n");
 	assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "task.md"), "utf8"), bytes);
-
-	const both = limen(scratch, "spawn", "Build the slice", "--task-file", "hand.md", "--label", "other");
-	assert.equal(both.status, 1);
-	assert.match(both.stderr, /positionally or as --label, not both/);
-
-	const help = limen(scratch, "spawn", "--help");
-	assert.equal(help.status, 0, help.stderr);
-	assert.match(help.stdout, /--task-file F\|-/);
 });

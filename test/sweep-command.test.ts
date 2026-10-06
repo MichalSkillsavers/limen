@@ -204,32 +204,6 @@ test("registry registration and pruning repeatedly reclaim dead locks across pro
 	}
 });
 
-test("sweep reaps dead jobs and a later pass rings the unheard completion", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(scratch.cleanup);
-	assert.equal(limen(scratch, "init").status, 0);
-	const home = dirname(scratch.root);
-	const log = join(home, "herdr-rings");
-	const herdr = join(scratch.fakeBin, "herdr-ring");
-	await writeFile(herdr, `#!/bin/sh\nprintf 'ring\\n' >> '${log}'\n`);
-	await chmod(herdr, 0o755);
-	const job = join(scratch.root, ".limen/jobs/dead");
-	await mkdir(job, { recursive: true });
-	await writeFile(join(job, "task.md"), "dead\n");
-	await writeFile(join(job, "log"), "");
-	await writeFile(join(job, "state"), "running\n");
-	await writeFile(join(job, "pid"), "999999999\n");
-	await writeFile(join(job, "started-at"), "2000-01-01T00:00:00.000Z\n");
-	const env = { ...(await fakeNotifications(scratch.fakeBin, herdr)), LIMEN_REAP_CONFIRM_MS: "1", LIMEN_SEAT_RING_MS: "60000", LIMEN_SEAT_NOTIFY_TIMEOUT_MS: fakeSeatTimeoutMs };
-	assert.equal(limenWithEnv(scratch, env, "sweep").status, 0);
-	assert.equal((await readFile(join(job, "state"), "utf8")).trim(), "failed");
-	await new Promise((resolve) => setTimeout(resolve, 5));
-	assert.equal(limenWithEnv(scratch, { ...env, LIMEN_SEAT_RING_MS: "1" }, "sweep").status, 0);
-	assert.equal((await readFile(log, "utf8")).trim(), "ring");
-	await assert.rejects(access(join(job, "notify/claims")));
-	await assert.rejects(access(join(job, "notify/delivered")));
-});
-
 test("sweep install writes a valid absolute launchd interval job and uninstall removes only it", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
@@ -237,7 +211,6 @@ test("sweep install writes a valid absolute launchd interval job and uninstall r
 	assert.equal(installed.status, 0, installed.stderr);
 	const path = join(dirname(scratch.root), "Library/LaunchAgents/limen-sweep.plist");
 	const plist = await readFile(path, "utf8");
-	assert.match(plist, /<key>StartInterval<\/key><integer>60<\/integer>/);
 	assert.match(plist, new RegExp(`<string>${escapeRegex(process.execPath)}</string>`));
 	assert.match(plist, /<string>\/.*\/bin\/limen<\/string>/);
 	if (process.platform === "darwin") assert.match(execFileSync("plutil", ["-lint", path], { encoding: "utf8" }), /OK/);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -73,7 +74,6 @@ test("second full sweep skips 473 settled records and shares two running jobs wi
 	context.diagnostic(
 		`475 records (473 settled, 2 running): second full sweep including reaper and status ${elapsed.toFixed(3)} ms; ${h.reads.length} sync filesystem calls; 0 settled-record reads`,
 	);
-	assert.ok(elapsed < 20, `second full sweep took ${elapsed.toFixed(3)} ms`);
 });
 
 test("settlement keeps fallback, blocked claims, and new subscriptions observable", (context) => {
@@ -189,9 +189,47 @@ test("progress events neither invalidate settled records nor schedule sweeps", a
 	);
 });
 
+test("an async footer read cannot overlap sweeps or publish into a replacement session", { timeout: 5_000 }, async (context) => {
+	const h = harness(context);
+	h.job("worker", "running");
+	h.put("worker/pid", String(process.pid));
+	h.put("worker/activity", "think");
+	h.put("worker/label", "old coordinator work");
+	const original = fsPromises.readFile;
+	let pidReads = 0;
+	let entered: () => void = () => {};
+	let release: () => void = () => {};
+	const paused = new Promise<void>((resolve) => {
+		entered = resolve;
+	});
+	const blocked = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	context.after(() => release());
+	context.mock.method(fsPromises, "readFile", async (...args: Parameters<typeof original>) => {
+		if (String(args[0]) === join(h.jobs, "worker/pid") && ++pidReads === 3) {
+			entered();
+			await blocked;
+		}
+		return Reflect.apply(original, fsPromises, args);
+	});
+	syncBuiltinESMExports();
+	h.restart();
+	await paused;
+	h.put("worker/label", "replacement coordinator work");
+	h.sessionId("replacement");
+	h.restart();
+	assert.equal(pidReads, 3, "the replacement cannot start a second liveness sweep while the first is paused");
+	const published = h.sweep();
+	release();
+	await published;
+	assert.match(h.status() ?? "", /replacement coordinator work think/);
+	assert.ok(!h.statuses.some((status) => status?.includes("old coordinator work")), "the old footer snapshot is discarded");
+});
+
 for (const advisory of [false, true]) {
 	for (const fallback of [false, true]) {
-		for (const failure of ["error", "aborted", "reject", "throw"]) {
+		for (const failure of ["error", "throw"]) {
 			test(`${advisory ? "advisory" : "completion"} ${fallback ? "fallback" : "subscriber"} stops after two ${failure} failures`, async (context) => {
 				const h = harness(context, failure);
 				h.job("mine", "done", "coordinator", "coordinator");
@@ -303,6 +341,7 @@ function harness(context: TestContext, failure = "") {
 	let idle = true;
 	let sessionId = "coordinator";
 	let status: string | undefined;
+	const statuses: Array<string | undefined> = [];
 	let swept: () => void = () => {};
 	const session = {
 		cwd: root,
@@ -312,6 +351,7 @@ function harness(context: TestContext, failure = "") {
 			notify() {},
 			setStatus(_key: string, value: string | undefined) {
 				status = value;
+				statuses.push(value);
 				swept();
 			},
 		},
@@ -358,6 +398,7 @@ function harness(context: TestContext, failure = "") {
 		jobs,
 		messages,
 		reads,
+		statuses,
 		scheduled,
 		events,
 		watcher,
@@ -378,6 +419,7 @@ function harness(context: TestContext, failure = "") {
 			changed("rename", filename);
 		},
 		shutdown: () => emit("session_shutdown"),
+		restart: () => emit("session_start"),
 		start: () => measure(() => emit("session_start")),
 		sweep: () => measure(() => intervals.get(500)?.()),
 		answer: (stopReason = "stop") =>

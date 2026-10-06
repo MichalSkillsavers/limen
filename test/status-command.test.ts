@@ -207,3 +207,87 @@ console.log(JSON.stringify({ result: { tabs: [
 	assert.doesNotMatch(status.stdout, /w9:t2 · working/);
 	assert.match(status.stdout, /origin tabs only/);
 });
+
+test("open groups collapse unique member branches and closed groups leave the inbox", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const base = git(scratch.root, "rev-parse", "HEAD");
+	for (const name of ["shared", "second", "solo-done", "solo-failed", "solo-stopped", "old"]) {
+		git(scratch.root, "switch", "-c", `limen/${name}`, base);
+		await writeFile(join(scratch.root, `${name}.txt`), `${name}\n`);
+		git(scratch.root, "add", `${name}.txt`);
+		git(scratch.root, "commit", "-m", name);
+		git(scratch.root, "switch", "main");
+	}
+	const members = [
+		{ id: "member-a", state: "done", branch: "limen/shared" },
+		{ id: "member-b", state: "failed", branch: "limen/shared" },
+		{ id: "member-c", state: "stopped", branch: "limen/second" },
+		{ id: "member-old", state: "done", branch: "limen/old" },
+	];
+	for (const { id, ...fields } of members)
+		await job(scratch.root, id, {
+			...fields,
+			group: "group-run",
+			label: id,
+			base,
+			"finished-at": new Date(Date.now() - (id === "member-old" ? 8 * 24 * 60 * 60 * 1000 : 0)).toISOString(),
+		});
+	for (const state of ["done", "failed", "stopped"]) await job(scratch.root, `solo-${state}`, { state, label: `solo ${state}`, branch: `limen/solo-${state}`, base });
+	const directory = join(scratch.root, ".limen/groups/group-run");
+	await mkdir(directory, { recursive: true });
+	const run = {
+		id: "group-run",
+		root: scratch.root,
+		feature: "spec/features/active/F773-group-inbox",
+		closed: false,
+		members: members.map(({ id }) => ({ id, team: "team-1", role: "worker", deadline: Date.now() + 60_000 })),
+	};
+	await writeFile(join(directory, "run.json"), JSON.stringify(run));
+	const open = limen(scratch, "status");
+	assert.equal(open.status, 0, open.stderr);
+	assert.match(
+		open.stdout,
+		/Candidates to inspect \(2\):\n  group spec\/features\/active\/F773-group-inbox: 2 member branches; the lead decides \(limen group status group-run\)\n  solo done \(solo-done\) · limen\/solo-done/,
+	);
+	assert.match(
+		open.stdout,
+		/Needs a decision \(2\):\n  solo failed \(solo-failed\) · failed · limen\/solo-failed\n  solo stopped \(solo-stopped\) · stopped · limen\/solo-stopped/,
+	);
+	assert.doesNotMatch(open.stdout, /member-[abc]|member-old|limen\/shared|limen\/second/);
+	assert.match(open.stdout, /Older: 1 record/);
+	const all = limen(scratch, "status", "--all");
+	assert.equal(all.status, 0, all.stderr);
+	assert.match(all.stdout, /group spec\/features\/active\/F773-group-inbox: 3 member branches/);
+	await writeFile(join(directory, "run.json"), JSON.stringify({ ...run, closed: true }));
+	const closed = limen(scratch, "status", "--all");
+	assert.equal(closed.status, 0, closed.stderr);
+	assert.match(closed.stdout, /Candidates to inspect \(1\):\n  solo done \(solo-done\) · limen\/solo-done/);
+	assert.match(closed.stdout, /Needs a decision \(2\):/);
+	assert.doesNotMatch(closed.stdout, /group-run|F773-group-inbox|member-|limen\/shared|limen\/second|limen\/old/);
+});
+
+test("unreadable and corrupt group records keep recoverable work visible", async (context) => {
+	const scratch = await scratchWorkspace();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "workspace", "init").status, 0);
+	const repo = scratch.repositories.api;
+	git(repo, "switch", "-c", "limen/recover");
+	await writeFile(join(repo, "recover.txt"), "recover\n");
+	git(repo, "add", "recover.txt");
+	git(repo, "commit", "-m", "recover");
+	git(repo, "switch", "main");
+	await job(scratch.root, "recover", { state: "done", label: "recover work", branch: "limen/recover", repo: "api", group: "broken-group" });
+	await job(scratch.root, "unknown", { state: "failed", label: "unknown Git work", branch: "limen/unknown", repo: "missing", group: "broken-group" });
+	const directory = join(scratch.root, ".limen/groups/broken-group");
+	await mkdir(directory, { recursive: true });
+	for (const record of [undefined, "{", JSON.stringify({ id: "broken-group", root: scratch.root, closed: true, members: [{ id: "recover" }, { id: "unknown" }] })]) {
+		if (record !== undefined) await writeFile(join(directory, "run.json"), record);
+		const result = limen(scratch, "status");
+		assert.equal(result.status, 0, result.stderr);
+		assert.match(result.stdout, /Candidates to inspect \(1\):\n  recover work \(recover\) · limen\/recover · repo api/);
+		assert.match(result.stdout, /Unconfirmed jobs:[\s\S]*unknown Git work \(unknown\) · Git unknown:/);
+		assert.doesNotMatch(result.stdout, /the lead decides/);
+	}
+});

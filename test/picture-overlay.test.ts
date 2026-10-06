@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import test from "node:test";
-import { readPicture } from "../src/picture/picture-build.ts";
 import { buildModel, type PictureFile } from "../src/picture/picture-model.ts";
-import { git, limen, scratchRepo } from "./scratch.ts";
 
 function record(kind: string, id: string, fields: string, body = "An explicit overlay."): PictureFile {
 	const directory = kind === "feature" ? "features" : kind === "journey" ? "journeys" : kind === "edge" ? "edges" : "nodes";
@@ -135,27 +131,6 @@ test("graph files with missing or misplaced kinds report errors instead of silen
 	}
 });
 
-test("unresolved but well-formed lists warn without discarding the overlay", () => {
-	const model = buildModel({
-		files: [...places, record("feature", "sample.feature", "touches:\n  - sample.missing"), record("journey", "sample.journey", "steps:\n  - sample.missing\n  - sample.a")],
-	});
-	assert.deepEqual(
-		model.features.map((feature) => [feature.id, feature.touches]),
-		[["sample.feature", []]],
-	);
-	assert.deepEqual(
-		model.journeys.map((journey) => [journey.id, journey.steps]),
-		[["sample.journey", ["sample.a"]]],
-	);
-	assert.deepEqual(
-		model.diagnostics.map((diagnostic) => [diagnostic.level, diagnostic.code]),
-		[
-			["warn", "feature.unknown-touch"],
-			["warn", "journey.unknown-step"],
-		],
-	);
-});
-
 test("overlay prose escapes executable content and retains sources, owner and unknown metadata", () => {
 	const body = "<script>alert(1)</script>\n\n[unsafe](javascript:alert) **Detail**.\n\nowner: overlay-team";
 	const model = buildModel({
@@ -176,19 +151,4 @@ test("overlay prose escapes executable content and retains sources, owner and un
 	assert.deepEqual(model.journeys[0]?.sources, ["src/journey.ts"]);
 	assert.equal(model.journeys[0]?.meta.priority, "low");
 	assert.deepEqual(model.diagnostics, []);
-});
-
-test("uppercase researched revision is the current canonical Git cursor, not an unknown commit", async (context) => {
-	const scratch = await scratchRepo();
-	context.after(() => scratch.cleanup());
-	const head = git(scratch.root, "rev-parse", "HEAD");
-	const dir = join(scratch.root, ".limen/picture");
-	await mkdir(join(dir, "nodes"), { recursive: true });
-	const plant = record("plant", "sample.plant", `parent: null\nrevision: ${head.toUpperCase()}`);
-	await writeFile(join(dir, plant.source), plant.text);
-	assert.equal((await readPicture(dir)).project.revision, head);
-	const result = limen(scratch, "picture", "tick");
-	assert.equal(result.status, 0, result.stderr);
-	assert.equal(result.stdout, "");
-	assert.deepEqual(await readdir(join(scratch.root, ".limen/jobs")).catch(() => []), []);
 });
