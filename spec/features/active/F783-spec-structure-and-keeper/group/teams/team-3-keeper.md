@@ -12,7 +12,7 @@ Candidate: branch `limen/2026-10-06-f783-team-3-coordinator-d004832d`. Worker jo
 ## Checks run
 
 - `npx tsc --noEmit`: clean. `npx biome check` on the 7 changed TS files: clean.
-- Test files keeper, land, coordinator-wake, wake-hook, structure and inherit: 54 of 55 passed. The wake-hook test "same-feature jobs retain useful names" timed out once. It passed on a rerun at the same commit, in a clean worktree, and at `be71876`.
+- Test files keeper, land, coordinator-wake, wake-hook, structure and inherit: 55 of 55 passed on the final run. In an earlier run, the wake-hook test "same-feature jobs retain useful names" timed out once at the same code. It also passes alone, in a clean worktree, and at `be71876`, so it is a timing flake under load.
 - CLI smoke on a scratch plant with a fake engine. `land` refused the branch: it printed a map warning, a board warning, `error … unknown place id` and the fix line. `keeper` followed the ticket from planned to active, and its packet had no fix line. The fake keeper fixed all three. Landing the keeper job fast-forwarded main with both commits and printed no warning.
 - Team 4 ran a live proof with a real Sol keeper at `ec149cc`, before the fixes (event `00000058`). The keeper fixed touches, the board line and the map source, and the land then succeeded.
 
