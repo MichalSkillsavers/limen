@@ -921,6 +921,12 @@ test("makeJobId hoists a feature number from anywhere in the label", () => {
 	assert.match(hostedAgentName(only), /^limen-f068-[0-9a-f]{8}$/);
 });
 
+test("makeJobId never leaves a run of dashes where a feature number or the cut was", () => {
+	assert.match(makeJobId("Fix F123 bug"), /^\d{4}-\d{2}-\d{2}-f123-fix-bug-[0-9a-f]{8}$/);
+	// The slug cut lands right after "team", on the dash before "review".
+	assert.match(makeJobId("F773 spec team-1 synthesis team review"), /^\d{4}-\d{2}-\d{2}-f773-spec-team-1-synthesis-team-[0-9a-f]{8}$/);
+});
+
 test("startHostedPi recovers an unclassified OMP process after a start warning", async () => {
 	await withFakeHerdr(
 		`const fs = require("node:fs"), args = process.argv.slice(2), started = __filename + ".started";

@@ -491,9 +491,9 @@ export function normalizeLabel(value: string): string {
 	return label;
 }
 export function makeJobId(label: string): string {
-	const feature = /\bf(\d{3,})\b/i.exec(label)?.[0]?.toLowerCase();
-	const rest = label.toLowerCase().replace(/\bf\d{3,}\b|[^a-z0-9]+/gi, "-");
-	const slug = `${feature ? `${feature}-` : ""}${rest.replace(/^-+|-+$/g, "")}`.replace(/-+$/, "").slice(0, 32) || "job";
+	const feature = /\bf\d{3,}\b/i.exec(label)?.[0] ?? "";
+	const words = `${feature} ${label.replace(/\bf\d{3,}\b/gi, " ")}`.toLowerCase();
+	const slug = words.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32).replace(/-$/, "") || "job";
 	return `${new Date().toISOString().slice(0, 10)}-${slug}-${randomBytes(4).toString("hex")}`;
 }
 export function hostedAgentName(jobId: string): string {
