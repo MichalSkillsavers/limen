@@ -5,8 +5,8 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } fro
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { hostedAgentName, makeJobId } from "../src/commands/spawn.ts";
 import { hostedAgentStatus, hostedTerminalReason, startHostedPi } from "../src/integrations/herdr.ts";
+import { hostedAgentName, makeJobId } from "../src/job/job.ts";
 import { type HostedIdleWatch, noteHostedIdle, writeHostedResult } from "../src/runtime/supervisor.ts";
 import { git, limen, limenWithEnv, onlyJobId, type Scratch, scratchRepo, waitForState } from "./scratch.ts";
 
@@ -919,6 +919,12 @@ test("makeJobId hoists a feature number from anywhere in the label", () => {
 	const only = makeJobId("F068");
 	assert.match(only, /^\d{4}-\d{2}-\d{2}-f068-[0-9a-f]{8}$/);
 	assert.match(hostedAgentName(only), /^limen-f068-[0-9a-f]{8}$/);
+});
+
+test("makeJobId never leaves a run of dashes where a feature number or the cut was", () => {
+	assert.match(makeJobId("Fix F123 bug"), /^\d{4}-\d{2}-\d{2}-f123-fix-bug-[0-9a-f]{8}$/);
+	// The slug cut lands right after "team", on the dash before "review".
+	assert.match(makeJobId("F773 spec team-1 synthesis team review"), /^\d{4}-\d{2}-\d{2}-f773-spec-team-1-synthesis-team-[0-9a-f]{8}$/);
 });
 
 test("startHostedPi recovers an unclassified OMP process after a start warning", async () => {

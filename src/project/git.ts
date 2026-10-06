@@ -17,8 +17,8 @@ export function workspaceRoot(cwd: string): string | undefined {
 }
 export function limenRoot(cwd: string): string {
 	if (process.env.LIMEN_GROUP_ID) {
-		const root = process.env.LIMEN_CONTEXT_ROOT,
-			id = process.env.LIMEN_GROUP_ID;
+		const root = process.env.LIMEN_CONTEXT_ROOT;
+		const id = process.env.LIMEN_GROUP_ID;
 		if (!root || !/^[A-Za-z0-9-]+$/.test(id)) throw new Error("group routing context is incomplete");
 		const run = JSON.parse(readFileSync(`${root}/.limen/groups/${id}/run.json`, "utf8")) as { root: string; members: { id: string; team: string }[] };
 		if (run.root !== root || !run.members.some((member) => member.id === process.env.LIMEN_JOB_ID && member.team === process.env.LIMEN_TEAM_ID))
@@ -78,8 +78,8 @@ export function unlandedBranches(cwd: string, branches: Iterable<string>): Reado
 	const upstream = new Set([...patchIds].filter(([oid]) => !graph.has(oid)).map(([, patch]) => patch));
 	const unlanded = new Set<string>();
 	for (const [tip, refs] of tips) {
-		const stack = [tip],
-			visited = new Set<string>();
+		const stack = [tip];
+		const visited = new Set<string>();
 		let landed = true;
 		while (landed && stack.length) {
 			const oid = stack.pop() as string;
@@ -145,12 +145,15 @@ export function pruneWorktrees(cwd: string): void {
 export function headCommit(cwd: string): string {
 	return requireGit(cwd, ["rev-parse", "HEAD"]).stdout.trim();
 }
+export const NO_COMMIT = "this repository has no commit yet; commit once, then spawn.";
+export function hasCommit(cwd: string): boolean {
+	return git(cwd, ["rev-parse", "--verify", "HEAD"]).status === 0;
+}
 export function spawnBaseCommit(cwd: string): string {
 	const result = git(cwd, ["rev-parse", "--verify", "HEAD"]);
 	if (result.status === 0) return result.stdout.trim();
 	const branch = git(cwd, ["symbolic-ref", "--quiet", "HEAD"]);
-	if (branch.status === 0 && git(cwd, ["show-ref", "--verify", "--quiet", branch.stdout.trim()]).status === 1)
-		throw new Error("this repository has no commit yet; commit once, then spawn.");
+	if (branch.status === 0 && git(cwd, ["show-ref", "--verify", "--quiet", branch.stdout.trim()]).status === 1) throw new Error(NO_COMMIT);
 	throw new Error(result.stderr.trim() || result.stdout.trim() || "git rev-parse failed");
 }
 export function currentBranch(cwd: string): string {

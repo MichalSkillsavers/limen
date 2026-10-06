@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
-import { hostedAgentName } from "../commands/spawn.ts";
 import { hostedAgentStatus, hostedBindingInPane, locateHostedAgent } from "../integrations/herdr.ts";
+import { hostedAgentName } from "../job/job.ts";
 import { atomicWrite, textFile } from "../job/record.ts";
 import { processAlive, processInfo } from "./contain.ts";
 import { jobProfile } from "./engine.ts";

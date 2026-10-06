@@ -68,8 +68,13 @@ export function engineBinary(profile: EngineProfile): string {
 export async function jobProfile(jobDir: string): Promise<EngineProfile> {
 	return engineProfile((await readFile(`${jobDir}/engine`, "utf8").catch(() => "pi")).trim() || "pi");
 }
+// Package fallback when neither --model nor the role's environment variable names a model.
+export function defaultModel(review: boolean): string {
+	return process.env[review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high";
+}
 export function preflightEngine(profile: EngineProfile, model?: string, provider?: string): void {
-	if (!(process.env.PATH ?? "").split(":").some((dir) => dir && existsSync(`${dir}/${profile.binaryDefault}`))) throw new Error(`${profile.binaryDefault} is not on PATH`);
+	if (!(process.env.PATH ?? "").split(":").some((dir) => dir && existsSync(`${dir}/${profile.binaryDefault}`)))
+		throw new Error(`${profile.binaryDefault} is not on PATH; install it, or pass --engine ${profile.id === "omp" ? "pi" : "omp"}`);
 	if (!profile.authCheck || process.env.LIMEN_PREFLIGHT !== "auth") return;
 	const result = spawnSync(engineBinary(profile), ["auth", "check", ...(provider ? ["--provider", provider] : []), ...(model ? ["--model", model] : [])], {
 		encoding: "utf8",

@@ -3,24 +3,15 @@ import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { herdrAvailable, openWatchTab } from "../integrations/herdr.ts";
 import { claimMember, commandRoot, groupIdentity, groupLock, groupPath, jobMembership, teamRoute } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
+import { hostedAgentName, makeJobId } from "../job/job.ts";
 import { resolveJob } from "../job/lookup.ts";
 import { publishJob } from "../job/publication.ts";
 import { atomicWrite, finalizeJob } from "../job/record.ts";
 import { addBranchWorktree, branchCommit, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { inheritedPlanning, privatePlanningFile, privatePlanningTask, recordedPlanningSource, ticketPointers } from "../project/planning.ts";
-import { engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
+import { defaultModel, engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { launchWrapper } from "../runtime/wrapper.ts";
-import {
-	capturedVersions,
-	currentNotificationSession,
-	herdrWakePane,
-	hostedAgentName,
-	makeJobId,
-	normalizeLabel,
-	resolvePreamble,
-	startHosted,
-	waitForHandshake,
-} from "./spawn.ts";
+import { capturedVersions, currentNotificationSession, herdrWakePane, normalizeLabel, resolvePreamble, startHosted, waitForHandshake } from "./spawn.ts";
 
 /** Resume a finished job's own engine session; restore a pruned checkout from its branch. */
 export async function continueCommand(args: readonly string[], cwd: string): Promise<void> {
@@ -58,7 +49,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	const herdr = herdrAvailable();
 	const hosted = detached ? false : tab || herdr;
 	if (tab && !herdr) throw new Error("hosted continue requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
-	const chosenModel = model ?? (process.env[review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
+	const chosenModel = model ?? defaultModel(review);
 
 	// A job that continues from its own worktree resolves jobs in its canonical root.
 	const inherited = workspaceRoot(cwd) ? undefined : inheritedPlanning(repoRoot(cwd));

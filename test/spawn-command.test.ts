@@ -402,6 +402,10 @@ setInterval(() => {}, 1000);
 	const duplicateId = onlyJobId(duplicate.stdout);
 	assert.notEqual(duplicateId, firstId);
 	assert.match(duplicateId, /^\d{4}-\d{2}-\d{2}-f065-idle-backstop-[0-9a-f]{8}$/);
+	const refused = limen(scratch, "spawn", "--branch", "main", "--label", label, "long work");
+	assert.equal(refused.status, 1);
+	assert.equal(refused.stdout, "", "a refused spawn prints no running-job note or label warning");
+	assert.match(refused.stderr, /primary worktree.*omit --branch/);
 	for (const id of [numberId, firstId, duplicateId]) {
 		assert.equal(limen(scratch, "stop", id, "test cleanup").status, 0);
 		await waitForState(scratch.root, id, "stopped");

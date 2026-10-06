@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 type JobIdentity = { readonly id: string; readonly label: string; readonly branch: string };
 export type Job = JobIdentity &
 	(
@@ -76,6 +78,26 @@ export function resolveJobId(query: string, ids: readonly string[], labels: Read
 	if (matches.length === 1) return matches[0] ?? needle;
 	if (matches.length === 0) throw new Error(`no job matches ${JSON.stringify(needle)}`);
 	throw new Error(`ambiguous job ${JSON.stringify(needle)}: ${matches.join(", ")}`);
+}
+export function makeJobId(label: string): string {
+	const feature = /\bf\d{3,}\b/i.exec(label)?.[0] ?? "";
+	const words = `${feature} ${label.replace(/\bf\d{3,}\b/gi, " ")}`.toLowerCase();
+	const slug =
+		words
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-|-$/g, "")
+			.slice(0, 32)
+			.replace(/-$/, "") || "job";
+	return `${new Date().toISOString().slice(0, 10)}-${slug}-${randomBytes(4).toString("hex")}`;
+}
+export function hostedAgentName(jobId: string): string {
+	const hex = /[0-9a-f]{8}$/.exec(jobId)?.[0] ?? "";
+	const feature = /(?:^|-)(f\d{3,})(?:-|$)/i.exec(jobId)?.[1]?.toLowerCase();
+	if (feature && hex) return `limen-${feature}-${hex}`;
+	const cut = jobId.slice(0, hex ? -9 : undefined).toLowerCase();
+	const dashed = cut.replace(/^\d{4}-\d{2}-\d{2}-/, "").replace(/[^a-z0-9_-]+/g, "-");
+	const slug = dashed.replace(/^[^a-z]+/, "").slice(0, 17) || "job";
+	return hex ? `limen-${slug}-${hex}` : `limen-${slug}`.slice(0, 32);
 }
 export function parseDuration(value: string): number {
 	const match = /^(\d+)(ms|s|m|h)$/.exec(value);

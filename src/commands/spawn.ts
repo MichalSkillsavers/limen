@@ -1,5 +1,4 @@
 import { spawn, spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
@@ -9,7 +8,7 @@ import { herdrAvailable, openHostedTab, openWatchTab } from "../integrations/her
 import type { GroupRun } from "../job/group-cabinet.ts";
 import { claimMember, groupIdentity, groupLock, groupPath, teamRoute } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
-import { parseDuration } from "../job/job.ts";
+import { hostedAgentName, makeJobId, parseDuration } from "../job/job.ts";
 import { publishJob } from "../job/publication.ts";
 import { appendLimenLog, atomicWrite, finalizeJob } from "../job/record.ts";
 import {
@@ -27,7 +26,7 @@ import {
 } from "../project/git.ts";
 import { inheritedPlanning, planningSource, privatePlanningFile, privatePlanningTask, ticketPointers } from "../project/planning.ts";
 import { signalProcessGroup, waitForProcessGroup } from "../runtime/contain.ts";
-import { type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
+import { defaultModel, type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { liveJob } from "../runtime/reap.ts";
 import { launchHostedSupervisor, launchWrapper } from "../runtime/wrapper.ts";
 import { hunkBinary } from "./diff.ts";
@@ -54,8 +53,9 @@ type SpawnOptions = {
 };
 const PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export function resolvePreamble(root: string, role: string): string {
-	for (const path of [`${root}/.agents/limen/${role}.md`, `${PACKAGE_ROOT}/templates/${role}.md`]) if (existsSync(path)) return path;
-	throw new Error(`no preamble for role ${role}`);
+	const places = [`${root}/.agents/limen/${role}.md`, resolve(PACKAGE_ROOT, "templates", `${role}.md`)];
+	for (const path of places) if (existsSync(path)) return path;
+	throw new Error(`no preamble for role ${role} in ${places.join(" or ")}; write .agents/limen/${role}.md to add the role`);
 }
 type WorktreePlan =
 	| { readonly kind: "detach"; readonly path: string; readonly ref: string }
@@ -110,7 +110,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const options = { ...parsed, tab, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
 	const profile = resolveSpawnEngine(options.engine);
 	const engine = profile.id;
-	const model = options.model ?? (process.env[options.review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
+	const model = options.model ?? defaultModel(options.review);
 	preflightEngine(profile, model, options.provider);
 	const notificationSession = currentNotificationSession();
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
@@ -146,14 +146,6 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const id = makeJobId(options.label);
 	const jobsRoot = `${root}/.limen/jobs`;
 	await mkdir(jobsRoot, { recursive: true });
-	let running = 0,
-		held = false;
-	for (const entry of await readdir(jobsRoot, { withFileTypes: true })) {
-		if (entry.isDirectory() && (await liveJob(`${jobsRoot}/${entry.name}`))) (running += 1), (held ||= (await text(`${jobsRoot}/${entry.name}/label`)) === options.label);
-	}
-	if (running > 0) console.log(`note: ${running} job${running === 1 ? "" : "s"} already running; starting another`);
-	if (/^F\d{3,}$/i.test(options.label)) console.log("warning: label is only a feature number");
-	if (held) console.log("warning: a live job already holds this label");
 	const branch = options.branch ?? `limen/${id}`;
 	const worktreeRoot = `${dirname(repository)}/.${basename(repository)}-limen-worktrees`;
 	const requestedPath = `${worktreeRoot}/${id}`;
@@ -174,6 +166,16 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 			if (path.startsWith("spec/") && !commitHasFile(repository, baseCommit, path)) throw new Error(`ticket ${path} is missing from the base commit`);
 	}
 	const member = group ? await claimMember(group.run, group.team, group.role, id) : undefined;
+	let running = 0;
+	let held = false;
+	for (const entry of await readdir(jobsRoot, { withFileTypes: true })) {
+		if (!entry.isDirectory() || !(await liveJob(`${jobsRoot}/${entry.name}`))) continue;
+		running += 1;
+		if ((await text(`${jobsRoot}/${entry.name}/label`)) === options.label) held = true;
+	}
+	if (running > 0) console.log(`note: ${running} job${running === 1 ? "" : "s"} already running; starting another`);
+	if (/^F\d{3,}$/i.test(options.label)) console.log("warning: label is only a feature number");
+	if (held) console.log("warning: a live job already holds this label");
 	const jobDir = `${jobsRoot}/${id}`;
 	const candidate = options.review ? branchCommit(repository, branch) : undefined;
 	const base = options.base ?? baseCommit;
@@ -356,7 +358,10 @@ async function planWorktree(input: {
 	}
 	if (!branchExists(root, branch)) return { kind: "add-new", path, branch };
 	const existing = worktreeForBranch(root, branch);
-	if (existing && resolve(existing.path) === resolve(root)) throw new Error(`branch ${branch} is checked out in the primary worktree; isolation is impossible`);
+	if (existing && resolve(existing.path) === resolve(root))
+		throw new Error(
+			`branch ${branch} is checked out in the primary worktree, so the job cannot get its own worktree; switch the primary worktree to another branch, or omit --branch`,
+		);
 	if (await liveJobUsesBranch(input.jobsRoot, branch, input.repo)) throw new Error(`branch ${branch} already has a live job`);
 	return existing ? { kind: "reuse", path: existing.path } : { kind: "add-branch", path, branch };
 }
@@ -490,21 +495,6 @@ export function normalizeLabel(value: string): string {
 	if (!label || /[\r\n]/.test(label)) throw new Error("--label must be one non-empty line");
 	return label;
 }
-export function makeJobId(label: string): string {
-	const feature = /\bf(\d{3,})\b/i.exec(label)?.[0]?.toLowerCase();
-	const rest = label.toLowerCase().replace(/\bf\d{3,}\b|[^a-z0-9]+/gi, "-");
-	const slug = `${feature ? `${feature}-` : ""}${rest.replace(/^-+|-+$/g, "")}`.replace(/-+$/, "").slice(0, 32) || "job";
-	return `${new Date().toISOString().slice(0, 10)}-${slug}-${randomBytes(4).toString("hex")}`;
-}
-export function hostedAgentName(jobId: string): string {
-	const hex = /[0-9a-f]{8}$/.exec(jobId)?.[0] ?? "";
-	const feature = /(?:^|-)(f\d{3,})(?:-|$)/i.exec(jobId)?.[1]?.toLowerCase();
-	if (feature && hex) return `limen-${feature}-${hex}`;
-	const cut = jobId.slice(0, hex ? -9 : undefined).toLowerCase();
-	const dashed = cut.replace(/^\d{4}-\d{2}-\d{2}-/, "").replace(/[^a-z0-9_-]+/g, "-");
-	const slug = dashed.replace(/^[^a-z]+/, "").slice(0, 17) || "job";
-	return hex ? `limen-${slug}-${hex}` : `limen-${slug}`.slice(0, 32);
-}
 // The shell in a member's tab may put another installed Limen first on PATH; name the package that runs this group.
 function memberRoute(run: GroupRun, team: string): string {
 	const route = teamRoute(run, team);
@@ -545,7 +535,10 @@ export async function waitForHandshake(jobDir: string, wrapperPid: number, owner
 		await new Promise((resolve) => setTimeout(resolve, HANDSHAKE_POLL_MS));
 	}
 	signalProcessGroup(wrapperPid, "SIGTERM");
-	if (!(await waitForProcessGroup(wrapperPid, 1_000))) signalProcessGroup(wrapperPid, "SIGKILL"), await waitForProcessGroup(wrapperPid, 1_000);
+	if (!(await waitForProcessGroup(wrapperPid, 1_000))) {
+		signalProcessGroup(wrapperPid, "SIGKILL");
+		await waitForProcessGroup(wrapperPid, 1_000);
+	}
 	await finalizeJob(jobDir, "failed", `${owner} did not become ready`);
 	throw new Error(`${owner} did not start; inspect the job record`);
 }
