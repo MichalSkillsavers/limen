@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ticketPointers } from "../project/planning.ts";
 import { producedNothing } from "./job.ts";
 
 function text(path: string): string {
@@ -47,13 +48,19 @@ export function completionWake(job: string, label: string, state: string, id: st
 	let instruction =
 		"Inspect the job record, failure and log/session. Resume focused fixes and re-review if appropriate; do not treat this failure as a new-spawn or release signal. Keep the user informed; ask only when genuine product ambiguity, a scope or risk tradeoff, or an irreversible action needs a human decision.";
 	if (state === "done")
-		instruction =
-			"Inspect the job record, branch diff and commits, log/session, and relevant checks. Then land the work at the verified commit. If a check blocks landing, name that check and resume a focused fix. After it lands, continue with the next item on the board. Keep the user informed; ask only when genuine product ambiguity, a scope or risk tradeoff, or an irreversible action needs a human decision.";
+		instruction = `Inspect the job record, branch diff and commits, log/session, and relevant checks. Then land the work at the verified commit. If a check blocks landing, name that check and resume a focused fix. ${keeperHint(job, id)} After it lands, continue with the next item on the board. Keep the user informed; ask only when genuine product ambiguity, a scope or risk tradeoff, or an irreversible action needs a human decision.`;
 	if (empty)
 		instruction =
 			"Inspect the job record and log/session to understand why, then resume focused work if the ticket remains open. Keep the user informed; ask only when genuine product ambiguity, a scope or risk tradeoff, or an irreversible action needs a human decision.";
 	if (fallback) instruction = "The subscribed coordinator is busy. Do not spawn, stop, steer, or land on behalf of another coordinator unless the human asks.";
 	return joinWake(lead, handoffExcerpt(job), [facts, handoff].filter(Boolean).join("\n\n"), routeInstruction ?? instruction);
+}
+/** The done-wake sentence that sends spec work to the keeper; the ticket comes from the job task's first `Ticket:` pointer (keeper follows a moved one). */
+export function keeperHint(job: string, id: string): string {
+	// A keeper always changes a ticket; sending it to another keeper would loop.
+	if (text(join(job, "role")) === "keeper") return "This is the spec keeper: land it, since it carries the work and the spec fixes. If it made no commit, land the original job.";
+	const ticket = ticketPointers(text(join(job, "task.md")))[0]?.path ?? "<ticket>";
+	return `If it added, moved or changed a ticket, start limen keeper ${ticket} --job ${id} --engine <engine> --provider <provider> --model <model> --thinking <level> and land the keeper job instead.`;
 }
 export type LeadFallback = { readonly group: string; readonly feature: string; readonly lead: string; readonly team: string; readonly finished: number; readonly total: number };
 /** A team coordinator's finish for a lead whose group hook is not running: the group events that normally carry it cannot reach the pane. */

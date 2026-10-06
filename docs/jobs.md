@@ -83,6 +83,9 @@ limen continue <id> 'Follow-up instruction'
 
 # Follow and land
 limen watch <id|label>
+# When the work changed a ticket, fix its links on a keeper branch first, then land the keeper job
+limen keeper spec/features/active/F001-auth/ticket.md --job <id> \
+  --engine <engine> --provider <provider> --model <model> --thinking <level>
 limen land <id>
 ```
 
@@ -105,6 +108,18 @@ Use these steps in this order:
 
 - **Watch:** To take over a job that another coordinator started, watch that job by name. `watch --running` subscribes to every running job, but it is not a takeover.
 - **Land:** `limen land` merges a `done` job onto the current branch. Read [Job states](#job-states) first.
+- **Ticket check on land:** before it merges, `limen land` checks every ticket the branch adds, moves or changes, at the branch tip, against the plant map's place ids. An error refuses the land and prints the `limen keeper` command that fixes it. A warning prints and does not block. Without a map, land skips the place ids and says so. `limen ticket check <branch>` runs the same check before an ordinary `git merge`.
+
+### Spec keeper
+
+`limen keeper <ticket> --job <id> [--job <id> …] [--candidate <branch>] [--group <id>]` starts a short detached job (default timeout 20 minutes) that fixes the spec links of finished work: ticket front matter, the board line and map sources. The coordinator starts it; no hook does.
+
+- It refuses while a listed job is still running, so it never races a worker. In a group, only the lead starts it.
+- It creates `limen/keeper-<fnnn>-<tip>` at the candidate tip: the single job's branch, or `--candidate` for several jobs on one integration branch. The keeper commits only there.
+- When the job moved its ticket to another lane, the old path still works: the keeper follows the one folder at the tip with that number and prints `ticket moved: <old> -> <new>`.
+- Its task is a packet: the ticket, board and map paths, the candidate, the changed tickets, the current land check, and per job the label, state, branch with base and tip, worktree, session transcript and task. Both engines write the transcript as `.limen/jobs/<id>/session/<time>_<uuid>.jsonl`; the packet names the newest one.
+- The keeper edits only `spec/features/**`, `spec/build.md`, and map files that cite a changed ticket. Map edits apply in place and do not land.
+- Land the keeper job: it carries the work and the fixes. If the keeper commits nothing, land the original job.
 
 ### Finished jobs
 
