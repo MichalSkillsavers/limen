@@ -19,25 +19,16 @@ before(async () => {
 	await writeFile(join(p.root, "test/old.test.ts"), lines(8));
 	git(p.root, "add", "-A");
 	git(p.root, "commit", "-q", "-m", "main is over its test cap");
-	job.running = spawnJob(p, "commit\nblock");
-	for (const [name, task] of [
-		["a", "commit"],
-		["b", "commit"],
-		["empty", "say nothing to commit"],
-		["failed", "commit\nfail 3"],
-		["ticket", "commit"],
-	] as const)
-		job[name] = spawnJob(p, task);
-	await until(jobDir(p, job.running), () => existsSync(join(jobDir(p, job.running), "fake-blocked-1")));
-	for (const name of ["a", "b", "empty", "ticket"] as const) assert.equal(waitJob(p, job[name]), "done");
-	assert.equal(waitJob(p, job.failed), "failed");
-	// B removes test lines and leaves test/ still over the cap; the ticket job files a ticket that touches no known place.
-	await amend(job.b, { "test/old.test.ts": lines(6) });
-	const bad = (await readFile(join(p.root, TICKET), "utf8")).replace("demo.place", "nope").replaceAll("F001", "F002");
-	await amend(job.ticket, { [TICKET.replace("F001-demo", "F002-bad")]: bad });
 	main = git(p.root, "rev-parse", "main");
 });
 after(() => p.cleanup());
+
+// Each test spawns the jobs it needs, so no single test carries every spawn under npm test's per-test limit.
+function done(task: string): string {
+	const id = spawnJob(p, task);
+	assert.equal(waitJob(p, id), "done");
+	return id;
+}
 
 // Each spawn prunes the worktrees of finished jobs, so a branch gets its extra commit in a worktree of its own.
 async function amend(id: string, files: Readonly<Record<string, string>>): Promise<void> {
@@ -67,6 +58,11 @@ function changed(id: string): string[] {
 }
 
 test("a running, an empty and a failed job are refused", async () => {
+	job.running = spawnJob(p, "commit\nblock");
+	job.empty = done("say nothing to commit");
+	job.failed = spawnJob(p, "commit\nfail 3");
+	assert.equal(waitJob(p, job.failed), "failed");
+	await until(jobDir(p, job.running), () => existsSync(join(jobDir(p, job.running), "fake-blocked-1")));
 	assert.equal(jobFile(p, job.running, "state"), "running");
 	refused(job.running);
 	await release(jobDir(p, job.running));
@@ -78,6 +74,7 @@ test("a running, an empty and a failed job are refused", async () => {
 });
 
 test("an unconfirmed land, another target, a group member, a staged target and a dirty file in the merge are refused", async () => {
+	job.a = done("commit");
 	// Without a TTY only --yes confirms; --onto names a branch that is not checked out.
 	refused(job.a, {}, []);
 	git(p.root, "branch", "other");
@@ -105,8 +102,11 @@ test("an unconfirmed land, another target, a group member, a staged target and a
 	await rm(join(p.root, file));
 });
 
-test("a ticket that fails the strict check is refused with the keeper command", () => {
+test("a ticket that fails the strict check is refused with the keeper command", async () => {
+	// The job files a ticket that touches no known place.
+	job.ticket = done("commit");
 	const ticket = TICKET.replace("F001-demo", "F002-bad");
+	await amend(job.ticket, { [ticket]: (await readFile(join(p.root, TICKET), "utf8")).replace("demo.place", "nope").replaceAll("F001", "F002") });
 	const stderr = refused(job.ticket);
 	assert.ok(stderr.includes(`${ticket}:3`), stderr);
 	assert.ok(stderr.includes(`limen keeper ${ticket} --job ${job.ticket}`), stderr);
@@ -119,6 +119,9 @@ test("a branch that adds test lines past the cap is refused and names the number
 });
 
 test("a done job fast-forwards, and a branch that removes test lines merges beside an uncommitted file", async () => {
+	// B starts from the same main as A and removes test lines, leaving test/ still over the cap.
+	job.b = done("commit");
+	await amend(job.b, { "test/old.test.ts": lines(6) });
 	const a = git(p.root, "rev-parse", jobFile(p, job.a, "branch"));
 	const first = limen(p, ["land", job.a, "--yes"]);
 	assert.equal(first.status, 0, first.stderr);

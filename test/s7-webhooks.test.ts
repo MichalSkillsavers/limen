@@ -3,8 +3,8 @@
 // Authorization header.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { git, jobDir, jobFile, limen, plant, type Run, requests, until } from "./plant.ts";
 
@@ -34,9 +34,9 @@ const payloads = () => requests(p).map((request) => ({ url: request.url, body: J
 // The finish path writes its final result line after the sender exits; every request it made is recorded by then.
 const settled = (id: string) => until(p.parent, () => /^(accepted|failed|skipped)/.test(jobFile(p, id, "finish-webhook")));
 
-async function ticket(code: string, author: string): Promise<string> {
-	const path = `spec/features/active/${code}-s7/ticket.md`;
-	await mkdir(join(p.root, `spec/features/active/${code}-s7`), { recursive: true });
+async function ticket(code: string, author: string, lane = "active"): Promise<string> {
+	const path = `spec/features/${lane}/${code}-s7/ticket.md`;
+	await mkdir(join(p.root, dirname(path)), { recursive: true });
 	await writeFile(join(p.root, path), `---\ntouches:\n  - demo.place\nopened: 2026-10-06\n---\n\n# ${code} · S7\n`);
 	git(p.root, "add", path);
 	git(p.root, "commit", "-q", "--author", author, "-m", `ticket ${code}`);
@@ -45,8 +45,14 @@ async function ticket(code: string, author: string): Promise<string> {
 
 // Spawned before any config exists: the job records no config, so nothing can ever send for it.
 const quiet = spawn("commit", "S7 quiet");
-const alice = await ticket("F002", "Alice <1+alice@users.noreply.github.com>");
-const bob = await ticket("F003", "Bob <2+bob@users.noreply.github.com>");
+const BOB = "Bob <2+bob@users.noreply.github.com>";
+const planned = await ticket("F002", "Alice <1+alice@users.noreply.github.com>", "planned");
+const bob = await ticket("F003", BOB);
+// Bob edits Alice's ticket and moves it to active: Alice still filed it, so her pings stay hers.
+const alice = planned.replace("planned", "active");
+git(p.root, "mv", dirname(planned), dirname(alice));
+await appendFile(join(p.root, alice), "\nBob's edit.\n");
+git(p.root, "commit", "-q", "-a", "--author", BOB, "-m", "Bob moves and edits F002");
 await writeFile(
 	join(p.root, ".limen/finish-webhook.env"),
 	`LIMEN_FINISH_WEBHOOK_TARGETS='${JSON.stringify(URLS.map((url, index) => ({ url, auth: SECRETS[index] })))}'\nLIMEN_FINISH_WEBHOOK_AUTHOR_TARGETS='{"@alice":[1],"@bob":[2]}'\n`,
