@@ -137,10 +137,18 @@ test("a member's finish completes while another process holds the cabinet; its l
 	assert.equal(waitJob(p, roster.worker1), "done");
 	await until(jobDir(p, roster.worker1), () => /^accepted/.test(jobFile(p, roster.worker1, "finish-webhook")));
 	await rm(lock, { recursive: true });
-	const status = limen(p, ["group", "status", group, "--json"], { env: LEAD });
-	assert.equal(status.status, 0, status.stderr);
-	const events: Array<{ author: string; kind: string; text: string }> = JSON.parse(status.stdout).events;
-	assert.equal(events.filter((event) => event.author === roster.worker1 && event.text.endsWith(": state done")).length, 1);
+	// `group status` publishes lifecycle only when it gets the cabinet, and live member hooks take it for a moment, so read
+	// until the event is there; one more read must still show exactly one.
+	const doneEvents = () => {
+		const status = limen(p, ["group", "status", group, "--json"], { env: LEAD });
+		assert.equal(status.status, 0, status.stderr);
+		const events: Array<{ author: string; text: string }> = JSON.parse(status.stdout).events;
+		return events.filter((event) => event.author === roster.worker1 && event.text.endsWith(": state done")).length;
+	};
+	let seen = 0;
+	while (seen === 0) seen = doneEvents();
+	assert.equal(seen, 1);
+	assert.equal(doneEvents(), 1);
 });
 
 test("each recipient reads a finding once, the lead hears it as a followUp, and a synthesis write sends a lead-step ping", async () => {
