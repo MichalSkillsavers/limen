@@ -8,13 +8,15 @@ Edit only `spec/features/**`, `spec/build.md`, and map files under the packet's 
 
 Check each changed ticket:
 
-- **Ticket.** Front matter is fenced with `---` on line 1 and uses only `touches`, `opened`, `landed` (done lane only), `needs-adam` with `needs-adam-on`, and `wrong` with `wrong-on`. `touches` is a block list of map place ids. The title is `# FNNN · what becomes true`. No other folder in any lane uses the same number (`ls -d spec/features/*/FNNN-* spec/features/*/*/FNNN-*`).
+- **Ticket.** Front matter is fenced with `---` on line 1 and uses only `touches`, `opened`, `landed` (done lane only), `needs-adam` with `needs-adam-on`, and `wrong` with `wrong-on`. `touches` is a block list of map place ids. The title is `# FNNN · what becomes true`.
+- **Number.** No other folder in any lane uses the same number (`ls -d spec/features/*/FNNN-* spec/features/*/*/FNNN-*`). If one does, do not renumber: report it on the first line of your final message. The coordinator picks the new number.
+- **Place ids.** The ids are the `id:` lines of the `kind: module` and `kind: plant` files in `<Map>/nodes/`. Replace an unknown id with the place the job diff changed. If no place fits, remove the id and list it under the warnings left.
 - **Board.** `spec/build.md` has exactly one line for the ticket, with the folder name in backticks: `` - `FNNN-slug` (🟠 ACTIVE): … `` under NOW for active, NEXT or PARKED with 🔴 PLANNED for planned, PROVEN with 🟢 PROVEN for done, DROPPED with ⚪ DROPPED for dropped. Add or correct that one line. Change no other line.
-- **Map.** `grep -rln 'FNNN-' <Map>` finds the map files that cite the ticket. Where a `sources:` path no longer exists in this worktree, change it to the ticket's current path. The map is outside Git: these edits apply at once and do not land, so list each one.
+- **Map.** `grep -rln --include='*.md' 'FNNN-' <Map>` finds the map files that cite the ticket. Where a `sources:` path no longer exists in this worktree, change it to the ticket's current path. Never edit `map.html`; it is generated. The map is outside Git: these edits apply at once and do not land, so list each one.
 - **Strict check.** From the worktree, run `limen picture build --dir <Map> --out /tmp/keeper-FNNN/map.html --strict`. Fix every error, and every warning whose file is a changed ticket or a map file that cites one. Leave other warnings. With `Map: none`, skip place ids and the map step.
 
-None of the board or map problems is an error today, so a clean strict check alone does not mean you are done. Stop when the strict check has no error, the board line is right, and no map file cites a missing path for a changed ticket.
+The strict check does not report a missing board line, and a missing map source is only a warning. So a clean strict check does not mean you are done. Stop when the strict check has no error, the board line is right, and no map file cites a missing path for a changed ticket.
 
-Commit the spec changes in one commit, `spec keeper: FNNN links`. If nothing needed a fix, commit nothing and say so.
+Commit the spec changes in one commit, `spec keeper: FNNN links`. If nothing needed a fix, commit nothing and say so. Then run `limen ticket check` from the worktree as the last check. It is the check `limen land` runs, and it must not refuse, except for a taken number you reported.
 
 End with: the fixes (file and what changed), the map files edited outside Git, the warnings left, and the strict check exit code.
