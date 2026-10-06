@@ -1,5 +1,6 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { isTerminal } from "../job/job.ts";
 import { resolveJob } from "../job/lookup.ts";
 export async function waitCommand(args: readonly string[], cwd: string): Promise<void> {
 	if (process.env.LIMEN_COORDINATOR === "1")
@@ -55,7 +56,4 @@ function text(path: string): Promise<string> {
 		(value) => value.trim(),
 		() => "",
 	);
-}
-function isTerminal(state: string): boolean {
-	return state === "done" || state === "failed" || state === "stopped";
 }

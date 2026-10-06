@@ -9,12 +9,14 @@ import {
 	bindingPath,
 	claimId,
 	claimPath,
+	GITHUB_ANSWER_MAX,
 	type GithubBinding,
 	type GithubClaim,
 	githubBranch,
 	githubDir,
 	githubMarker,
 	githubSubject,
+	HANDOFF_NONCE,
 	type HerdrAgentRow,
 	liveCoordinator,
 	matchedGithubJob,
@@ -76,8 +78,8 @@ export async function githubCommand(args: readonly string[], cwd: string): Promi
 	}
 	if (mode === "resolve") {
 		const id = claimId(rest[1] ?? "");
-		if (rest.length !== 4 || id === undefined || !/^[0-9a-f]{48}$/.test(rest[2] ?? "") || !rest[3]?.trim() || rest[3].length > 1600)
-			throw new Error("github resolve requires <registered-root> <claim-id> <handoff nonce> <no-job answer up to 1600 characters>");
+		if (rest.length !== 4 || id === undefined || !HANDOFF_NONCE.test(rest[2] ?? "") || !rest[3]?.trim() || rest[3].length > GITHUB_ANSWER_MAX)
+			throw new Error(`github resolve requires <registered-root> <claim-id> <handoff nonce> <no-job answer up to ${GITHUB_ANSWER_MAX} characters>`);
 		const root = repoRoot(rest[0] as string);
 		if (root !== rest[0]) throw new Error("GitHub resolve requires the exact registered repository root");
 		assertUnprivileged();
@@ -106,7 +108,7 @@ export async function githubCommand(args: readonly string[], cwd: string): Promi
 		const flags = rest.slice(2);
 		if (
 			mode === "deliver"
-				? flags.length !== 1 || !/^[0-9a-f]{48}$/.test(flags[0] ?? "")
+				? flags.length !== 1 || !HANDOFF_NONCE.test(flags[0] ?? "")
 				: flags.length !== (mode === "work" ? 10 : 8) ||
 					["--engine", "--provider", "--model", "--thinking"].some((flag, index) => flags[index * 2] !== flag || !flags[index * 2 + 1]) ||
 					(mode === "work" && (flags[8] !== "--task" || !flags[9]?.trim()))

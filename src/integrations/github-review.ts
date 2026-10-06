@@ -2,6 +2,12 @@ import { spawnSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+/** The longest no-job answer that `github resolve` writes and the poller posts. */
+export const GITHUB_ANSWER_MAX = 1600;
+/** Random bytes in the poller's handoff nonce; its hex text is twice as long. */
+export const HANDOFF_NONCE_BYTES = 24;
+export const HANDOFF_NONCE = new RegExp(`^[0-9a-f]{${HANDOFF_NONCE_BYTES * 2}}$`);
+
 export type GithubBinding = { repo: string; coordinator: string; user: string; connectedAt: string };
 export const githubDir = (root: string) => join(root, ".limen/github");
 export const bindingPath = (root: string) => join(githubDir(root), "binding.json");

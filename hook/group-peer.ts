@@ -4,6 +4,7 @@ import { deliverLeadStepWebhook } from "../src/integrations/finish-webhook.ts";
 import type { GroupIdentity, GroupRun } from "../src/job/group-cabinet.ts";
 import { groupIdentity, groupPath, runs } from "../src/job/group-cabinet.ts";
 import { acceptBatch, acceptTransport, observeBatch, releaseBatch } from "../src/job/group-events.ts";
+import { SESSION_ID } from "../src/job/job.ts";
 import { repoRoot } from "../src/project/git.ts";
 
 type Content = { readonly type: string; readonly text?: string };
@@ -74,7 +75,7 @@ export default function groupPeer(pi: PiApi): void {
 			return;
 		}
 		leadSession = context.sessionManager.getSessionId();
-		if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(leadSession)) return;
+		if (!SESSION_ID.test(leadSession)) return;
 		const registration = `${leadRoot}/.limen/group-leads/${leadSession}`;
 		await mkdir(`${leadRoot}/.limen/group-leads`, { recursive: true });
 		await writeFile(registration, `${process.pid}\n`, { flush: true });

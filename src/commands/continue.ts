@@ -3,7 +3,7 @@ import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { herdrAvailable, openWatchTab } from "../integrations/herdr.ts";
 import { claimMember, commandRoot, groupIdentity, groupLock, groupPath, jobMembership, teamRoute } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
-import { hostedAgentName, makeJobId } from "../job/job.ts";
+import { hostedAgentName, isTerminal, makeJobId } from "../job/job.ts";
 import { resolveJob } from "../job/lookup.ts";
 import { publishJob } from "../job/publication.ts";
 import { atomicWrite, finalizeJob } from "../job/record.ts";
@@ -70,7 +70,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 		}
 	}
 	const parentState = await text(`${parentDir}/state`);
-	if (!["done", "failed", "stopped"].includes(parentState)) throw new Error(`job ${parentId} is ${parentState || "stateless"}; continue needs a finished job`);
+	if (!isTerminal(parentState)) throw new Error(`job ${parentId} is ${parentState || "stateless"}; continue needs a finished job`);
 	const worktree = await text(`${parentDir}/worktree`);
 	if (!worktree) throw new Error(`parent record ${parentId} has no worktree path`);
 	if (membership)

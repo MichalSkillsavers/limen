@@ -7,6 +7,7 @@ import { hostedAgentStatus } from "../integrations/herdr.ts";
 import { limenRoot } from "../project/git.ts";
 import type { PlanningSource } from "../project/planning.ts";
 import { processAlive, processInfo } from "../runtime/contain.ts";
+import { SESSION_ID } from "./job.ts";
 
 export type GroupMember = { id: string; team: string; role: "coordinator" | "worker"; parent?: string; deadline: number };
 export type GroupRun = {
@@ -133,7 +134,7 @@ export async function leadSession(root: string): Promise<string | undefined> {
 	const listeners = new Map<number, string>();
 	for (const session of await readdir(`${root}/.limen/group-leads`).catch(() => [])) {
 		const pid = Number(await readFile(`${root}/.limen/group-leads/${session}`, "utf8").catch(() => ""));
-		if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(session) && Number.isSafeInteger(pid) && pid > 1) listeners.set(pid, session);
+		if (SESSION_ID.test(session) && Number.isSafeInteger(pid) && pid > 1) listeners.set(pid, session);
 	}
 	let pid = process.ppid;
 	for (let hop = 0; listeners.size && hop < 32 && pid > 1; hop++) {

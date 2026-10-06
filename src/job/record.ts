@@ -6,6 +6,7 @@ import { commitList, headCommit } from "../project/git.ts";
 import { processAlive, processInfo } from "../runtime/contain.ts";
 import { jobMembership, saveJson } from "./group-cabinet.ts";
 import { syncLifecycle } from "./group-events.ts";
+import { isTerminal, type TerminalState } from "./job.ts";
 
 // The job record is a directory of plain files. `state` is the commit point observers key on;
 // everything a reader needs must be durable before it flips to a terminal value.
@@ -30,8 +31,8 @@ export function isFailedStopReason(reason: string): boolean {
 	return reason === "error" || reason.startsWith("error: ") || reason === "aborted" || reason.startsWith("aborted: ");
 }
 export const requestedTerminal = (reason: string): "done" | "stopped" => (reason.startsWith("done:") ? "done" : "stopped");
-export async function finalizeJob(jobDir: string, state: "done" | "failed" | "stopped", detail: string, shutdownDeadline?: number): Promise<void> {
-	if (["done", "failed", "stopped"].includes(await textFile(`${jobDir}/state`))) return;
+export async function finalizeJob(jobDir: string, state: TerminalState, detail: string, shutdownDeadline?: number): Promise<void> {
+	if (isTerminal(await textFile(`${jobDir}/state`))) return;
 	await recordCommits(jobDir).catch(() => {});
 	await atomicWrite(`${jobDir}/finished-at`, `${new Date().toISOString()}\n`);
 	// The terminal log line lands before the state flip; state is the commit point observers key on, and the story must already be durable when they see it.
@@ -82,7 +83,7 @@ export async function writeHandshake(jobDir: string): Promise<void> {
 }
 async function recordBorn(jobDir: string): Promise<void> {
 	const outcome = await processInfo(process.pid);
-	if (outcome.kind !== "present" || ["done", "failed", "stopped"].includes(await textFile(`${jobDir}/state`))) return;
+	if (outcome.kind !== "present" || isTerminal(await textFile(`${jobDir}/state`))) return;
 	await atomicWrite(`${jobDir}/born`, `${outcome.process.born}\n`);
 	if (await textFile(`${jobDir}/group`)) await saveJson(`${jobDir}/group-owner.json`, { pid: process.pid, born: outcome.process.born });
 }

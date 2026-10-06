@@ -18,6 +18,11 @@ export type JobInput = {
 	readonly lastOutputAt: Date;
 	readonly detail: string;
 };
+export type TerminalState = "done" | "failed" | "stopped";
+export const TERMINAL_STATES: readonly TerminalState[] = ["done", "failed", "stopped"];
+export const isTerminal = (state: string): state is TerminalState => (TERMINAL_STATES as readonly string[]).includes(state);
+/** A session ID that is safe as one path segment, for example under `notify/delivered/`. */
+export const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 export type Pulse = "starting" | "think" | "tool" | "wait" | "dead";
 export type JobView = {
 	readonly elapsedMs: number;

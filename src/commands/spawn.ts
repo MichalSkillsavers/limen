@@ -8,7 +8,7 @@ import { herdrAvailable, herdrBinary, openHostedTab, openWatchTab } from "../int
 import type { GroupRun } from "../job/group-cabinet.ts";
 import { claimMember, groupIdentity, groupLock, groupPath, teamRoute } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
-import { hostedAgentName, makeJobId, parseDuration } from "../job/job.ts";
+import { hostedAgentName, makeJobId, parseDuration, SESSION_ID } from "../job/job.ts";
 import { publishJob } from "../job/publication.ts";
 import { appendLimenLog, atomicWrite, finalizeJob } from "../job/record.ts";
 import {
@@ -502,7 +502,7 @@ function memberRoute(run: GroupRun, team: string): string {
 }
 export function currentNotificationSession(): string | undefined {
 	const value = process.env.PI_SESSION_ID?.trim();
-	if (value && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) throw new Error("PI_SESSION_ID is not safe for notification routing");
+	if (value && !SESSION_ID.test(value)) throw new Error("PI_SESSION_ID is not safe for notification routing");
 	return value || undefined;
 }
 /**

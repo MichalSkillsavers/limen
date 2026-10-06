@@ -3,7 +3,7 @@ import { appendFileSync, existsSync, type FSWatcher, mkdirSync, readdirSync, rea
 import { dirname, join, resolve } from "node:path";
 import { coordinatorSignals } from "../src/integrations/coordinator-signal.ts";
 import { herdrBinary } from "../src/integrations/herdr.ts";
-import { derivePulse, type Pulse } from "../src/job/job.ts";
+import { derivePulse, isTerminal, type Pulse, SESSION_ID } from "../src/job/job.ts";
 import { advisoryWake, completionWake } from "../src/job/wake-text.ts";
 import { unlandedBranches } from "../src/project/git.ts";
 import { registerProject } from "../src/project/seat.ts";
@@ -485,7 +485,7 @@ export default function limenWake(pi: PiApi): void {
 		coordinator.start(root, context);
 		stopTimers();
 		const id = context.sessionManager.getSessionId();
-		if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) return;
+		if (!SESSION_ID.test(id)) return;
 		const jobs = join(root, ".limen", "jobs");
 		try {
 			mkdirSync(jobs, { recursive: true });
@@ -1013,7 +1013,4 @@ function text(path: string): string {
 }
 function isObservable(state: string): boolean {
 	return state === "running" || isTerminal(state);
-}
-function isTerminal(state: string): boolean {
-	return state === "done" || state === "failed" || state === "stopped";
 }

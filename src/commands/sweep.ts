@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { sweepCoordinators } from "../integrations/coordinator-signal.ts";
+import { isTerminal } from "../job/job.ts";
 import { noteKind } from "../job/view.ts";
 import { installSeatSweep, showSeatNotification, uninstallSeatSweep, updateRegisteredProjects } from "../project/seat.ts";
 import { HOSTED_UNCERTAINTY_MS, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
@@ -44,7 +45,7 @@ async function sweepProject(root: string): Promise<void> {
 		if (uncertainty && Date.now() - uncertainty.since < HOSTED_UNCERTAINTY_MS) continue;
 		const unheard = advisory
 			? !delivered.some((name) => name.startsWith(`${family}.`))
-			: ["done", "failed", "stopped"].includes(state) && !delivered.some((name) => !name.startsWith("_advisory.") && !name.startsWith("_uncertainty."));
+			: isTerminal(state) && !delivered.some((name) => !name.startsWith("_advisory.") && !name.startsWith("_uncertainty."));
 		if (!unheard) continue;
 		const advisoryStamp = advisory ? metadata(stamp) : undefined;
 		if (advisory && !advisoryStamp) continue;

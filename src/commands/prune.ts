@@ -1,6 +1,7 @@
 import { readdir, readFile, realpath, rm } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { retainedGroupJob } from "../job/group-cabinet.ts";
+import { isTerminal } from "../job/job.ts";
 import { limenRoot, listWorktrees, pruneWorktrees, removeWorktree, unlandedBranches, workspaceRepository } from "../project/git.ts";
 import { liveJob, STARTUP_GRACE_MS } from "../runtime/reap.ts";
 
@@ -28,7 +29,7 @@ async function retireFinishedJobs(root: string, dryRun: boolean): Promise<readon
 		const jobDir = `${jobsRoot}/${id}`;
 		if (await retainedGroupJob(jobDir)) continue;
 		const [state, branch, repo] = await Promise.all([text(`${jobDir}/state`), text(`${jobDir}/branch`), text(`${jobDir}/repo`)]);
-		if (state !== "done" && state !== "failed" && state !== "stopped") continue;
+		if (!isTerminal(state)) continue;
 		try {
 			const repository = !branch ? root : (repositories.get(repo) ?? (repo ? workspaceRepository(root, repo) : root));
 			if (branch) repositories.set(repo, repository);

@@ -2,6 +2,9 @@ import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
+/** The most webhook targets one finish may name. `bin/tony-finish-ping.sh` keeps a literal copy. */
+export const MAX_TARGETS = 64;
+
 // Inspection only: never discover evidence in a job/worktree or read sender config.
 async function readExport(path: string, limit: number): Promise<unknown> {
 	const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW).catch(() => undefined);
@@ -40,7 +43,7 @@ export async function inspectFinishTurns(event: string): Promise<Map<number, str
 		manifest.version !== 1 ||
 		!Array.isArray(manifest.targets) ||
 		!manifest.targets.length ||
-		manifest.targets.length > 64
+		manifest.targets.length > MAX_TARGETS
 	)
 		return turns;
 	const mappings = new Map<number, string>();
@@ -51,7 +54,7 @@ export async function inspectFinishTurns(event: string): Promise<Map<number, str
 			typeof target.target !== "number" ||
 			!Number.isInteger(target.target) ||
 			target.target < 1 ||
-			target.target > 64 ||
+			target.target > MAX_TARGETS ||
 			!token(target.receiver) ||
 			mappings.has(target.target)
 		)

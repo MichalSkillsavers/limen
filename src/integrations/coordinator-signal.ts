@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { open, readdir, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { SESSION_ID } from "../job/job.ts";
 import { textFile } from "../job/record.ts";
 import { processInfo } from "../runtime/contain.ts";
 import { deliverEventWebhook, finishWebhookEnv, type PlantEvent, plantBranch } from "./finish-webhook.ts";
@@ -21,7 +22,6 @@ const HANDOFF: Record<Kind, string> = {
 	"coordinator.goal-done": "Coordinator goal done. Next step: review the result, then land or close it.",
 	"coordinator.exited": "Coordinator process exited. Next step: restart it in its pane, then check unfinished work such as a land in progress.",
 };
-const SESSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const OPEN: Record<string, true> = { pending: true, in_progress: true };
 /** One settled turn: the latest todo list, whether it closed this turn, the goal, the last stop reason, and owned running jobs. */
 export type CoordinatorTurn = {
@@ -117,7 +117,7 @@ export function coordinatorSignals(askMs = 60_000) {
 			pane = process.env.HERDR_ENV === "1" ? (process.env.HERDR_PANE_ID?.trim() ?? "") : "";
 			if (process.env.LIMEN_COORDINATOR !== "1" && !pane) return;
 			const id = context.sessionManager.getSessionId();
-			if (!SESSION.test(id)) return;
+			if (!SESSION_ID.test(id)) return;
 			const base = join(plant, ".limen", "coordinators");
 			try {
 				// A resumed session in a new process starts a fresh registration: the old pid, start time, and exit claim describe another process.
