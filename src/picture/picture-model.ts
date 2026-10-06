@@ -128,6 +128,12 @@ const NODE_KEYS: Record<string, true> = { ...COMMON_KEYS, parent: true, revision
 const EDGE_KEYS: Record<string, true> = { ...COMMON_KEYS, from: true, to: true, relation: true };
 const FEATURE_KEYS: Record<string, true> = { ...COMMON_KEYS, touches: true };
 const JOURNEY_KEYS: Record<string, true> = { ...COMMON_KEYS, steps: true };
+/** Record kinds with their own directory and field set; every other kind is a node in nodes/. */
+const KIND_DIRECTORIES = [
+	{ kind: "edge", directory: "edges", keys: EDGE_KEYS },
+	{ kind: "feature", directory: "features", keys: FEATURE_KEYS },
+	{ kind: "journey", directory: "journeys", keys: JOURNEY_KEYS },
+] as const;
 const OWNER_LINE = /^owner:[ \t]*(\S.*?)[ \t]*$/;
 const SUMMARY_MAX = 200;
 const LEVEL_RANK = { error: 0, warn: 1, info: 2 };
@@ -291,10 +297,11 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 	const kind = text("kind");
 	const isEdge = kind === "edge";
 	const isOverlay = kind === "feature" || kind === "journey";
-	const directory = isEdge ? "edges" : kind === "feature" ? "features" : kind === "journey" ? "journeys" : "nodes";
+	const kindDirectory = KIND_DIRECTORIES.find((entry) => entry.kind === kind);
+	const directory = kindDirectory?.directory ?? "nodes";
 	if (!source.startsWith(`${directory}/`)) {
 		const graph = source.slice(0, source.indexOf("/"));
-		const prefix = graph === "features" ? "feature" : graph === "journeys" ? "journey" : graph === "edges" ? "edge" : "node";
+		const prefix = KIND_DIRECTORIES.find((entry) => entry.directory === graph)?.kind ?? "node";
 		diag(
 			"error",
 			kind ? "node.kind-directory" : `${prefix}.missing-field`,
@@ -362,7 +369,7 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 		diag("warn", "node.unknown-kind", `kind "${rec.kind}" is not one of ${KINDS.join(", ")}; kept as a node`, source, id, at("kind"));
 	}
 
-	const known = isEdge ? EDGE_KEYS : kind === "feature" ? FEATURE_KEYS : kind === "journey" ? JOURNEY_KEYS : NODE_KEYS;
+	const known = kindDirectory?.keys ?? NODE_KEYS;
 	for (const [k, v] of Object.entries(d)) if (!Object.hasOwn(known, k)) rec.meta[k] = v;
 	const body = splitOwner(fm.body);
 	if (body.owner !== null) rec.meta.owner = body.owner;

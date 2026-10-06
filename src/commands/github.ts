@@ -106,13 +106,8 @@ export async function githubCommand(args: readonly string[], cwd: string): Promi
 		const id = claimId(rest[1] ?? "");
 		if (rest.length < 2 || id === undefined) throw new Error(`github ${mode} requires <registered-root> <claim-id>`);
 		const flags = rest.slice(2);
-		if (
-			mode === "deliver"
-				? flags.length !== 1 || !HANDOFF_NONCE.test(flags[0] ?? "")
-				: flags.length !== (mode === "work" ? 10 : 8) ||
-					["--engine", "--provider", "--model", "--thinking"].some((flag, index) => flags[index * 2] !== flag || !flags[index * 2 + 1]) ||
-					(mode === "work" && (flags[8] !== "--task" || !flags[9]?.trim()))
-		)
+		const job = mode === "deliver" ? undefined : jobFlags(mode, flags);
+		if (mode === "deliver" ? flags.length !== 1 || !HANDOFF_NONCE.test(flags[0] ?? "") : !job)
 			throw new Error(
 				"github review/work requires --engine <engine> --provider <provider> --model <model> --thinking <level>; github work also requires --task <coordinator instruction>; github deliver takes no flags",
 			);
@@ -123,17 +118,10 @@ export async function githubCommand(args: readonly string[], cwd: string): Promi
 		if (!binding || originRepository(root).toLowerCase() !== binding.repo.toLowerCase()) throw new Error("GitHub registration is disconnected or no longer matches origin");
 		const claim = JSON.parse(await readFile(claimPath(root, id), "utf8")) as GithubClaim;
 		if (claim.repo.toLowerCase() !== binding.repo.toLowerCase() || claim.id !== id) throw new Error("GitHub claim does not match binding");
-		if (mode === "review" || mode === "work") {
+		if (job) {
 			if (process.env.HERDR_ENV !== "1" || process.env.LIMEN_COORDINATOR !== "1" || process.env.HERDR_PANE_ID !== binding.coordinator)
 				throw new Error("GitHub job must start inside the registered Herdr coordinator");
-			console.log(
-				await startGithubJob(
-					root,
-					claim,
-					{ engine: flags[1] as string, provider: flags[3] as string, model: flags[5] as string, thinking: flags[7] as string },
-					mode === "work" ? flags[9] : undefined,
-				),
-			);
+			console.log(await startGithubJob(root, claim, job.model, job.task));
 		} else {
 			// The isolated poller uses sudo to enter this user's Herdr client; it has no HERDR_ENV itself.
 			const found = await matchedGithubJob(root, claim);
@@ -215,6 +203,26 @@ Read the registered project's spec/build.md for standing model policy. Decide wh
 	await chown(bindingPath(root), process.getuid?.() ?? -1, gid);
 	await chmod(bindingPath(root), 0o660);
 	console.log(`connected ${repo} → Herdr ${process.env.HERDR_PANE_ID}; isolated seat poller reads this registration`);
+}
+
+function jobFlags(mode: "review" | "work", flags: readonly string[]): { model: Parameters<typeof startGithubJob>[2]; task?: string } | undefined {
+	const allowed = ["--engine", "--provider", "--model", "--thinking", ...(mode === "work" ? ["--task"] : [])];
+	const values = new Map<string, string>();
+	for (let index = 0; index < flags.length; index += 2) {
+		const flag = flags[index] ?? "";
+		const value = flags[index + 1];
+		if (!allowed.includes(flag) || values.has(flag) || !value) return undefined;
+		values.set(flag, value);
+	}
+	const engine = values.get("--engine");
+	const provider = values.get("--provider");
+	const model = values.get("--model");
+	const thinking = values.get("--thinking");
+	const task = values.get("--task");
+	if (!engine || !provider || !model || !thinking) return undefined;
+	if (mode === "review") return { model: { engine, provider, model, thinking } };
+	if (!task?.trim()) return undefined;
+	return { model: { engine, provider, model, thinking }, task };
 }
 
 function git(root: string, args: string[]): string {

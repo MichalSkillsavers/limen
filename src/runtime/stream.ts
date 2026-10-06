@@ -63,15 +63,11 @@ export function assistantStopReason(message: unknown): string {
 }
 function toolDetail(args: unknown): string {
 	if (!args || typeof args !== "object") return "";
-	const pick =
-		"command" in args && typeof args.command === "string"
-			? args.command
-			: "path" in args && typeof args.path === "string"
-				? args.path
-				: "file_path" in args && typeof args.file_path === "string"
-					? args.file_path
-					: "";
-	return pick.trim().replace(/\s+/g, " ").slice(0, 80);
+	for (const key of ["command", "path", "file_path"]) {
+		const value = (args as Record<string, unknown>)[key];
+		if (typeof value === "string") return value.trim().replace(/\s+/g, " ").slice(0, 80);
+	}
+	return "";
 }
 function compact(events: Array<StreamEvent | undefined>): StreamEvent[] {
 	return events.filter((event): event is StreamEvent => event !== undefined);

@@ -124,9 +124,13 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const source = group ? (group.run.planningSource ?? "committed") : (inherited?.source ?? planningSource(root));
 	if (workspace && !options.repo) throw new Error("workspace spawn requires --repo <immediate-child>");
 	if (!workspace && options.repo) throw new Error("--repo is available only from a non-Git workspace coordinator");
-	const repository = workspace ? workspaceRepository(root, options.repo ?? "") : group ? root : currentRoot;
+	let repository = currentRoot;
+	if (workspace) repository = workspaceRepository(root, options.repo ?? "");
+	else if (group) repository = root;
 	const repo = options.repo ?? inherited?.repo;
-	let task = loaded.raw ? loaded.text : workspace ? workspaceTask(options.task, root, options.repo ?? "") : options.task;
+	let task = options.task;
+	if (loaded.raw) task = loaded.text;
+	else if (workspace) task = workspaceTask(options.task, root, options.repo ?? "");
 	// Private planning: check every pointer now, before a job record or worktree exists.
 	let privatePacket = "";
 	if (source === "private") {
@@ -180,7 +184,9 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const candidate = options.review ? branchCommit(repository, branch) : undefined;
 	const base = options.base ?? baseCommit;
 	// Private planning may rewrite ticket pointers, so its task is the checked text, not the raw bytes.
-	let taskBody: string | Uint8Array = loaded.raw && source === "committed" ? loaded.bytes : candidate ? `${task.trim()}\n\nCandidate commit: ${candidate}.\n` : `${task.trim()}\n`;
+	let taskBody: string | Uint8Array = `${task.trim()}\n`;
+	if (loaded.raw && source === "committed") taskBody = loaded.bytes;
+	else if (candidate) taskBody = `${task.trim()}\n\nCandidate commit: ${candidate}.\n`;
 	if (group && member) {
 		const guidance = await readFile(`${PACKAGE_ROOT}/templates/group-member.md`, "utf8");
 		const approach = privatePacket || `Approach note:\n${await readFile(`${root}/${group.run.feature}/group/teams/${group.team}.md`, "utf8")}`;

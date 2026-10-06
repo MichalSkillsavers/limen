@@ -44,17 +44,21 @@ export function captureFinishAuthor(cwd: string, task: string, workspace = false
 		return login ? `@${login.toLowerCase()}\n${author.commit}` : `unavailable\nordinary email\n${author.commit}`;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "";
-		const reason = message.includes("shallow")
-			? "shallow history"
-			: message.includes("not a committed file")
-				? "uncommitted ticket"
-				: message.includes("must be a file inside")
-					? "ticket path outside repository"
-					: message.includes("no creation author")
-						? "no creation author"
-						: "lookup failed";
+		const reason = AUTHOR_LOOKUP_REASONS.find(([needle]) => message.includes(needle))?.[1] ?? "lookup failed";
 		return `unavailable\n${reason}`;
 	}
+}
+const AUTHOR_LOOKUP_REASONS = [
+	["shallow", "shallow history"],
+	["not a committed file", "uncommitted ticket"],
+	["must be a file inside", "ticket path outside repository"],
+	["no creation author", "no creation author"],
+] as const;
+function senderResult(selection: string, code: number | null, signal: NodeJS.Signals | null): string {
+	if (selection === "not sent: no author route") return "skipped: not sent: no author route";
+	if (selection === "invalid author map") return "failed: invalid author map; not sent";
+	if (code === 0) return "accepted: sender exited 0 (owner wake unobserved)";
+	return `failed: sender ${signal ? "interrupted" : `exited ${code ?? "unknown"}`}`;
 }
 export async function deliverFinishWebhook(jobDir: string, shutdownDeadline = Number.POSITIVE_INFINITY, detail = ""): Promise<void> {
 	const config = await textFile(`${jobDir}/finish-webhook-env`);
@@ -265,16 +269,6 @@ function send(receiptDir: string, config: string, event: PlantEvent, id: string,
 			resolve(result);
 		};
 		child.once("error", () => finish("failed: sender could not start"));
-		child.once("close", (code, signal) =>
-			finish(
-				selection === "not sent: no author route"
-					? "skipped: not sent: no author route"
-					: selection === "invalid author map"
-						? "failed: invalid author map; not sent"
-						: code === 0
-							? "accepted: sender exited 0 (owner wake unobserved)"
-							: `failed: sender ${signal ? "interrupted" : `exited ${code ?? "unknown"}`}`,
-			),
-		);
+		child.once("close", (code, signal) => finish(senderResult(selection, code, signal)));
 	});
 }

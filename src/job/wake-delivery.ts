@@ -228,7 +228,9 @@ function isAdvisorySlot(slot: string): boolean {
 	return slot.startsWith("_advisory.");
 }
 export function receiptFamily(slot: string): "_advisory" | "_uncertainty" | "_completion" {
-	return isAdvisorySlot(slot) ? "_advisory" : slot.startsWith("_uncertainty.") ? "_uncertainty" : "_completion";
+	if (isAdvisorySlot(slot)) return "_advisory";
+	if (slot.startsWith("_uncertainty.")) return "_uncertainty";
+	return "_completion";
 }
 export function completionSlots(names: readonly string[]): string[] {
 	return names.filter((name) => receiptFamily(name) === "_completion");
