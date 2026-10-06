@@ -10,11 +10,11 @@ Ordinary workers and reviewers exist only through `limen spawn`. Never spawn a c
 
 `LIMEN_COORDINATOR=1` on a spawn shell does not change the job's role.
 
-**Herdr.** Prefer a space named for the plant (`limen`, or `alice limen`) — not a space named only `workers`. Label the coordinator tab clearly. Worker tabs come from spawn. Shepherd talks to the coordinator.
+**Herdr.** Prefer a space named for the plant (`limen`, or `alice limen`) — not a space named only `workers`. Label the coordinator tab clearly. Worker tabs come from spawn. The owner talks to the coordinator.
 
 | You say | Limen reality |
 |---|---|
-| Tony spawns a coordinator | Start a hosted OMP tab in the plant's Herdr space (`LIMEN_COORDINATOR=1`), or Pi when required. Never `limen spawn` a "lead" or coordinator job for that role. |
+| The owner asks for a coordinator | Start a hosted OMP tab in the plant's Herdr space (`LIMEN_COORDINATOR=1`), or Pi when required. Never `limen spawn` a "lead" or coordinator job for that role. |
 | The coordinator manages workers | That session runs `limen spawn`. |
 | Start a collaborative group | Same coordinator pane runs `limen group start` after `group-peer` is loaded. A hosted job cannot. |
 
@@ -198,7 +198,7 @@ All runtime truth is inspectable under `.limen/jobs/` and in Git. Re-read Policy
 - Bad candidate: do not merge; remove its worktree and branch with Git.
 - Conflict or moved base: rebase, or start again from current HEAD.
 - Bad merge: use `git log` and `git reflog` like any other Git recovery.
-- Finish-ping fallback: opted-in jobs automatically invoke `bin/tony-finish-ping.sh <label> <state> <branch>` after terminal state. Do not request a routine manual-plus-automatic double send. Inspect the job's `finish-webhook` status and `finish-webhook-attempt` marker; only deliberately retry a failed or absent automatic send, setting `LIMEN_FINISH_WEBHOOK_ENV` to its recorded absolute `finish-webhook-env` path. An interrupted attempt may already have sent. Never print credentials; report HTTP acceptance separately from an observed owner wake. Include this fallback in worker/coordinator handoffs when finish delivery matters.
+- Finish-ping fallback: after terminal state, opted-in jobs automatically invoke the finish-ping sender `bin/tony-finish-ping.sh <label> <state> <branch>`, which POSTs the job's finish to the configured webhook targets. Do not request a routine manual-plus-automatic double send. Inspect the job's `finish-webhook` status and `finish-webhook-attempt` marker; only deliberately retry a failed or absent automatic send, setting `LIMEN_FINISH_WEBHOOK_ENV` to its recorded absolute `finish-webhook-env` path. An interrupted attempt may already have sent. Never print credentials; report HTTP acceptance separately from an observed owner wake. Include this fallback in worker/coordinator handoffs when finish delivery matters.
 - Missed completion message or dead coordinator: read `.limen/jobs/<id>/state` and `limen jobs <id>` now — do not keep waiting for a wake that already failed to surface. Notifications are only a convenience. After updating the installed `limen`, `/reload` so the coordinator loads the new package hooks.
 
 No harness rule owns these files. If state is messy, inspect and edit it; hygiene never latches the session.

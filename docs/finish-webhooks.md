@@ -9,7 +9,7 @@ receivers that only accept `status: "done"` must handle `waiting` as a handoff,
 not as an error or a new-spawn signal. Failed and stopped jobs retain their
 status and direct inspection of the job record. Automatic sends include stable
 `finishEvent`; all sends include `job`, `status`, `branch`, and `handoff`.
-The helper name is retained for compatibility; recipients need not be Tony.
+The finish-ping sender keeps its file name for compatibility; the name does not limit who receives the finish.
 It requires Node.js 24+ and Git, on macOS or Linux. It uses Node's HTTP client,
 not curl; credentials never enter child-process arguments. HTTP acceptance
 does **not** prove any bot woke or read the handoff.
@@ -226,10 +226,10 @@ LIMEN_FINISH_WEBHOOK_TARGETS='[{"url":"https://your-endpoint.example.invalid/bot
 These URLs are placeholders, **not a Grok Bot API definition**. Obtain each bot's
 authorized wake route from its operator. The route (URL and/or credential) must
 select the intended bot and turn the `{job, status, branch}` payload into a wake.
-A shared endpoint that merely logs events or always wakes Tony does not meet
+A shared endpoint that merely logs events or always wakes one fixed bot does not meet
 that contract. Limen does not infer recipients from a model or display name, nor
-does it invent a bot/session field for an unknown receiver API. If Tony should
-also receive the finish, include Tony's destination explicitly as another entry.
+does it invent a bot/session field for an unknown receiver API. If another bot should
+also receive the finish, include its destination explicitly as another entry.
 
 To send a ticket finish only to that author's bots, add `LIMEN_FINISH_WEBHOOK_AUTHOR_TARGETS`
 in the same private file. Keys are lowercase `@login` or `*`; values are nonempty lists of
@@ -523,7 +523,7 @@ truth of history; the owner/reviewer must follow the referenced session/turn.
 The operator writes `receivers.json` (maximum 16 KiB):
 
 ```json
-{"version":1,"targets":[{"target":1,"receiver":"johnny"},{"target":2,"receiver":"tony"}]}
+{"version":1,"targets":[{"target":1,"receiver":"review-bot"},{"target":2,"receiver":"owner-bot"}]}
 ```
 
 Use the actual authorized mapping, not assumed names or order. It has 1–64 unique
@@ -534,7 +534,7 @@ For each mapped target, its owner supplies a file named
 `<finishEvent>.<target>.json` (maximum 4096 bytes), with exactly these fields:
 
 ```json
-{"version":1,"event":"limen-finish-REPLACE_WITH_EXACT_64_LOWERCASE_HEX","target":1,"receiver":"johnny","state":"completed","session":"OWNER_SESSION_REFERENCE","turn":"OWNER_COMPLETED_TURN_REFERENCE","completedAt":"2026-09-11T12:00:00.000Z"}
+{"version":1,"event":"limen-finish-REPLACE_WITH_EXACT_64_LOWERCASE_HEX","target":1,"receiver":"review-bot","state":"completed","session":"OWNER_SESSION_REFERENCE","turn":"OWNER_COMPLETED_TURN_REFERENCE","completedAt":"2026-09-11T12:00:00.000Z"}
 ```
 
 This is a format example, **not evidence**. `event`, `target` and `receiver` must
@@ -575,7 +575,7 @@ format; the job-based retry example above preserves it.
 ## Finished receiver-owned proof
 
 The receiver-owned proof is finished. On the VPS, one automatic delivery to
-Johnny showed HTTP accepted with the bot turn unobserved while his export was
+the first bot showed HTTP accepted with the bot turn unobserved while its export was
 held, then observed for target 1 after release, with no second send. The record
 is the [bot-turn receipt outcome](../spec/features/done/2026-09/F091-finish-job-shows-bot-turn-receipt/outcome.md).
 Do not repeat that proof for ordinary setup.
@@ -597,7 +597,7 @@ printf 'offline harness exit=%s\n' "$result"
 ```
 
 Read `two-target-204/inspection.txt` (HTTP accepted, both turns unobserved),
-`one-observed.txt` (matching Johnny export only; Tony's wrong event rejected),
+`one-observed.txt` (matching target-1 export only; the other target's wrong event rejected),
 and `both-observed.txt` (both correlated exports), each containing both views.
 `proof.txt` records two requests before and after repeat finalization, never four.
 The `two-target-503` and `two-target-stall` cases show observed exports independent
