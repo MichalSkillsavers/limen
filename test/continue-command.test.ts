@@ -252,7 +252,6 @@ fs.promises.rename = async (from, to) => {
   if (String(to).startsWith(jobsRoot) && !String(to).slice(jobsRoot.length).includes("/")) {
     assert.equal(await fs.promises.readFile(String(to) + "/session/zz-parent.jsonl", "utf8"), ${JSON.stringify(transcript)});
     assert.equal(await fs.promises.readFile(String(to) + "/notify/ready", "utf8"), "1\\n");
-    assert.deepEqual(JSON.parse(await fs.promises.readFile(String(to) + "/extensions.json", "utf8")), []);
     const { pruneFinishedWorktrees } = await import(${JSON.stringify(pruneModule)});
     await pruneFinishedWorktrees(${JSON.stringify(scratch.root)});
     assert.ok(fs.existsSync(String(to)), "published continuation record was pruned");

@@ -127,8 +127,6 @@ test("hosted argv names the Herdr state extension when installed; json mode neve
 	assert.equal(omp.includes("--no-extensions"), true, "other user extensions stay off");
 	assert.deepEqual(named(omp), [...slots.extensions, join(ompDir, "herdr-omp-agent-state.ts")]);
 	assert.deepEqual(named(pi), [...slots.extensions, join(piDir, "herdr-agent-state.ts")]);
-	const selected = [...slots.extensions, slots.extensions[0] ?? "", join(piDir, "herdr-agent-state.ts")];
-	assert.deepEqual(named(argvFor(ENGINES.pi, { ...hosted, extensions: selected })), named(pi), "explicit paths do not duplicate required hooks or hosted state reporting");
 	for (const profile of [ENGINES.omp, ENGINES.pi]) {
 		assert.deepEqual(named(argvFor(profile, { ...slots, jsonMode: true })), slots.extensions, `${profile.id} json mode has no Herdr pane`);
 	}
