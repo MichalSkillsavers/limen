@@ -115,8 +115,10 @@ test("the human snapshot prints rows and a footer, never id chains, and the suff
 	await writeFile(join(done, "state"), "done\n");
 	await writeFile(join(done, "label"), "F051 demo work\n");
 	await writeFile(join(done, "branch"), "limen/2026-08-31-demo-work-abc123de\n");
-	await writeFile(join(done, "started-at"), "2026-08-31T10:00:00.000Z\n");
-	await writeFile(join(done, "finished-at"), "2026-08-31T10:05:00.000Z\n");
+	// Recent, so the default snapshot still lists this empty job; it hides empty jobs older than seven days.
+	const finished = Date.now() - 60_000;
+	await writeFile(join(done, "started-at"), `${new Date(finished - 5 * 60_000).toISOString()}\n`);
+	await writeFile(join(done, "finished-at"), `${new Date(finished).toISOString()}\n`);
 	await writeFile(join(done, "tool-calls"), "0\n");
 	await writeFile(join(done, "commits"), "");
 	await writeFile(join(done, "log"), "think\n[limen 2026-08-31T10:05:00.000Z] done: pi exited 0\n");
