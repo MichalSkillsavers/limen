@@ -42,6 +42,9 @@ export async function landCommand(args: readonly string[], cwd: string): Promise
 	const gate = await landTicketCheck(repository, root, branch, "HEAD", id);
 	if (!gate.ok) throw new Error(`land refused: ${branch} has tickets that fail the strict check\n${gate.lines.join("\n")}`);
 	for (const line of gate.lines) console.log(line);
+	const cap = landTestCap(repository, branch);
+	if (cap) console.log(cap.line);
+	if (cap?.refuse) throw new Error(`land refused: ${cap.refuse}`);
 	if (!parsed.yes && !(await confirm(`Land ${label || id} onto ${target}? [y/N] `))) throw new Error("land cancelled");
 	let output: string;
 	try {
@@ -53,6 +56,35 @@ export async function landCommand(args: readonly string[], cwd: string): Promise
 	}
 	if (output) console.log(output);
 	console.log(`landed ${id} onto ${target}`);
+}
+
+/** The cap on `test/` lines that `spec/vision.md` names, or undefined when it names none. */
+export function testLineCap(vision: string): number | undefined {
+	const match = /`test\/` holds at most ([\d,]+) lines/.exec(vision);
+	return match?.[1] ? Number(match[1].replaceAll(",", "")) : undefined;
+}
+
+// The cap is read from the target's vision, the owner's copy, so a branch cannot raise its own cap.
+// Only a branch that adds test lines and leaves test/ over the cap is refused; deletions always land.
+function landTestCap(repository: string, branch: string): { readonly line: string; readonly refuse?: string } | undefined {
+	const vision = spawnSync("git", ["show", "HEAD:spec/vision.md"], { cwd: repository, encoding: "utf8" });
+	const cap = vision.status === 0 ? testLineCap(vision.stdout) : undefined;
+	if (cap === undefined) return undefined;
+	let added = 0;
+	let removed = 0;
+	for (const row of gitText(repository, ["diff", "--numstat", `HEAD...${branch}`, "--", "test"]).split("\n")) {
+		const [plus = "", minus = ""] = row.split("\t");
+		added += Number(plus) || 0;
+		removed += Number(minus) || 0;
+	}
+	const counts = spawnSync("git", ["grep", "-c", "", "HEAD", "--", "test"], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).stdout;
+	const lines = counts.split("\n").reduce((sum, row) => sum + (Number(row.slice(row.lastIndexOf(":") + 1)) || 0), 0) + added - removed;
+	const line = `land: test/ holds ${lines} lines after this land (cap ${cap}, spec/vision.md); this branch +${added} -${removed}`;
+	if (lines <= cap || added <= removed) return { line };
+	return {
+		line,
+		refuse: `test/ would hold ${lines} lines; spec/vision.md caps it at ${cap}. Remove ${Math.min(lines - cap, added - removed)} test lines in this branch, or ask Adam to raise the cap.`,
+	};
 }
 
 export const TICKET_PATH = /^spec\/features\/(?:[^/]+\/)*(F\d+)-[^/]+\/ticket\.md$/;
