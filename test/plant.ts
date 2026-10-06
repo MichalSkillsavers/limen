@@ -46,13 +46,14 @@ A throwaway plant for one test file.
 
 - The scenario passes.
 `;
-const place = `---
+const node = (kind: string, id: string, parent: string) => `---
 schema: architecture-map/1
-kind: module
-id: demo.place
+kind: ${kind}
+id: ${id}
 project: demo
-title: Demo place
+title: ${id}
 status: ready
+parent: ${parent}
 sources:
   - README.md
 ---
@@ -95,7 +96,8 @@ export async function plant(): Promise<Plant> {
 	await mkdir(join(root, dirname(TICKET)), { recursive: true });
 	await mkdir(join(root, ".limen/picture/nodes"), { recursive: true });
 	await writeFile(join(root, TICKET), ticket);
-	await writeFile(join(root, ".limen/picture/nodes/demo.place.md"), place);
+	await writeFile(join(root, ".limen/picture/nodes/demo.md"), node("plant", "demo", "null"));
+	await writeFile(join(root, ".limen/picture/nodes/demo.place.md"), node("module", "demo.place", "demo"));
 	git(root, "add", "-A");
 	git(root, "commit", "-q", "-m", "limen init");
 	return made;
