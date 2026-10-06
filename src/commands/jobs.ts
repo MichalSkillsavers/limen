@@ -6,7 +6,7 @@ import { resolveJob } from "../job/lookup.ts";
 import { colorWanted, humanDetail, humanSnapshot, type JobRecord, paintWhen, resolveView, tallyStates } from "../job/view.ts";
 import { limenRoot, liveDiffstat, workspaceRepository } from "../project/git.ts";
 import { hostedUncertaintyText, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
-import { confirmDeadJobs, ownerAlive } from "../runtime/reap.ts";
+import { confirmDeadJobs, ownerAlive, startingJob } from "../runtime/reap.ts";
 
 export const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
 const HUMAN_TERMINAL_ROWS = 6;
@@ -111,7 +111,8 @@ function select(args: readonly string[]) {
 	return { detail: arg };
 }
 async function orderedJobs(ids: readonly string[], jobsRoot: string): Promise<ReadonlyArray<readonly [string, string, string]>> {
-	const order = await Promise.all(ids.map(async (id) => [id, await text(`${jobsRoot}/${id}/state`), (await text(`${jobsRoot}/${id}/started-at`)) || id] as const));
+	// A job its live spawner is still setting up lists as running, with pulse `starting`.
+	const order = await Promise.all(ids.map(async (id) => [id, await shownState(`${jobsRoot}/${id}`), (await text(`${jobsRoot}/${id}/started-at`)) || id] as const));
 	return order.sort((a, b) => Number(b[1] === "running") - Number(a[1] === "running") || b[2].localeCompare(a[2]));
 }
 export async function renderJobDirectory(root: string, jobsRoot: string, id: string, view: "row" | "human" | "detail"): Promise<{ compact: string; record: JobRecord }> {
@@ -137,7 +138,7 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 	] = await Promise.all(
 		"state label branch repo pid started-at finished-at tool-calls last-tool activity hosted candidate advisory parent engine stop-reason"
 			.split(" ")
-			.map((field) => text(`${jobDir}/${field}`)),
+			.map((field) => (field === "state" ? shownState(jobDir) : text(`${jobDir}/${field}`))),
 	);
 	if (!state) return { compact: `ORPHAN ${id} · no state`, record: { id, invalid: "orphan · no state" } };
 	const uncertainty = readHostedUncertainty(jobDir);
@@ -268,6 +269,10 @@ function indented(name: string, body: string): string {
 		.split("\n")
 		.map((line) => `    ${line}`)
 		.join("\n")}`;
+}
+/** The recorded state, or `running` for a job whose live spawner has not written one yet. */
+export async function shownState(jobDir: string): Promise<string> {
+	return (await text(`${jobDir}/state`)) || ((await startingJob(jobDir)) ? "running" : "");
 }
 function text(path: string): Promise<string> {
 	return readFile(path, "utf8")

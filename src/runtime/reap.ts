@@ -17,6 +17,12 @@ export async function liveJob(jobDir: string, now = Date.now()): Promise<boolean
 	const startedAt = Date.parse(await textFile(`${jobDir}/started-at`));
 	return Number.isFinite(startedAt) && now - startedAt < STARTUP_GRACE_MS;
 }
+/** A job its spawner is still setting up: no state yet, and the spawning process recorded in `starting` is alive. */
+export async function startingJob(jobDir: string): Promise<boolean> {
+	if (await textFile(`${jobDir}/state`)) return false;
+	const pid = Number(await textFile(`${jobDir}/starting`));
+	return Number.isSafeInteger(pid) && pid > 0 && processAlive(pid);
+}
 export async function ownerAlive(jobDir: string): Promise<boolean> {
 	const pid = Number(await textFile(`${jobDir}/pid`));
 	if (!Number.isSafeInteger(pid) || pid <= 0 || !processAlive(pid)) return false;
