@@ -6,7 +6,8 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test, { type TestContext } from "node:test";
-import limenWake, { deliverySettled, progressFilename } from "../hook/wake.ts";
+import limenWake, { progressFilename } from "../hook/wake.ts";
+import { deliverySettled } from "../src/job/wake-delivery.ts";
 
 test("unwatched completion crosses fallback grace on the timer alone", async (context) => {
 	const h = harness(context);

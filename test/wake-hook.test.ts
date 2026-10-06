@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import limenWake from "../hook/wake.ts";
+import { closeFeatureTabs } from "../src/integrations/herdr.ts";
 import { processInfo } from "../src/runtime/contain.ts";
 
 const WAKE_HOME = await mkdtemp(join(tmpdir(), "limen-wake-home-"));
@@ -793,6 +794,56 @@ test("a finished job leaves the coordinator title and job line once it lands or 
 	handlers.get("agent_settled")?.({}, session);
 	await waitUntilAsync(async () => (await current()) === "chat settings");
 	assert.equal(statuses.at(-1), undefined);
+});
+
+test("limen close and the job line agree on a job whose label names two features", async (context) => {
+	stashEnv(context, "LIMEN_JOB", undefined);
+	const root = await mkdtemp(join(tmpdir(), "limen-two-features-"));
+	context.after(() => rm(root, { recursive: true, force: true }));
+	const label = join(root, "tab-label");
+	const closedTabs = join(root, "closed-tabs");
+	await writeFile(label, "chat settings");
+	const fake = join(root, "herdr");
+	await writeFile(
+		fake,
+		`#!/bin/sh\ncase "$1 $2" in\n'tab get') printf '{"result":{"tab":{"label":"%s"}}}' "$(cat ${label})" ;;\n'tab rename') printf '%s' "$4" > "${label}" ;;\n'tab close') echo "$3" >> "${closedTabs}" ;;\nesac\n`,
+	);
+	await chmod(fake, 0o755);
+	stashEnv(context, "LIMEN_HERDR", fake);
+	stashEnv(context, "HERDR_ENV", "1");
+	stashEnv(context, "HERDR_PANE_ID", "w1:p1");
+	stashEnv(context, "HERDR_TAB_ID", "w1:t1");
+	await mkdir(join(root, ".agents/limen"), { recursive: true });
+	await mkdir(join(root, "spec/features/done/2026-10/F099-first-work"), { recursive: true });
+	const jobs = join(root, ".limen/jobs");
+	const job = join(jobs, "follow-up");
+	await mkdir(join(job, "herdr"), { recursive: true });
+	await writeFile(join(job, "label"), "F100 follow-up for F099\n");
+	await writeFile(join(job, "commits"), "");
+	await writeFile(join(job, "origin-tab"), "w1:t1\n");
+	for (const [name, value] of [
+		["workspace", "w1"],
+		["tab", "w1:t9"],
+		["pane", "w1:p9"],
+		["mode", "log"],
+	] as const)
+		await writeFile(join(job, "herdr", name), `${value}\n`);
+	await subscribe(jobs, "follow-up", "coordinator-a");
+	await writeFile(join(job, "state"), "done\n");
+	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
+	limenWake({ on: (event, handler) => handlers.set(event, handler), sendUserMessage() {} });
+	const session = { cwd: root, isIdle: () => true, sessionManager: sessionManager("coordinator-a"), ui: { notify() {}, setStatus() {} } };
+	handlers.get("session_start")?.({}, session);
+	context.after(() => handlers.get("session_shutdown")?.({}, session));
+	const current = () => readFile(label, "utf8");
+	// F100 is still open: the job stays on the line, and closing F099 leaves its tab.
+	await waitUntilAsync(async () => (await current()) === "chat settings · 1 finished");
+	assert.equal(await closeFeatureTabs({ root, feature: "F099" }), "closed 0 leftover tabs for F099");
+	await mkdir(join(root, "spec/features/done/2026-10/F100-follow-up"), { recursive: true });
+	handlers.get("agent_settled")?.({}, session);
+	await waitUntilAsync(async () => (await current()) === "chat settings");
+	assert.equal(await closeFeatureTabs({ root, feature: "F099" }), "closed 1 leftover tab for F099");
+	assert.equal(await readFile(closedTabs, "utf8"), "w1:t9\n");
 });
 
 test("a tab still carrying herdr's own number is never decorated", async (context) => {

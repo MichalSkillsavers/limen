@@ -14,6 +14,9 @@ import { preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { spawnCommand } from "./spawn.ts";
 import { stopCommand } from "./stop.ts";
 
+const WAIT_CAP_MS = 20_000;
+const WRAP_UP_RESERVE_MS = 60_000;
+
 export async function startGroup(args: readonly string[], cwd: string): Promise<GroupRun> {
 	if (process.env.LIMEN_GROUP_ID || process.env.LIMEN_JOB === "1")
 		throw new Error(
@@ -96,8 +99,10 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	for (const level of [thinking, workerThinking])
 		if (!["off", "minimal", "low", "medium", "high", "xhigh"].includes(level))
 			throw new Error("unsupported group reasoning level; run limen group start FEATURE with --thinking and --worker-thinking set to off, minimal, low, medium, high, or xhigh");
-	if (timeout <= 60_000 || workerTimeoutMs <= 0)
-		throw new Error("group timeout must leave a 60-second wrap-up reserve; run limen group start FEATURE with --timeout above 1m and a positive --worker-timeout");
+	if (timeout <= WRAP_UP_RESERVE_MS || workerTimeoutMs <= 0)
+		throw new Error(
+			`group timeout must leave a ${WRAP_UP_RESERVE_MS / 1000}-second wrap-up reserve; run limen group start FEATURE with --timeout above 1m and a positive --worker-timeout`,
+		);
 	if (mode === "tab" && !herdrAvailable())
 		throw new Error("hosted group requires Herdr; run limen group start FEATURE --detached with the other group settings, or return to Herdr");
 	// Check the packet before activation: readable inside the canonical root when private, committed at HEAD otherwise.
@@ -141,7 +146,7 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 			workerThinking,
 			deadline: Date.now() + timeout,
 			workerTimeoutMs,
-			reserveMs: 60_000,
+			reserveMs: WRAP_UP_RESERVE_MS,
 			stopped: false,
 			closed: false,
 			mode,
@@ -186,8 +191,8 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	}
 	return readRun(root, activated.run.id);
 }
-export async function waitGroup(identity: GroupIdentity, requestedMs = 20_000): Promise<string> {
-	const until = Date.now() + Math.max(0, Math.min(20_000, requestedMs));
+export async function waitGroup(identity: GroupIdentity, requestedMs = WAIT_CAP_MS): Promise<string> {
+	const until = Date.now() + Math.max(0, Math.min(WAIT_CAP_MS, requestedMs));
 	while (true) {
 		const run = await readRun(identity.run.root, identity.run.id);
 		if (run.stopped || run.closed) return "group stopped or closed; preserve work and return to the lead";
@@ -205,9 +210,9 @@ export async function groupCommand(args: readonly string[], cwd: string): Promis
 		return;
 	}
 	const cap = setTimeout(() => {
-		console.log("group wait timed out normally after the 20-second CLI cap; inspect any uncertain delivery receipt before retrying");
+		console.log(`group wait timed out normally after the ${WAIT_CAP_MS / 1000}-second CLI cap; inspect any uncertain delivery receipt before retrying`);
 		process.exit(0);
-	}, 20_000);
+	}, WAIT_CAP_MS);
 	cap.unref();
 	try {
 		await runGroupCommand(args, cwd);
@@ -238,7 +243,7 @@ async function runGroupCommand(args: readonly string[], cwd: string): Promise<vo
 	}
 	if (command === "wait") {
 		if (rest.length > 2 || (rest.length && rest[0] !== "--timeout")) throw new Error("invalid group wait arguments; run limen group wait --timeout 5s");
-		const output = await waitGroup(identity, rest[1] ? parseDuration(rest[1]) : 20_000);
+		const output = await waitGroup(identity, rest[1] ? parseDuration(rest[1]) : WAIT_CAP_MS);
 		console.log(output);
 		const token = /\[limen-group-delivery:([a-f0-9-]+)\]/.exec(output)?.[1];
 		if (token) await acceptTransport(identity, token);

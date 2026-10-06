@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { sweepCoordinators } from "../integrations/coordinator-signal.ts";
 import { noteKind } from "../job/view.ts";
+import { receiptFamily } from "../job/wake-delivery.ts";
 import { installSeatSweep, showSeatNotification, uninstallSeatSweep, updateRegisteredProjects } from "../project/seat.ts";
 import { HOSTED_UNCERTAINTY_MS, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
@@ -25,34 +26,47 @@ export async function sweepCommand(args: readonly string[], _cwd: string): Promi
 	await Promise.all(living.map(sweepProject));
 }
 async function sweepProject(root: string): Promise<void> {
-	const jobs = join(root, ".limen", "jobs"),
-		threshold = positive("LIMEN_SEAT_RING_MS", 5 * 60_000);
+	const jobs = join(root, ".limen", "jobs");
+	const threshold = positive("LIMEN_SEAT_RING_MS", 5 * 60_000);
 	await confirmDeadJobs(jobs);
 	// Exit detection runs every pass: a dead coordinator pane is news now, not after the seat ring threshold.
 	await sweepCoordinators(root).catch((error: unknown) => console.error(`coordinator sweep failed for ${root}: ${error instanceof Error ? error.message : String(error)}`));
 	if (Date.now() - modified(join(root, ".limen", "last-sweep")) < threshold) return;
 	for (const entry of fs.existsSync(jobs) ? fs.readdirSync(jobs, { withFileTypes: true }) : []) {
 		if (!entry.isDirectory()) continue;
-		const job = join(jobs, entry.name),
-			statePath = join(job, "state"),
-			state = text(statePath);
+		const job = join(jobs, entry.name);
+		const statePath = join(job, "state");
+		const state = text(statePath);
 		const delivered = fs.existsSync(join(job, "notify", "delivered")) ? fs.readdirSync(join(job, "notify", "delivered")) : [];
-		const advisory = state === "running",
-			uncertainty = advisory && !text(join(job, "advisory")) ? readHostedUncertainty(job) : undefined,
-			family = uncertainty ? "_uncertainty" : "_advisory",
-			stamp = advisory ? join(job, uncertainty ? "ownership-uncertainty" : "advisory") : join(job, "finished-at");
-		if (uncertainty && Date.now() - uncertainty.since < HOSTED_UNCERTAINTY_MS) continue;
-		const unheard = advisory
-			? !delivered.some((name) => name.startsWith(`${family}.`))
-			: ["done", "failed", "stopped"].includes(state) && !delivered.some((name) => !name.startsWith("_advisory.") && !name.startsWith("_uncertainty."));
-		if (!unheard) continue;
-		const advisoryStamp = advisory ? metadata(stamp) : undefined;
-		if (advisory && !advisoryStamp) continue;
-		const since = uncertainty?.since ?? (advisoryStamp ? advisoryStamp.mtimeMs : Math.max(modified(stamp), modified(statePath)));
+		const heard = new Set(delivered.map(receiptFamily));
+		const running = state === "running";
+		const advisoryText = running ? text(join(job, "advisory")) : "";
+		const uncertainty = running && !advisoryText ? readHostedUncertainty(job) : undefined;
+		let since: number;
+		let event: string;
+		let headline: string;
+		if (uncertainty) {
+			if (Date.now() - uncertainty.since < HOSTED_UNCERTAINTY_MS) continue;
+			if (heard.has("_uncertainty") || !metadata(join(job, "ownership-uncertainty"))) continue;
+			since = uncertainty.since;
+			event = `_uncertainty.${since}`;
+			headline = " · ownership";
+		} else if (running) {
+			if (heard.has("_advisory")) continue;
+			const stamp = metadata(join(job, "advisory"));
+			if (!stamp) continue;
+			since = stamp.mtimeMs;
+			event = `_advisory.${since}.${stamp.birthtimeMs}`;
+			headline = ` · ${noteKind(advisoryText)}`;
+		} else if (["done", "failed", "stopped"].includes(state)) {
+			if (heard.has("_completion")) continue;
+			since = Math.max(modified(join(job, "finished-at")), modified(statePath));
+			event = `_terminal.${state}.${since}`;
+			headline = ` is ${state}`;
+		} else continue;
 		if (!since || Date.now() - since < threshold) continue;
-		const seat = join(job, "notify", "seat"),
-			markers = fs.existsSync(seat) ? fs.readdirSync(seat) : [],
-			event = uncertainty ? `_uncertainty.${since}` : advisoryStamp ? `_advisory.${since}.${advisoryStamp.birthtimeMs}` : `_terminal.${state}.${since}`;
+		const seat = join(job, "notify", "seat");
+		const markers = fs.existsSync(seat) ? fs.readdirSync(seat) : [];
 		if (markers.some((name) => name === event || (/^\d+$/.test(name) && Number(name) >= since))) continue;
 		// Claim before transport: a concurrent sweep or ambiguous failure must not replay this event.
 		fs.mkdirSync(seat, { recursive: true });
@@ -63,7 +77,7 @@ async function sweepProject(root: string): Promise<void> {
 			throw error;
 		}
 		const label = text(join(job, "label")) || entry.name;
-		const title = advisory ? `limen: ${label} · ${uncertainty ? "ownership" : noteKind(text(join(job, "advisory")))}` : `limen: ${label} is ${state}`;
+		const title = `limen: ${label}${headline}`;
 		if (!(await showSeatNotification(title, `job ${entry.name} · ${root}`)))
 			console.error(`seat notification failed for ${entry.name}; event recorded to avoid an ambiguous retry`);
 	}

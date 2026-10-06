@@ -3,6 +3,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { closedFeatures, closedJobFeatures } from "../job/job.ts";
 import { ENGINES, type EngineId, engineProfile } from "../runtime/engine.ts";
 import { hostedIdentityObservation, readHostedBinding } from "../runtime/hosted-binding.ts";
 
@@ -456,7 +457,8 @@ export async function openJobPlace(input: { readonly jobDir: string; readonly cw
 export async function closeFeatureTabs(input: { readonly root: string; readonly feature: string }): Promise<string> {
 	const feature = /(?:^|\/)(F\d+)/i.exec(input.feature.trim())?.[1]?.toUpperCase();
 	if (!feature) throw new Error("close requires a feature like F012");
-	if (!(await terminalFeature(input.root, feature))) throw new Error(`${feature} is not in done/ or dropped/; leftover tabs stay`);
+	const closedSet = closedFeatures(input.root);
+	if (!closedSet.has(feature)) throw new Error(`${feature} is not in done/ or dropped/; leftover tabs stay`);
 	const herdr = herdrBinary();
 	if (!herdr) throw new Error("herdr is not available");
 	const coordinator = process.env.HERDR_TAB_ID?.trim();
@@ -465,7 +467,7 @@ export async function closeFeatureTabs(input: { readonly root: string; readonly 
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
 		const jobDir = `${input.root}/.limen/jobs/${entry.name}`;
-		if (!new RegExp(`\\b${feature}\\b`, "i").test(`${await text(`${jobDir}/label`)}\n${entry.name}`)) continue;
+		if (!closedJobFeatures(await text(`${jobDir}/label`), entry.name, closedSet).includes(feature)) continue;
 		const places = await Promise.all([readPlace(jobDir), readPlace(jobDir, "diff")]);
 		for (const place of places) {
 			if (!place || place.tab === coordinator) continue;
@@ -624,18 +626,6 @@ async function readPlace(jobDir: string, record?: "diff"): Promise<HerdrPlace | 
 	const [workspace, tab, pane, mode] = await Promise.all((["workspace", "tab", "pane", "mode"] as const).map((name) => text(`${directory}/${name}`)));
 	if (!workspace || !tab || !pane || (mode !== "watch" && mode !== "log" && mode !== "hosted" && mode !== "diff")) return;
 	return { workspace, tab, pane, mode };
-}
-
-async function terminalFeature(root: string, feature: string): Promise<boolean> {
-	for (const lane of ["done", "dropped"] as const) {
-		const months = await readdir(`${root}/spec/features/${lane}`, { withFileTypes: true }).catch(() => []);
-		for (const month of months) {
-			if (!month.isDirectory()) continue;
-			const names = await readdir(`${root}/spec/features/${lane}/${month.name}`, { withFileTypes: true }).catch(() => []);
-			if (names.some((entry) => entry.isDirectory() && entry.name.toUpperCase().startsWith(`${feature}-`))) return true;
-		}
-	}
-	return false;
 }
 
 function text(path: string): Promise<string> {
