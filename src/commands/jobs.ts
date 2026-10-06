@@ -9,6 +9,7 @@ import { hostedUncertaintyText, readHostedUncertainty } from "../runtime/hosted-
 import { confirmDeadJobs, ownerAlive } from "../runtime/reap.ts";
 
 export const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+const HUMAN_TERMINAL_ROWS = 6;
 
 export async function jobsCommand(args: readonly string[], cwd: string): Promise<void> {
 	const selection = select(args);
@@ -59,13 +60,13 @@ export async function jobsCommand(args: readonly string[], cwd: string): Promise
 	if (human) {
 		const running = order.filter(([, state]) => state === "running");
 		const terminal = order.filter(([, state]) => state !== "running");
-		const shown = selection === "all" ? order : selection === "running" ? running : [...running, ...terminal.slice(0, 6)];
+		const shown = selection === "all" ? order : selection === "running" ? running : [...running, ...terminal.slice(0, HUMAN_TERMINAL_ROWS)];
 		if (shown.length === 0) {
 			console.log("no running jobs");
 			return;
 		}
 		const records = await Promise.all(shown.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, "human")).record));
-		console.log(humanSnapshot(records, tallyStates(order.map(([, state]) => state)), selection === "snapshot" && terminal.length > 6, paint));
+		console.log(humanSnapshot(records, tallyStates(order.map(([, state]) => state)), selection === "snapshot" && terminal.length > HUMAN_TERMINAL_ROWS, paint));
 		return;
 	}
 	if (selection === "all") {
