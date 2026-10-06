@@ -114,6 +114,40 @@ test("failed and stopped sender payloads direct inspection without a landing sig
 	}
 });
 
+test("event fields ride the payload as one-line data; a non-terminal event names its own handoff", async (t) => {
+	const f = await fixture();
+	t.after(f.cleanup);
+	const path = await f.config(join(f.root, "events.env"));
+	const event = {
+		LIMEN_FINISH_WEBHOOK_ENV: path,
+		LIMEN_FINISH_KIND: "coordinator.blocked",
+		LIMEN_FINISH_PLANT: "chilly",
+		LIMEN_FINISH_ID: "01a10d85-session",
+		LIMEN_FINISH_REASON: "todo blocked: Land F781\n(needs owner)",
+		LIMEN_FINISH_HANDOFF: "Coordinator is blocked. Next step: answer it or remove the blocker.",
+	};
+	assert.equal(f.run(event, f.root, ["F781 lead", "blocked", "main"]).status, 0);
+	const body = JSON.parse(f.request().body);
+	assert.deepEqual(
+		{ event: body.event, plant: body.plant, title: body.title, jobId: body.jobId, reason: body.reason, status: body.status, handoff: body.handoff, jobState: body.jobState },
+		{
+			event: "coordinator.blocked",
+			plant: "chilly",
+			title: "F781 lead",
+			jobId: "01a10d85-session",
+			reason: "todo blocked: Land F781 (needs owner)",
+			status: "blocked",
+			handoff: event.LIMEN_FINISH_HANDOFF,
+			jobState: undefined,
+		},
+	);
+	// A manual job ping still names its kind from the state and carries no invented plant, id or reason.
+	assert.equal(f.run({ LIMEN_FINISH_WEBHOOK_ENV: path, LIMEN_FINISH_KIND: "not a kind" }, f.root, ["worker", "failed", "candidate"]).status, 0);
+	const manual = JSON.parse(f.request().body);
+	assert.equal(manual.event, "job.failed");
+	assert.deepEqual([manual.plant, manual.jobId, manual.reason], [undefined, undefined, undefined]);
+});
+
 test("explicit targets fan out to two routes without an implicit single-target recipient", async (t) => {
 	const f = await fixture();
 	t.after(f.cleanup);

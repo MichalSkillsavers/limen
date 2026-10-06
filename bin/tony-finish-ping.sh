@@ -116,6 +116,15 @@ if (mapRaw !== undefined) {
 emitSelection(selection);
 for (const index of chosen) receipt(index, 'pending');
 const labeled = multi || mapRaw !== undefined;
+// Event fields are one-line data from the automatic caller; a manual call names only the job state.
+const oneLine = (value, max) => value?.replace(/\s+/g, ' ').trim().slice(0, max) || undefined;
+const kind = /^(job|coordinator|lead|webhook)\.[a-z][a-z-]{0,31}$/.test(process.env.LIMEN_FINISH_KIND ?? '')
+  ? process.env.LIMEN_FINISH_KIND
+  : ['done', 'failed', 'stopped'].includes(args[1]) ? `job.${args[1]}` : undefined;
+const fields = Object.entries({
+  event: kind, plant: oneLine(process.env.LIMEN_FINISH_PLANT, 120), title: oneLine(args[0], 200),
+  jobId: oneLine(process.env.LIMEN_FINISH_ID, 160), reason: oneLine(process.env.LIMEN_FINISH_REASON, 300),
+}).filter(([, value]) => value !== undefined);
 function send(target, index) {
   return new Promise(resolve => {
     const controller = new AbortController();
@@ -138,12 +147,13 @@ function send(target, index) {
         job: args[0], status: args[1] === 'done' ? 'waiting' : args[1], branch: args[2],
         ...(args[1] === 'done' ? { jobState: 'done' } : {}),
         ...(event ? { finishEvent: event } : {}),
-        // A lead group step names its own next step; a job never sets this override.
-        handoff: args[1] === 'done'
-          ? process.env.LIMEN_FINISH_HANDOFF?.trim() || 'Job done. Next step: land it, or name the check that still blocks landing.'
+        // A lead step or a non-terminal event names its own next step; a terminal job never sets this override.
+        handoff: process.env.LIMEN_FINISH_HANDOFF?.trim() || (args[1] === 'done'
+          ? 'Job done. Next step: land it, or name the check that still blocks landing.'
           : ['failed', 'stopped'].includes(args[1])
             ? 'Job failed or stopped; inspect the job record before proceeding'
-            : 'Unrecognized job status; inspect the job record before proceeding',
+            : 'Unrecognized job status; inspect the job record before proceeding'),
+        ...Object.fromEntries(fields),
       }),
     }).then(response => {
       const accepted = response.status >= 200 && response.status < 300;

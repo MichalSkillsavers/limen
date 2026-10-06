@@ -57,7 +57,7 @@ export async function finalizeJob(jobDir: string, state: "done" | "failed" | "st
 		promptCoordinator(jobDir, shutdownDeadline).catch(() =>
 			appendLimenLog(jobDir, "coordinator wake via Herdr: could not be recorded; inspect notify/herdr-prompt").catch(() => {}),
 		),
-		deliverFinishWebhook(jobDir, shutdownDeadline).catch(() =>
+		deliverFinishWebhook(jobDir, shutdownDeadline, detail).catch(() =>
 			appendLimenLog(jobDir, "finish webhook: delivery could not be recorded; inspect finish-webhook-attempt before manual retry").catch(() => {}),
 		),
 	]);
