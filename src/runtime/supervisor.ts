@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { deliverJobStall } from "../integrations/finish-webhook.ts";
 import {
 	type HerdrPlace,
 	type HostedAgentStatus,
@@ -18,6 +19,7 @@ import {
 import { jobMembership, ownsLiveChildren } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
 import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, recordCommits, requestedTerminal, textFile, writeHandshake } from "../job/record.ts";
+import { noteKind } from "../job/view.ts";
 import { cleanWorktree } from "../project/git.ts";
 import { argvFor, jobProfile, prepareSkillConfig } from "./engine.ts";
 import { hostedBindingSupported, hostedIdentityObservation, prepareHostedLaunch, readHostedBinding } from "./hosted-binding.ts";
@@ -280,9 +282,12 @@ export async function noteHostedIdle(jobDir: string, status: HostedAgentStatus, 
 				: `idle ${duration} after ${count} tool calls, session still open`;
 		await writeHostedResult(jobDir);
 		await recordCommits(jobDir).catch(() => {});
+		// A recovered supervisor re-arms on a stall it already reported; the same kind of standing note is not a new event.
+		const before = await textFile(`${jobDir}/advisory`);
 		await atomicWrite(`${jobDir}/advisory`, `${line}\n`);
 		watch.armed = false;
 		await appendLimenLog(jobDir, `advisory: ${line}`).catch(() => {});
+		if (!before || noteKind(before) !== noteKind(line)) void deliverJobStall(jobDir, line).catch(() => {});
 	}
 	const pane = await textFile(`${jobDir}/herdr/pane`);
 	if (pane) {

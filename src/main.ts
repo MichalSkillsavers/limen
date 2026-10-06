@@ -19,6 +19,7 @@ import { sweepCommand } from "./commands/sweep.ts";
 import { ticketAuthorCommand } from "./commands/ticket-author.ts";
 import { waitCommand } from "./commands/wait.ts";
 import { unwatchCommand, watchCommand } from "./commands/watch.ts";
+import { webhookCommand } from "./commands/webhook.ts";
 import { runHostedSupervisor } from "./runtime/supervisor.ts";
 import { failInternalJob, runInternalJob } from "./runtime/wrapper.ts";
 
@@ -47,6 +48,7 @@ const COMMANDS = {
 	sweep: sweepCommand,
 	linear: linearCommand,
 	"ticket-author": ticketAuthorCommand,
+	webhook: webhookCommand,
 } as const satisfies Record<
 	| "init"
 	| "workspace"
@@ -70,7 +72,8 @@ const COMMANDS = {
 	| "close"
 	| "sweep"
 	| "linear"
-	| "ticket-author",
+	| "ticket-author"
+	| "webhook",
 	Command
 >;
 const HELP = `limen — isolated coding jobs with files and git
@@ -104,6 +107,7 @@ usage:
   limen close <FNNN>
   limen ticket-author <ticket-path>                 # creation-commit author, following Git renames
   limen sweep [--install|--uninstall]
+  limen webhook test                             # send one test ping to this plant's finish webhook targets
   limen linear [on [--team T --project P]|off|status]   # Linear mirror toggle — renames spec/linear.md ↔ .off; --team/--project write a fresh config
   limen github connect|disconnect|status|doctor  # bind projects and diagnose seat safety
   limen picture build [--dir D] [--out F] [--json F] [--strict]  # local offline architecture map, no model call

@@ -116,10 +116,18 @@ limen workspace init
 
 ### Seat sweep
 
-Run the seat sweep (see [Seat notifications](jobs.md#seat-notifications)), or install or remove it.
+Run the seat sweep (see [Seat notifications](jobs.md#seat-notifications)), or install or remove it. Each pass also sends the `coordinator.exited` webhook for a registered coordinator whose process died without a normal exit (see [Plant events](finish-webhooks.md#plant-events)).
 
 ```text
 limen sweep [--install|--uninstall]
+```
+
+### Finish webhook test
+
+Send one `webhook.test` event to this plant's finish webhook targets. The sender prints one line per target. It never prints a URL or a credential.
+
+```text
+limen webhook test
 ```
 
 ### Linear

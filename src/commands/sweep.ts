@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { sweepCoordinators } from "../integrations/coordinator-signal.ts";
 import { noteKind } from "../job/view.ts";
 import { installSeatSweep, showSeatNotification, uninstallSeatSweep, updateRegisteredProjects } from "../project/seat.ts";
 import { HOSTED_UNCERTAINTY_MS, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
@@ -27,6 +28,8 @@ async function sweepProject(root: string): Promise<void> {
 	const jobs = join(root, ".limen", "jobs"),
 		threshold = positive("LIMEN_SEAT_RING_MS", 5 * 60_000);
 	await confirmDeadJobs(jobs);
+	// Exit detection runs every pass: a dead coordinator pane is news now, not after the seat ring threshold.
+	await sweepCoordinators(root).catch((error: unknown) => console.error(`coordinator sweep failed for ${root}: ${error instanceof Error ? error.message : String(error)}`));
 	if (Date.now() - modified(join(root, ".limen", "last-sweep")) < threshold) return;
 	for (const entry of fs.existsSync(jobs) ? fs.readdirSync(jobs, { withFileTypes: true }) : []) {
 		if (!entry.isDirectory()) continue;
