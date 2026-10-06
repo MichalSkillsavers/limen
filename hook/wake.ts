@@ -6,9 +6,8 @@ import { derivePulse, type Pulse } from "../src/job/job.ts";
 import { advisoryWake, completionWake } from "../src/job/wake-text.ts";
 import { unlandedBranches } from "../src/project/git.ts";
 import { registerProject } from "../src/project/seat.ts";
-import { processGroupAlive } from "../src/runtime/contain.ts";
 import { HOSTED_UNCERTAINTY_MS, hostedUncertaintyText, readHostedUncertainty } from "../src/runtime/hosted-uncertainty.ts";
-import { reapDeadJobs } from "../src/runtime/reap.ts";
+import { ownerAlive, reapDeadJobs } from "../src/runtime/reap.ts";
 
 type Context = {
 	readonly cwd: string;
@@ -59,6 +58,7 @@ export default function limenWake(pi: PiApi): void {
 	let active = false;
 	let muted = false;
 	let session: Context | undefined;
+	let sessionGeneration = 0;
 	let jobsDir: string | undefined;
 	let sessionId = "";
 	let limenDir: string | undefined;
@@ -159,6 +159,7 @@ export default function limenWake(pi: PiApi): void {
 	};
 	const retire = (reportHerdr = true) => {
 		active = false;
+		sessionGeneration += 1;
 		session = undefined;
 		stopTimers();
 		statusBody = "";
@@ -203,10 +204,11 @@ export default function limenWake(pi: PiApi): void {
 		finishedCache = { key, until: Date.now() + CACHE_REFRESH_MS, jobs: found };
 		return found;
 	};
-	const updateStatus = (jobs: string, running: readonly string[]) => {
+	const updateStatus = async (jobs: string, running: readonly string[], generation: number) => {
 		const finished = finishedNow(jobs, running);
+		const next = await jobDisplay(jobs, sessionId, running, finished);
+		if (!active || generation !== sessionGeneration) return;
 		updateTabTail(jobs, running, finished);
-		const next = jobDisplay(jobs, sessionId, running, finished);
 		if (!next) {
 			clearStatus();
 			return;
@@ -427,6 +429,7 @@ export default function limenWake(pi: PiApi): void {
 		void finishSweep(jobsDir);
 	};
 	const finishSweep = async (jobs: string) => {
+		const generation = sessionGeneration;
 		injectedThisSweep = false;
 		refreshPendingClaims();
 		stampSweep();
@@ -445,20 +448,24 @@ export default function limenWake(pi: PiApi): void {
 				}
 			}
 			await reapDeadJobs(jobs, firstDead, Date.now(), running);
+			if (!active || generation !== sessionGeneration) return;
 			for (const id of ids) {
 				const job = join(jobs, id);
 				if (stateOf(jobs, id) === "running" && !routable(job)) enrollLegacyRunning(job);
 				observe(jobs, id);
 				if (deliverySettled(job, sessionId)) settled.add(id);
 			}
-			updateStatus(
+			await updateStatus(
 				jobs,
 				running.filter((id) => stateOf(jobs, id) === "running"),
+				generation,
 			);
 		} catch {
 			// Display and delivery are advisory; durable state remains on disk.
+		} finally {
+			sweeping = false;
+			if (active && generation !== sessionGeneration) sweep();
 		}
-		sweeping = false;
 	};
 	const scheduleSweep = () => {
 		if (!active || changeTimer) return;
@@ -484,6 +491,7 @@ export default function limenWake(pi: PiApi): void {
 		}
 		void registerProject(root).catch(() => {});
 		active = true;
+		sessionGeneration += 1;
 		session = context;
 		jobsDir = jobs;
 		limenDir = join(root, ".limen");
@@ -501,7 +509,6 @@ export default function limenWake(pi: PiApi): void {
 		settled.clear();
 		ownsJobs = undefined;
 		cacheExpiresAt = 0;
-		sweeping = false;
 		herdr = herdrTarget();
 		const tab = process.env.HERDR_TAB_ID?.trim();
 		for (const jobId of readdirSync(jobs)) {
@@ -628,19 +635,21 @@ export function progressFilename(filename: string | null): boolean {
 	return /^[^/]+\/(activity|last-tool)$/.test(filename.replaceAll("\\", "/"));
 }
 /** The job line: each running job with its pulse, then each finished job with its state, until it lands or closes. */
-function jobDisplay(
+async function jobDisplay(
 	jobs: string,
 	session: string,
 	runningIds: readonly string[],
 	finished: readonly FinishedJob[],
-): { readonly status: string; readonly title: string; readonly summary: string; readonly pulses: readonly Pulse[]; readonly watched: number } | undefined {
-	const running = runningIds.map((id) => {
-		const label = text(join(jobs, id, "label")) || id;
-		const pulse = pulseOf(jobs, id);
-		const tool = text(join(jobs, id, "last-tool"));
-		const watching = subscribed(join(jobs, id), session);
-		return { label, pulse, watching, status: `${shortLabel(label)} ${pulse === "tool" && tool ? `${pulse}:${tool}` : pulse}${watching ? "" : " (unwatched)"}` };
-	});
+): Promise<{ readonly status: string; readonly title: string; readonly summary: string; readonly pulses: readonly Pulse[]; readonly watched: number } | undefined> {
+	const running = await Promise.all(
+		runningIds.map(async (id) => {
+			const label = text(join(jobs, id, "label")) || id;
+			const pulse = await pulseOf(jobs, id);
+			const tool = text(join(jobs, id, "last-tool"));
+			const watching = subscribed(join(jobs, id), session);
+			return { label, pulse, watching, status: `${shortLabel(label)} ${pulse === "tool" && tool ? `${pulse}:${tool}` : pulse}${watching ? "" : " (unwatched)"}` };
+		}),
+	);
 	if (running.length === 0 && finished.length === 0) return undefined;
 	const summary = [running.map(({ status }) => status), finished.map(({ label, state }) => `${shortLabel(label)} ${state}`)]
 		.filter((names) => names.length > 0)
@@ -650,7 +659,7 @@ function jobDisplay(
 		running.length === 0
 			? `Limen · ${finished.length} finished`
 			: running.length === 1
-				? `Limen · ${running[0]?.label}`
+				? `Limen · ${shortLabel(running[0]?.label ?? "")}`
 				: `Limen · ${running.length} jobs · ${running
 						.slice(0, 3)
 						.map(({ label }) => shortLabel(label))
@@ -703,12 +712,12 @@ function finishedJobs(jobs: string, tab: string | undefined, session: string): F
 	}
 	return candidates.filter(({ id }) => !landed.has(id));
 }
-function pulseOf(jobs: string, id: string): Pulse {
+async function pulseOf(jobs: string, id: string): Promise<Pulse> {
 	const pid = Number(text(join(jobs, id, "pid")));
 	const recorded = Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
 	const activity = text(join(jobs, id, "activity"));
 	return derivePulse({
-		alive: recorded !== undefined && processGroupAlive(recorded),
+		alive: await ownerAlive(join(jobs, id)),
 		...(recorded !== undefined ? { pid: recorded } : {}),
 		...(activity ? { activity } : {}),
 	});
@@ -979,12 +988,18 @@ function herdrTarget(): HerdrPane | undefined {
 // The display agent names the lead pane, so it describes the lead: an idle lead waits on its jobs; a working lead only counts them.
 function herdrDisplayAgent(pulses: readonly Pulse[], leadIdle: boolean): string {
 	if (!pulses.length) return "Limen coordinator";
-	if (pulses.includes("dead")) return `⚠ Limen · ${pulses.length} needs attention`;
+	const dead = pulses.filter((pulse) => pulse === "dead").length;
+	if (dead > 0) return `⚠ Limen · ${dead} of ${pulses.length} needs attention`;
 	const jobs = `${pulses.length} ${pulses.length === 1 ? "job" : "jobs"}`;
 	return leadIdle ? `Limen · waiting on ${jobs}` : `Limen · ${jobs}`;
 }
 function shortLabel(label: string): string {
-	return /\bF\d{3,}\b/i.exec(label)?.[0]?.toUpperCase() ?? label.split(/\s+/, 1)[0]?.slice(0, 12) ?? "job";
+	const name = label.trim();
+	const feature = /\bF\d{3,}\b/i.exec(name)?.[0];
+	if (!feature) return name;
+	const legacy = /^(F\d{3,})(?:-([^\s]+))?(?:\s+(.+))?$/i.exec(name);
+	const words = (legacy ? legacy[3] || legacy[2]?.replaceAll("-", " ") || "" : name.replace(feature, "")).replace(/^[\s·-]+|[\s·-]+$/g, "").replace(/\s+/g, " ");
+	return words ? `${words} · ${feature.toUpperCase()}` : feature.toUpperCase();
 }
 function stateOf(jobs: string, id: string): string {
 	return text(join(jobs, id, "state"));

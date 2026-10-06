@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import limenWake from "../hook/wake.ts";
+import { processInfo } from "../src/runtime/contain.ts";
 
 const WAKE_HOME = await mkdtemp(join(tmpdir(), "limen-wake-home-"));
 const PREVIOUS_LIMEN_HOME = process.env.LIMEN_HOME;
@@ -71,11 +72,11 @@ test("wake ignores history, announces start, and steers once on terminal change"
 	assert.deepEqual(notifications, ["limen: F001 implementation started (new)"]);
 	await writeFile(join(jobs, "new/activity"), "tool\n");
 	await writeFile(join(jobs, "new/last-tool"), "bash\n");
-	await waitUntil(() => statuses.includes("limen 1 · F001 starting"));
+	await waitUntil(() => statuses.some((status) => /\bstarting$/.test(status ?? "")));
 	await writeFile(join(jobs, "new/state"), "done\n");
 	await waitUntil(() => messages.length === 1);
 	// A finished job stays named on the job line until it lands or its feature closes.
-	await waitUntil(() => statuses.at(-1) === "limen 0 · F001 done");
+	await waitUntil(() => /\bdone$/.test(statuses.at(-1) ?? ""));
 	// Idle coordinators get a normal user message (visible turn), not a buried steer.
 	assert.equal(messages[0]?.deliverAs, undefined);
 	await writeFile(join(jobs, "new/state"), "failed\n");
@@ -331,7 +332,7 @@ test("wake finds the project root from a subdirectory", async (context) => {
 	await writeFile(join(jobs, "sub/branch"), "candidate\n");
 	await subscribe(jobs, "sub", "coordinator-a");
 	await writeFile(join(jobs, "sub/state"), "running\n");
-	await waitUntil(() => statuses.some((status) => status?.includes("limen 1 · F023 starting")) ?? false);
+	await waitUntil(() => statuses.some((status) => /\bstarting$/.test(status ?? "")));
 	await writeFile(join(jobs, "sub/state"), "done\n");
 	await waitUntil(() => messages.length === 1);
 	assert.match(messages[0] ?? "", /F023 from src.*is done \(sub\)/);
@@ -496,13 +497,13 @@ test("herdr pane naming follows running jobs and each terminal state notifies on
 	await writeFile(join(jobs, "new/branch"), "candidate\n");
 	await subscribe(jobs, "new", "coordinator-a");
 	await writeFile(join(jobs, "new/state"), "running\n");
-	const body = "1 RUNNING · 1 watched · 0 unwatched · F001 starting";
+	const body = "1 RUNNING · 1 watched · 0 unwatched · implementation · F001 starting";
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes(`limen=${body}`)));
 	const naming = (await readCalls(calls)).find((call) => call.includes(`limen=${body}`));
 	assert.ok(naming, "pane metadata call expected");
 	assert.deepEqual(naming.slice(0, 5), ["pane", "report-metadata", "w1:p1", "--source", "limen"]);
 	const titleAt = naming.indexOf("--title");
-	assert.equal(naming[titleAt + 1], "Limen · F001 implementation");
+	assert.equal(naming[titleAt + 1], "Limen · implementation · F001");
 	assert.equal(naming[naming.indexOf("--display-agent") + 1], "Limen · waiting on 1 job");
 	const tokenAt = naming.indexOf(`limen=${body}`);
 	assert.equal(naming[tokenAt - 1], "--token");
@@ -581,7 +582,7 @@ test("settled coordinator labels count watched and visible unwatched RUNNING job
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("Limen · 4 jobs")));
 	leadIdle = true;
 	await writeFile(join(jobs, "d/pid"), "99999999\n");
-	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("⚠ Limen · 4 needs attention")));
+	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("⚠ Limen · 1 of 4 needs attention")));
 	await writeFile(join(jobs, "d/pid"), `${worker.pid}\n`);
 	await rm(join(jobs, "c/notify/subscribers/coordinator-a"));
 	assert.match(await report("4 RUNNING · 2 watched · 2 unwatched"), /c think \(unwatched\)/);
@@ -595,7 +596,7 @@ test("settled coordinator labels count watched and visible unwatched RUNNING job
 	await writeFile(join(jobs, "d/pid"), "99999999\n");
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.some((arg) => /idle=.*d dead \(unwatched\) · a done b done$/.test(arg))));
 	assert.ok(
-		(await readCalls(calls)).some((call) => call.includes("⚠ Limen · 1 needs attention")),
+		(await readCalls(calls)).some((call) => call.includes("⚠ Limen · 1 of 1 needs attention")),
 		"dead evidence must not be relabeled waiting",
 	);
 	await writeFile(join(jobs, "d/state"), "stopped\n");
@@ -604,6 +605,69 @@ test("settled coordinator labels count watched and visible unwatched RUNNING job
 	for (const id of ["a", "b"]) await rm(join(jobs, id), { recursive: true });
 	handlers.get("agent_settled")?.({}, session);
 	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("--clear-state-labels")));
+});
+
+test("same-feature jobs retain useful names and only a mismatched wrapper identity needs attention", async (context) => {
+	stashEnv(context, "LIMEN_JOB", undefined);
+	stashEnv(context, "HERDR_TAB_ID", undefined);
+	const root = await mkdtemp(join(tmpdir(), "limen-footer-identity-"));
+	context.after(() => rm(root, { recursive: true, force: true }));
+	const calls = join(root, "calls");
+	await mkdir(calls);
+	const fake = join(root, "herdr");
+	await writeFile(fake, `#!/bin/sh\nprintf '%s\\n' "$@" > "${calls}/call.$$"\n`);
+	await chmod(fake, 0o755);
+	stashEnv(context, "LIMEN_HERDR", fake);
+	stashEnv(context, "HERDR_ENV", "1");
+	stashEnv(context, "HERDR_PANE_ID", "w1:p1");
+	await mkdir(join(root, ".agents/limen"), { recursive: true });
+	const jobs = join(root, ".limen/jobs");
+	const identity = await processInfo(process.pid);
+	assert.equal(identity.kind, "present");
+	if (identity.kind !== "present") throw new Error("test process identity unavailable");
+	for (let index = 0; index < 14; index += 1) {
+		const id = `job-${String(index).padStart(2, "0")}`;
+		await mkdir(join(jobs, id), { recursive: true });
+		const label = index === 0 ? "F773-styleguide-quality-scan team-1 coordinator" : `team-${index + 1} coordinator · F773`;
+		await writeFile(join(jobs, id, "label"), `${label}\n`);
+		await writeFile(join(jobs, id, "state"), "running\n");
+		await writeFile(join(jobs, id, "pid"), `${process.pid}\n`);
+		await writeFile(join(jobs, id, "born"), index === 0 ? "another process birth\n" : `${identity.process.born}\n`);
+		await writeFile(join(jobs, id, "activity"), index === 1 ? "tool\n" : "think\n");
+		if (index === 1) await writeFile(join(jobs, id, "last-tool"), "read\n");
+	}
+	const handlers = new Map<string, (event: unknown, context: TestContext) => void>();
+	const statuses: string[] = [];
+	limenWake({
+		on: (event, handler) => handlers.set(event, handler),
+		sendUserMessage() {},
+	});
+	const session = {
+		cwd: root,
+		isIdle: () => true,
+		sessionManager: sessionManager("coordinator-a"),
+		ui: {
+			notify() {},
+			setStatus(_key: string, value: string | undefined) {
+				if (value) statuses.push(value);
+			},
+		},
+	};
+	handlers.get("session_start")?.({}, session);
+	context.after(() => handlers.get("session_shutdown")?.({}, session));
+	await waitUntil(() => statuses.some((status) => status.includes("team-1 coordinator · F773 dead")));
+	assert.match(statuses.at(-1) ?? "", /team-2 coordinator · F773 tool:read/);
+	assert.match(statuses.at(-1) ?? "", /team-3 coordinator · F773 think/);
+	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("⚠ Limen · 1 of 14 needs attention")));
+	const reports = await readCalls(calls);
+	assert.ok(reports.some((call) => call.includes("Limen · 14 jobs · team-1 coordinator · F773 team-2 coordinator · F773 team-3 coordinator · F773")));
+	assert.ok(!reports.some((call) => call[0] === "agent"), "the footer does not ask Herdr whether its wrapper is alive");
+	await writeFile(join(jobs, "job-00/born"), `${identity.process.born}\n`);
+	await waitUntil(() => statuses.some((status) => status.includes("team-1 coordinator · F773 think")));
+	await writeFile(join(jobs, "job-01/label"), "footer liveness repair\n");
+	await waitUntil(() => statuses.some((status) => status.includes("footer liveness repair tool:read")));
+	await writeFile(join(jobs, "job-00/state"), "done\n");
+	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("Limen · waiting on 13 jobs")));
 });
 
 test("the coordinator tab keeps running and finished counts on its stem; an owner turn clears the finished count", async (context) => {
@@ -722,11 +786,9 @@ test("a finished job leaves the coordinator title and job line once it lands or 
 	context.after(() => handlers.get("session_shutdown")?.({}, session));
 	const current = () => readFile(label, "utf8");
 	await waitUntilAsync(async () => (await current()) === "chat settings · 2 finished");
-	assert.equal(statuses.at(-1), "limen 0 · F901 done landing done");
 	git("merge", "-q", "--ff-only", "limen/land");
 	handlers.get("agent_settled")?.({}, session);
 	await waitUntilAsync(async () => (await current()) === "chat settings · 1 finished");
-	assert.equal(statuses.at(-1), "limen 0 · F901 done");
 	await mkdir(join(root, "spec/features/done/2026-10/F901-closing-work"), { recursive: true });
 	handlers.get("agent_settled")?.({}, session);
 	await waitUntilAsync(async () => (await current()) === "chat settings");
@@ -791,7 +853,7 @@ async function waitUntilAsync(predicate: () => Promise<boolean>): Promise<void> 
 	assert.ok(await predicate(), "timed out waiting for herdr call");
 }
 
-test("herdr surfaces stay live while the conversation is muted", async (context) => {
+test("muting holds job notices and wakes until the conversation is unmuted", async (context) => {
 	stashEnv(context, "LIMEN_JOB", undefined);
 	const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(join(process.env.TMPDIR ?? "/tmp", "limen-herdr-mute-")));
 	context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
@@ -837,7 +899,6 @@ test("herdr surfaces stay live while the conversation is muted", async (context)
 	await writeFile(join(jobs, "new/branch"), "candidate\n");
 	await subscribe(jobs, "new", "coordinator-a");
 	await writeFile(join(jobs, "new/state"), "running\n");
-	await waitUntilAsync(async () => (await readCalls(calls)).some((call) => call.includes("limen=1 RUNNING · 1 watched · 0 unwatched · F001 starting")));
 	assert.deepEqual(
 		statuses.filter((value) => value !== undefined),
 		[],

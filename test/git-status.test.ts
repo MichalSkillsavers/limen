@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile, utimes, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { cleanWorktree } from "../src/project/git.ts";
-import { scratchRepo } from "./scratch.ts";
+import { git, limen, scratchRepo } from "./scratch.ts";
 
 test("cleanWorktree observes changes without refreshing the worker's index", async (context) => {
 	const scratch = await scratchRepo();
@@ -20,4 +20,29 @@ test("cleanWorktree observes changes without refreshing the worker's index", asy
 	await writeFile(join(scratch.root, "untracked.md"), "new\n");
 	assert.equal(cleanWorktree(scratch.root), false);
 	assert.deepEqual(await readFile(index), before);
+});
+
+test("job commands outside a project name the directory and where to run", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	const outside = { ...scratch, root: dirname(scratch.root) };
+	for (const args of [["status"], ["jobs"], ["wait", "missing"], ["land", "missing"], ["spawn", "--detached", "Read the repository."]]) {
+		const result = limen(outside, ...args);
+		assert.equal(result.status, 1);
+		assert.ok(result.stderr.includes(`not inside a Limen project: ${outside.root}`), result.stderr);
+		assert.match(result.stderr, /run this command from your project repository or Limen workspace/);
+		assert.doesNotMatch(result.stderr, /fatal: not a git repository/);
+	}
+});
+
+test("spawn in an unborn repository explains the first commit and starts no worktree", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	const empty = { ...scratch, root: join(dirname(scratch.root), "empty") };
+	await mkdir(empty.root);
+	git(empty.root, "init", "-b", "main");
+	const result = limen(empty, "spawn", "--detached", "Read the repository.");
+	assert.equal(result.status, 1);
+	assert.match(result.stderr, /this repository has no commit yet; commit once, then spawn\./);
+	assert.equal(git(empty.root, "worktree", "list", "--porcelain").split("worktree ").length, 2);
 });

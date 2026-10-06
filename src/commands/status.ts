@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
+import { type GroupIdentity, jobMembership } from "../job/group-cabinet.ts";
 import { noteKind } from "../job/view.ts";
 import { limenRoot, unlandedBranches, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
@@ -42,6 +43,7 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 	const worktrees = new Set<string>();
 	const originTabs = new Set<string>();
 	const finished = new Map<string, Finished>();
+	const groups = new Map<string, { readonly feature: string; readonly branches: Set<string> }>();
 	let older = 0;
 	let lastOrigin = "";
 	for (const id of ids) {
@@ -72,6 +74,17 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 			running.push([`  ${record.job?.label ?? (label || id)} (${id})`, tab, minutes, attention, record.lastTool ?? "", repo ? `repo ${repo}` : ""].filter(Boolean).join(" · "));
 			continue;
 		}
+		let group: GroupIdentity | undefined;
+		if (state === "done" || state === "failed" || state === "stopped") {
+			try {
+				group = await jobMembership(dir);
+				if (group && (group.run.root !== root || typeof group.run.feature !== "string" || !group.run.feature.trim() || typeof group.run.closed !== "boolean")) group = undefined;
+			} catch {
+				// Unreadable membership must not hide a recoverable branch.
+				group = undefined;
+			}
+			if (group?.run.closed) continue;
+		}
 		const finishedAt =
 			Date.parse(ended) ||
 			(await stat(state ? `${dir}/state` : dir).then(
@@ -86,10 +99,18 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 			uncertain.push(`  ${label || id} (${id}) · unknown state ${state || "missing"}`);
 			continue;
 		}
+		if (group) {
+			if (branch) {
+				const candidate = groups.get(group.run.id) ?? { feature: group.run.feature, branches: new Set<string>() };
+				candidate.branches.add(`${repo}:${branch}`);
+				groups.set(group.run.id, candidate);
+			}
+			continue;
+		}
 		if (branch) finished.set(`${repo}:${branch}`, { id, label: label || id, state, branch, repo });
 	}
 	if (!originTabs.size && lastOrigin) originTabs.add(lastOrigin);
-	const ready: string[] = [];
+	const ready = [...groups].map(([id, group]) => `  group ${group.feature}: ${group.branches.size} member branches; the lead decides (limen group status ${id})`);
 	const decide: string[] = [];
 	const byRepo = Map.groupBy(
 		[...finished].filter(([key]) => !runningBranches.has(key)).map(([, job]) => job),

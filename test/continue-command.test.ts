@@ -42,7 +42,7 @@ test("private continuation retains source and canonical ticket even after a sett
 	await writeFile(`${scratch.root}/.gitignore`, "/spec/\n/.limen/\n");
 	git(scratch.root, "add", ".");
 	git(scratch.root, "commit", "-m", "ignore planning");
-	const first = limen(scratch, "spawn", `Read canonical planning. Ticket: ${ticket}`, "--engine", "pi", "--detached");
+	const first = limen(scratch, "spawn", `Read canonical planning. (Ticket:  ${ticket}).`, "--engine", "pi", "--detached");
 	assert.equal(first.status, 0, first.stderr);
 	const parent = onlyJobId(first.stdout);
 	await waitForState(scratch.root, parent, "done");

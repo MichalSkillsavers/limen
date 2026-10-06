@@ -36,8 +36,15 @@ export type GroupIdentity = { run: GroupRun; member?: GroupMember; recipient: st
 export const groupPath = (run: Pick<GroupRun, "root" | "id">): string => `${run.root}/.limen/groups/${run.id}`;
 export const teamRoute = (run: GroupRun, team: string): { provider: string; model: string } => run.teamModels?.[team] ?? { provider: run.provider, model: run.model };
 export async function readRun(root: string, id: string): Promise<GroupRun> {
-	if (!/^[a-zA-Z0-9-]+$/.test(id)) throw new Error("invalid group id");
-	return JSON.parse(await readFile(`${root}/.limen/groups/${id}/run.json`, "utf8")) as GroupRun;
+	if (!/^[a-zA-Z0-9-]+$/.test(id)) throw new Error(`invalid group ID ${JSON.stringify(id)}; run limen group start FEATURE with the group settings`);
+	let record: string;
+	try {
+		record = await readFile(`${root}/.limen/groups/${id}/run.json`, "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		throw new Error(`no group record for ${id}; run limen group start FEATURE with the group settings`);
+	}
+	return JSON.parse(record) as GroupRun;
 }
 export async function saveJson(path: string, value: unknown): Promise<void> {
 	const temporary = `${path}.${randomUUID()}.tmp`;
@@ -106,15 +113,17 @@ export async function groupIdentity(cwd: string, explicitId?: string): Promise<G
 	const memberId = process.env.LIMEN_JOB_ID;
 	if (process.env.LIMEN_GROUP_ID) {
 		const root = process.env.LIMEN_CONTEXT_ROOT;
-		if (!root || !memberId) throw new Error("group member identity is incomplete");
+		if (!root || !memberId) throw new Error("this job has incomplete group membership; run limen jobs to inspect its job record");
 		const run = await readRun(root, process.env.LIMEN_GROUP_ID);
 		const member = run.members.find((entry) => entry.id === memberId);
-		if (!member || member.team !== process.env.LIMEN_TEAM_ID || (explicitId && explicitId !== run.id)) throw new Error("group member identity does not match the cabinet");
+		if (!member || member.team !== process.env.LIMEN_TEAM_ID || (explicitId && explicitId !== run.id))
+			throw new Error(`this job does not match group ${run.feature} (${run.id})'s roster; run limen jobs ${memberId}`);
 		return { run, member, recipient: member.id };
 	}
 	if (!explicitId) return;
 	const run = await readRun(limenRoot(cwd), explicitId);
-	if (!run.lead || run.lead !== (await leadSession(run.root))) throw new Error("group command requires its recorded lead session");
+	if (!run.lead || run.lead !== (await leadSession(run.root)))
+		throw new Error(`group ${run.feature} (${run.id}) belongs to another lead pane; return to that pane and run limen group status ${run.id}`);
 	return { run, recipient: `lead-${run.lead}` };
 }
 // OMP does not export its session to tool commands, so a registered lead is also recognized as a live ancestor process.
@@ -154,12 +163,15 @@ export async function claimMember(run: GroupRun, team: string, role: GroupMember
 		groupPath(run),
 		async () => {
 			const current = await readRun(run.root, run.id);
-			if (current.stopped || current.closed || Date.now() >= current.deadline) throw new Error("group is stopped, closed, or past its deadline");
-			if (!current.teams.includes(team)) throw new Error("team is not in the recorded roster");
+			if (current.stopped || current.closed || Date.now() >= current.deadline)
+				throw new Error(`group ${current.feature} (${current.id}) is stopped, closed, or past its deadline; run limen group status ${current.id}`);
+			if (!current.teams.includes(team)) throw new Error(`${team} is not in group ${current.feature} (${current.id})'s roster; run limen group status ${current.id}`);
 			const used = current.members.filter((entry) => entry.team === team && entry.role === role).length;
-			if (used >= (role === "coordinator" ? 1 : current.workersPerTeam)) throw new Error(`${team} ${role} launch allowance exhausted; ask the lead`);
+			if (used >= (role === "coordinator" ? 1 : current.workersPerTeam))
+				throw new Error(`${team} has used its ${role} job allowance; run limen group status ${current.id} before asking the lead`);
 			const deadline = role === "coordinator" ? current.deadline : Math.min(Date.now() + current.workerTimeoutMs, current.deadline - current.reserveMs);
-			if (deadline <= Date.now()) throw new Error("no worker time remains before the coordinator wrap-up reserve");
+			if (deadline <= Date.now())
+				throw new Error(`group ${current.feature} (${current.id}) has no worker time left before the coordinator wraps up; run limen group status ${current.id}`);
 			const member: GroupMember = { id, team, role, deadline, ...(parent ? { parent } : {}) };
 			current.members.push(member);
 			await saveJson(`${groupPath(run)}/run.json`, current);
@@ -174,7 +186,7 @@ export async function jobMembership(jobDir: string): Promise<GroupIdentity | und
 	const root = dirname(dirname(dirname(jobDir)));
 	const run = await readRun(root, id);
 	const member = run.members.find((entry) => `${root}/.limen/jobs/${entry.id}` === jobDir);
-	if (!member) throw new Error("job is absent from its group roster");
+	if (!member) throw new Error(`job ${jobDir.split("/").at(-1)} is absent from group ${run.feature} (${run.id})'s roster; run limen group status ${run.id}`);
 	return { run, member, recipient: member.id };
 }
 export async function retainedGroupJob(jobDir: string): Promise<boolean> {

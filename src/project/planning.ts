@@ -44,11 +44,18 @@ export async function privatePlanningFile(root: string, path: string): Promise<s
 	return absolute;
 }
 
+/** Read every `Ticket:` path, preserving order and excluding sentence punctuation. */
+export function ticketPointers(task: string): Array<{ path: string; pointer: string }> {
+	return [...task.matchAll(/\bTicket:\s+(\S+)/g)].flatMap(([pointer, token]) => {
+		const path = token!.replace(/[.,;:!?)\]'"`]+$/, "");
+		return path ? [{ path, pointer }] : [];
+	});
+}
+
 /** Check each `Ticket:` path in the task and replace it with its absolute path in the canonical root. */
 export async function privatePlanningTask(root: string, task: string): Promise<string> {
 	let result = task;
-	for (const [pointer, token = ""] of task.matchAll(/\bTicket:\s+(\S+)/g)) {
-		const path = token.replace(/[.,;:!?)\]'"`]+$/, "");
+	for (const { pointer, path } of ticketPointers(task)) {
 		const absolute = await privatePlanningFile(root, path);
 		result = result.replace(pointer, pointer.replace(path, absolute));
 	}

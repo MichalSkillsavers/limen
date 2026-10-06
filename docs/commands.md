@@ -15,13 +15,15 @@ The coordinator runs these from its Herdr pane during ordinary work.
 Start a worker, a reviewer, or a job in one child repository, or continue a finished job.
 
 ```text
-limen spawn "instruction" [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD]
-limen spawn --repo R "instruction" [--label L] [--model M]
-limen spawn --review --branch B --label L "instruction"
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "instruction" [--label L] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD]
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --repo R "instruction" [--label L]
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L "instruction"
 limen continue <id|suffix|label> "follow-up instruction" [--review] [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--tab|--detached]
 ```
 
 ### Inspect jobs
+
+Run job commands from the project repository or Limen workspace. Outside either location, Limen names the current directory and tells you where to run. A new repository needs its first commit before `spawn`.
 
 Read the plant inbox, the job records, and the diff of a job, or open a job in Herdr.
 
@@ -38,6 +40,8 @@ limen open <id|suffix|label>
 - `Candidates to inspect` (finished jobs with commits that are not landed)
 - `Needs a decision` (failed or stopped jobs with commits that are not landed)
 - coordinator tabs
+
+Open groups replace individual member candidates with one line: `group <feature>: N member branches; the lead decides (limen group status <id>)`. Closed groups leave the inbox. Work outside groups keeps its ordinary candidate or decision row.
 
 In a terminal, `jobs` shows an aligned table for people. Through a pipe, it prints the compact format that tools read. `LIMEN_VIEW=human|compact` selects a view. `NO_COLOR` removes the color.
 
@@ -85,7 +89,8 @@ Start a team group, and show the status of, publish, wait for, stop, or close it
 
 ```text
 limen group start FEATURE --teams N --workers-per-team N --timeout D --worker-timeout D --engine E --provider P --model M --thinking T --worker-thinking T [--detached|--tab] [--new-run]
-limen group status|publish|wait|stop|close [GROUP-ID]
+limen group status [GROUP-ID] [--json]
+limen group publish|wait|stop|close [GROUP-ID]
 ```
 
 Members get their group from their recorded membership. The group lead gives the group ID.
