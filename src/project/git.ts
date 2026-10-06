@@ -4,7 +4,12 @@ import { basename, dirname, relative, resolve } from "node:path";
 export type GitWorktree = { readonly path: string; readonly branch?: string; readonly detached: boolean };
 type GitResult = { readonly stdout: string; readonly stderr: string; readonly status: number };
 export function repoRoot(cwd: string): string {
-	return requireGit(cwd, ["rev-parse", "--show-toplevel"]).stdout.trim();
+	const result = git(cwd, ["rev-parse", "--show-toplevel"]);
+	if (result.status !== 0) {
+		if (result.stderr.includes("not a git repository")) throw new Error(`not inside a Limen project: ${cwd}; run this command from your project repository or Limen workspace.`);
+		throw new Error(result.stderr.trim() || result.stdout.trim() || "git rev-parse failed");
+	}
+	return result.stdout.trim();
 }
 export function workspaceRoot(cwd: string): string | undefined {
 	const root = resolve(cwd);
@@ -138,6 +143,14 @@ export function pruneWorktrees(cwd: string): void {
 }
 export function headCommit(cwd: string): string {
 	return requireGit(cwd, ["rev-parse", "HEAD"]).stdout.trim();
+}
+export function spawnBaseCommit(cwd: string): string {
+	const result = git(cwd, ["rev-parse", "--verify", "HEAD"]);
+	if (result.status === 0) return result.stdout.trim();
+	const branch = git(cwd, ["symbolic-ref", "--quiet", "HEAD"]);
+	if (branch.status === 0 && git(cwd, ["show-ref", "--verify", "--quiet", branch.stdout.trim()]).status === 1)
+		throw new Error("this repository has no commit yet; commit once, then spawn.");
+	throw new Error(result.stderr.trim() || result.stdout.trim() || "git rev-parse failed");
 }
 export function currentBranch(cwd: string): string {
 	return requireGit(cwd, ["symbolic-ref", "--short", "HEAD"]).stdout.trim();

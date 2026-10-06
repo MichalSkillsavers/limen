@@ -43,6 +43,8 @@ Both routes carry the same completion facts: the task, branch and repository, st
 | `done` | The run ended cleanly. The selected engine exited 0, or a hosted session ended, and the last stop reason was not `error` or `aborted`. |
 | `failed` | The run had a provider error, and Limen records the reason. A limit also records `failed` (see [Limits](#limits)). A failed job keeps its worktree and transcript. |
 
+Failed rows use the recorded `stop-reason`, not a later webhook or tab-close log line. Rate-limit rows show the HTTP status and approximate retry minutes; `jobs <id>` retains the full provider reason. Older records without `stop-reason` use the last `failed:` or `stopped:` log entry.
+
 **Neither state is approval.** Neither state means that the ticket is finished or that the branch is safe to merge, because `done` only means that the run exited cleanly. The coordinator reads the record, the diff, and the checks. Then, under the review policy of the project, it merges, or resumes a repair, or asks you.
 
 ### Reviews
@@ -55,8 +57,11 @@ These commands are the harness. The coordinator types them. This list helps you 
 
 ```bash
 # Start a worker
-limen spawn --label "session handler · F001" \
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> \
+  --label "session handler · F001" \
   'Implement F001: sign-in survives a restart. Start with the failing session test. One commit. Ticket: spec/features/active/F001-auth/ticket.md'
+
+# Ticket pointers accept whitespace after Ticket: and strip closing sentence punctuation.
 
 # Inspect
 limen status
@@ -65,13 +70,15 @@ limen jobs <id|suffix|label>
 git diff HEAD...<branch>
 
 # Review
-limen spawn --review --branch limen/<job-id> --label "session handler review 1 · F001" \
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> \
+  --review --detached --branch limen/<job-id> --label "session handler review 1 · F001" \
   'Review the F001 candidate against spec/features/active/F001-auth/ticket.md. Name the commit reviewed.'
 
 # Correct, stop, repair, or continue
 limen steer <id> "stay on the session test; do not widen"
 limen stop <id> "reason"
-limen spawn --branch limen/<job-id> --label "session handler repair 1 · F001" 'Focused resume instruction'
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> \
+  --branch limen/<job-id> --label "session handler repair 1 · F001" 'Focused resume instruction'
 limen continue <id> 'Follow-up instruction'
 
 # Follow and land
@@ -83,6 +90,8 @@ limen land <id>
 
 - **Job ID:** The last line of `spawn` output is the durable job ID.
 - **Labels:** A label names the change first and the feature number last. A repair label or a review label names its round.
+- **Hosted labels:** Ordinary text such as `Fix the lead-in paragraph · F900` is allowed. Lead ownership comes from the coordinator pane, not the label; `--role coordinator` and `--role lead` remain refused.
+- **Group labels:** Team jobs read `team-2 coordinator · F773`, so jobs on the same feature remain distinct.
 
 ### Steer, stop, and resume
 

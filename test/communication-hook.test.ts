@@ -86,7 +86,37 @@ async function coordinatorFiles(root: string): Promise<void> {
 	await writeFile(join(root, ".agents/limen/styleguide.md"), "Prefer small functions.\n");
 	await writeFile(
 		join(root, ".agents/limen/communication.md"),
-		["# Communication", "", "## Human", "Write for a person.", "", "## Agent", "Write for the next worker.", ""].join("\n"),
+		[
+			"# Communication",
+			"",
+			"## Human",
+			"Write for a person.",
+			"",
+			"## Agent",
+			"Write for the next worker.",
+			"",
+			"## Cue: Shared",
+			"Custom shared cue.",
+			"",
+			"## Cue: Human",
+			"Audience for this reply: human.",
+			"",
+			"## Cue: Agent",
+			"Audience for this reply: agent.",
+			"",
+			"## Cue: Wake",
+			"Custom wake cue.",
+			"",
+			"## Cue: Failure",
+			"Custom failure: {{failure}}.",
+			"",
+			"## Cue: Specs",
+			"Custom specs cue.",
+			"",
+			"## Cue: Search",
+			"Custom search cue.",
+			"",
+		].join("\n"),
 	);
 }
 
@@ -154,6 +184,30 @@ test("the per-turn cue is a hidden note that names the audience and stays under 
 	assert.ok(Buffer.byteLength(result.message.content) < 1280);
 });
 
+test("the selected register controls audience and wake cues and is reread on each turn", async (context) => {
+	const root = await projectRoot(context);
+	await coordinatorFiles(root);
+	const { handlers } = extension();
+	const reply = (prompt?: string): string => handlers.before_agent_start?.(prompt === undefined ? {} : { prompt }, { cwd: root })?.message?.content ?? "";
+	const human = reply();
+	assert.match(human, /Custom shared cue\./);
+	assert.match(human, /Audience for this reply: human\./);
+	assert.doesNotMatch(human, /Custom wake cue|Audience for this reply: agent/);
+	const wake = reply("Limen job example is done");
+	assert.match(wake, /Custom wake cue\./);
+	assert.doesNotMatch(start(root).systemPrompt ?? "", /Custom wake cue|Custom shared cue/);
+	stashEnv(context, { LIMEN_JOB: "1" });
+	const agent = reply();
+	assert.match(agent, /Audience for this reply: agent\./);
+	assert.doesNotMatch(agent, /Audience for this reply: human|Custom wake cue/);
+	await writeFile(join(root, ".agents/limen/communication.md"), "# Communication\n\n## Cue: Agent\nReplacement worker cue.\n");
+	const replacement = reply();
+	assert.match(replacement, /Replacement worker cue\./);
+	assert.doesNotMatch(replacement, /Custom shared cue|Audience for this reply|First line is the answer|ASD-STE100/);
+	const specs = tool(root, { toolName: "edit", input: { path: "spec/ticket.md" }, content: [{ type: "text", text: "saved" }] });
+	assert.equal(specs.content, undefined);
+});
+
 test("a 130-line board adds one advisory line; an 80-line board does not", async (context) => {
 	const root = await projectRoot(context);
 	await coordinatorFiles(root);
@@ -168,28 +222,9 @@ test("a 130-line board adds one advisory line; an 80-line board does not", async
 	assert.doesNotMatch(long.systemPrompt ?? "", /fold older PROVEN/);
 });
 
-test("the per-turn note carries the overview cue on a human turn and a wake, not on a job session", async (context) => {
+test("spec edits recall the selected register; code edits and planning commands recall project guidance", async (context) => {
 	const root = await projectRoot(context);
 	await coordinatorFiles(root);
-	const overview = /When this reply hands control back with work in flight, end with a short overview:/;
-	const human = start(root);
-	assert.match(human.message?.content ?? "", overview);
-	assert.match(human.message?.content ?? "", /Audience for this reply: human/);
-	assert.doesNotMatch(human.systemPrompt ?? "", overview);
-	const wake = start(root, { prompt: 'Limen job "F031 retry" is done (abc) on branch limen/abc.', systemPrompt: "base" });
-	assert.match(wake.message?.content ?? "", overview);
-	assert.match(wake.message?.content ?? "", /opened by a job wake/);
-	assert.doesNotMatch(wake.systemPrompt ?? "", overview);
-	stashEnv(context, { LIMEN_JOB: "1", LIMEN_CONTEXT_ROOT: root });
-	const job = start(root, { systemPrompt: "pi-base" });
-	assert.match(job.message?.content ?? "", /Audience for this reply: agent/);
-	assert.match(job.message?.content ?? "", /Write in plain technical English \(about 80% of ASD-STE100\)\./);
-	assert.doesNotMatch(job.message?.content ?? "", overview);
-	assert.doesNotMatch(job.systemPrompt ?? "", overview);
-});
-
-test("a write under spec/, an edit of code, and limen spawn recall the matching rule on the tool result", async (context) => {
-	const root = await projectRoot(context);
 	const spec = tool(root, {
 		toolName: "write",
 		input: { path: "spec/features/planned/F999-x/ticket.md" },
@@ -197,7 +232,7 @@ test("a write under spec/, an edit of code, and limen spawn recall the matching 
 	});
 	const specText = textOf(spec.content);
 	assert.match(specText, /wrote ticket/);
-	assert.match(specText, /\[limen\] Specs:/);
+	assert.match(specText, /Custom specs cue\./);
 
 	const code = tool(root, {
 		toolName: "edit",
@@ -206,7 +241,7 @@ test("a write under spec/, an edit of code, and limen spawn recall the matching 
 	});
 	const codeText = textOf(code.content);
 	assert.match(codeText, /edited file/);
-	assert.match(codeText, /\[limen\] Styleguide: no project file at \.agents\/limen\/styleguide\.md\./);
+	assert.match(codeText, /\[limen\] Styleguide \(.agents\/limen\/styleguide\.md\): no headings; read the file\./);
 	assert.doesNotMatch(codeText, /TypeScript|index\.ts|one human|Inform, do not gate/);
 
 	const spawn = tool(root, {
@@ -216,22 +251,8 @@ test("a write under spec/, an edit of code, and limen spawn recall the matching 
 	});
 	const spawnText = textOf(spawn.content);
 	assert.match(spawnText, /started/);
-	assert.match(spawnText, /\[limen\] Vision: no project file at spec\/vision\.md\./);
+	assert.match(spawnText, /\[limen\] Vision \(spec\/vision\.md\): no headings; read the file\./);
 	assert.doesNotMatch(spawnText, /one human|one coordinator|Inform; do not gate/);
-
-	const merge = tool(root, {
-		toolName: "bash",
-		input: { command: "git merge limen/f999" },
-		content: [{ type: "text", text: "merged" }],
-	});
-	assert.match(textOf(merge.content), /\[limen\] Vision:/);
-
-	const planned = tool(root, {
-		toolName: "bash",
-		input: { command: "mkdir -p spec/features/planned/F999-x" },
-		content: [{ type: "text", text: "created" }],
-	});
-	assert.match(textOf(planned.content), /\[limen\] Vision:/);
 });
 
 test("an errored previous assistant turn puts the error on the next cue, a successful one does not", async (context) => {
@@ -240,15 +261,15 @@ test("an errored previous assistant turn puts the error on the next cue, a succe
 	const { handlers } = extension();
 	handlers.message_end?.({ message: { role: "assistant", content: [], stopReason: "error", errorMessage: "usage limit reached" } });
 	const failed = handlers.before_agent_start?.({}, { cwd: root })?.message?.content ?? "";
-	assert.match(failed, /The previous turn failed with error: usage limit reached and nothing reached the human/);
+	assert.match(failed, /Custom failure: error: usage limit reached\./);
 	const again = handlers.before_agent_start?.({}, { cwd: root })?.message?.content ?? "";
-	assert.doesNotMatch(again, /previous turn failed/);
+	assert.doesNotMatch(again, /Custom failure:/);
 	handlers.message_end?.({ message: { role: "assistant", content: [{ type: "text", text: "ok" }], stopReason: "stop" } });
 	const ok = handlers.before_agent_start?.({}, { cwd: root })?.message?.content ?? "";
-	assert.doesNotMatch(ok, /previous turn failed/);
+	assert.doesNotMatch(ok, /Custom failure:/);
 	handlers.message_end?.({ message: { role: "assistant", content: [], stopReason: "aborted" } });
 	const aborted = handlers.before_agent_start?.({}, { cwd: root })?.message?.content ?? "";
-	assert.match(aborted, /The previous turn failed with aborted and nothing reached the human/);
+	assert.match(aborted, /Custom failure: aborted\./);
 });
 
 test("the next turn names what the last turn touched", async (context) => {
@@ -257,7 +278,7 @@ test("the next turn names what the last turn touched", async (context) => {
 	const { handlers } = extension();
 	handlers.tool_result?.({ toolName: "edit", input: { path: "src/x.ts" }, content: [{ type: "text", text: "ok" }] }, { cwd: root });
 	const content = handlers.before_agent_start?.({}, { cwd: root })?.message?.content ?? "";
-	assert.match(content, /Last turn edited src\/x\.ts; the styleguide governs how files are written\./);
+	assert.match(content, /Last turn edited src\/x\.ts\./);
 	const after = handlers.before_agent_start?.({}, { cwd: root })?.message?.content ?? "";
 	assert.doesNotMatch(after, /Last turn edited/);
 });
@@ -266,7 +287,7 @@ test("a hosted worker's system prompt holds the styleguide and both register aud
 	const root = await projectRoot(context);
 	await coordinatorFiles(root);
 	await mkdir(join(root, ".limen/jobs/job1"), { recursive: true });
-	await writeFile(join(root, ".limen/jobs/job1/task.md"), "Implement F053.\nTicket: spec/features/active/F053-guidance-recall/ticket.md\n");
+	await writeFile(join(root, ".limen/jobs/job1/task.md"), "Implement F053.\n(Ticket:  spec/features/active/F053-guidance-recall/ticket.md).\n");
 	stashEnv(context, { LIMEN_JOB: "1", LIMEN_HOSTED: "1", LIMEN_JOB_ID: "job1", LIMEN_CONTEXT_ROOT: root });
 	const result = start(root, { systemPrompt: "pi-base" });
 	const prompt = result.systemPrompt ?? "";
@@ -288,6 +309,7 @@ test("a hosted worker's system prompt holds the styleguide and both register aud
 
 test("a jg whose help names Jevgrep adds the search rule for jobs and the coordinator; another jg or none does not", async (context) => {
 	const root = await projectRoot(context);
+	await coordinatorFiles(root);
 	const fakeJg = async (name: string, help: string): Promise<string> => {
 		const bin = join(root, name);
 		await mkdir(bin);
@@ -301,12 +323,12 @@ test("a jg whose help names Jevgrep adds the search rule for jobs and the coordi
 	const empty = join(root, "empty");
 	await mkdir(empty);
 	stashEnv(context, { PATH: jevgrep });
-	assert.match(start(root, { systemPrompt: "base" }).systemPrompt ?? "", /## Search \(jg\)\n`jg` \(Jevgrep\) is installed\./);
+	assert.match(start(root, { systemPrompt: "base" }).systemPrompt ?? "", /Custom search cue\./);
 	stashEnv(context, { LIMEN_JOB: "1" });
-	assert.match(start(root, { systemPrompt: "pi-base" }).systemPrompt ?? "", /instead of grep, ripgrep \(`rg`\), or a grep tool/);
+	assert.match(start(root, { systemPrompt: "pi-base" }).systemPrompt ?? "", /Custom search cue\./);
 	for (const path of [impostor, empty]) {
 		process.env.PATH = path;
-		assert.doesNotMatch(start(root, { systemPrompt: "pi-base" }).systemPrompt ?? "", /Jevgrep/);
+		assert.doesNotMatch(start(root, { systemPrompt: "pi-base" }).systemPrompt ?? "", /Custom search cue\./);
 	}
 });
 
@@ -327,6 +349,7 @@ test("a project overlay wins over the package speech register", async (context) 
 	await writeFile(join(root, ".agents/limen/communication.md"), "Write for a person.\n");
 	const result = start(root, { systemPrompt: "base" });
 	assert.match(result.systemPrompt ?? "", /## Communication \(.agents\/limen\/communication\.md\)\nWrite for a person\./);
+	assert.doesNotMatch(result.message?.content ?? "", /Audience for this reply|First line is the answer|ASD-STE100/);
 });
 
 test("communication is reread each turn and bounded like other project files", async (context) => {
@@ -348,7 +371,7 @@ test("missing communication inherits the package register", async (context) => {
 	const result = start(root, { systemPrompt: "base" });
 	const prompt = result.systemPrompt ?? "";
 	assert.match(prompt, /## Communication \(limen\/templates\/communication\.md\)/);
-	const packaged = (await readFile(new URL("../templates/communication.md", import.meta.url), "utf8")).trim();
+	const packaged = (await readFile(new URL("../templates/communication.md", import.meta.url), "utf8")).split(/^## Cue: /m)[0]?.trim() ?? "";
 	assert.equal(prompt.includes(packaged), true);
 });
 

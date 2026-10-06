@@ -15,6 +15,10 @@ const LIMEN = fileURLToPath(new URL("../../bin/limen", import.meta.url));
 const CONTRACT = fileURLToPath(new URL("../../templates/picture/CONTRACT.md", import.meta.url));
 const MODEL_FLAGS = ["--engine", "--provider", "--model", "--thinking"];
 
+export function firstPictureHint(dir: string): string {
+	return `no map yet in ${dir}. The first map comes from a picture job: limen spawn --role picture --tab … (docs/picture.md).`;
+}
+
 export async function pictureTick(root: string, dir: string, flags: ReadonlyMap<string, string>, dryRun: boolean): Promise<void> {
 	const branch = flags.get("--branch");
 	const checkedOut = branch && git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]).stdout.trim();
@@ -27,13 +31,13 @@ export async function pictureTick(root: string, dir: string, flags: ReadonlyMap<
 	try {
 		model = await readPicture(dir);
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-		console.log("no map revision; start the first picture by hand");
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT" || (error as NodeJS.ErrnoException).path !== dir) throw error;
+		console.log(firstPictureHint(dir));
 		return;
 	}
 	const revision = model.project.revision;
 	if (!revision) {
-		console.log("no map revision; start the first picture by hand");
+		console.log(firstPictureHint(dir));
 		return;
 	}
 	if (revision === head) {

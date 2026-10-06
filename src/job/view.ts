@@ -17,6 +17,7 @@ export type JobRecord = {
 	readonly parent?: string;
 	readonly candidate?: string;
 	readonly hosted?: boolean;
+	readonly agentStatus?: string;
 	readonly advisory?: string;
 	readonly stopReason?: string;
 	readonly versions?: string;
@@ -138,6 +139,7 @@ function runningFacts(record: JobRecord, paint: Paint): string[] {
 	if (pulse === "dead") facts.push(paint("red", "dead"));
 	else if (pulse === "starting") facts.push(paint("dim", "starting"));
 	else facts.push(pulse === "tool" && record.lastTool ? clip(record.lastTool, 24) : pulse);
+	if (record.agentStatus) facts.push(`agent ${record.agentStatus}`);
 	if (record.toolCalls !== undefined) facts.push(`${record.toolCalls} tools`);
 	const silent = record.silentMs ?? 0;
 	if (silent >= 300_000) facts.push(paint("red", `silent ${formatDuration(silent)}`));

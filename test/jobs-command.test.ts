@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import { renderJobDirectory } from "../src/commands/jobs.ts";
+import { processInfo } from "../src/runtime/contain.ts";
+import { ownerAlive } from "../src/runtime/reap.ts";
 import { limen, limenWithEnv, scratchRepo } from "./scratch.ts";
 
 test("a running record without pid is starting, not invalid", async (context) => {
@@ -329,4 +332,75 @@ test("jobs --label lists matching jobs including hidden terminal ones", async (c
 	const detail = limen(scratch, "jobs", "wave-done");
 	assert.equal(detail.status, 0, detail.stderr);
 	assert.match(detail.stdout, /DONE wave-a done/);
+});
+
+test("hosted pulse uses wrapper identity even when the agent is idle", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const herdr = join(scratch.fakeBin, "herdr");
+	await writeFile(herdr, '#!/usr/bin/env node\nconsole.log(JSON.stringify({ result: { agent: { agent_status: "idle" } } }));\n', { mode: 0o755 });
+	const previous = process.env.LIMEN_HERDR;
+	process.env.LIMEN_HERDR = herdr;
+	context.after(() => {
+		if (previous === undefined) delete process.env.LIMEN_HERDR;
+		else process.env.LIMEN_HERDR = previous;
+	});
+	const jobs = join(scratch.root, ".limen/jobs");
+	const job = join(jobs, "identity");
+	await mkdir(join(job, "herdr"), { recursive: true });
+	for (const [field, value] of Object.entries({
+		state: "running",
+		label: "wrapper identity",
+		branch: "main",
+		pid: String(process.pid),
+		born: "different birth",
+		activity: "tool",
+		hosted: "hosted",
+		"herdr/agent": "w1:p1",
+		"task.md": "identity",
+		log: "tool",
+		"started-at": new Date().toISOString(),
+	}))
+		await writeFile(join(job, field), `${value}\n`);
+	const lost = await renderJobDirectory(scratch.root, jobs, "identity", false, true);
+	assert.equal(await ownerAlive(job), false);
+	assert.equal(lost.record.pulse, "dead");
+	assert.equal(lost.record.agentStatus, "idle");
+	assert.match(lost.compact, /agent idle/);
+	const info = await processInfo(process.pid);
+	assert.equal(info.kind, "present");
+	if (info.kind !== "present") return;
+	await writeFile(join(job, "born"), info.process.born);
+	const live = await renderJobDirectory(scratch.root, jobs, "identity", false, true);
+	assert.equal(await ownerAlive(job), true);
+	assert.equal(live.record.pulse, "tool");
+});
+
+test("failed human rows prefer stop-reason and ignore post-finish delivery logs", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const jobs = join(scratch.root, ".limen/jobs");
+	for (const [id, reason] of [
+		["limited", 'error: 429 {"error":{"type":"rate_limit_error"}} retry-after-ms=4272000'],
+		["legacy", ""],
+	]) {
+		const job = join(jobs, id!);
+		await mkdir(job);
+		for (const [field, value] of Object.entries({
+			state: "failed",
+			label: id,
+			branch: "main",
+			"task.md": "work",
+			log: "[limen 2026-10-05T00:00:00Z] failed: worker crashed\n[limen 2026-10-05T00:00:01Z] wake delivery failed\n[limen 2026-10-05T00:00:02Z] tab closed\n",
+			...(reason ? { "stop-reason": reason } : {}),
+		}))
+			await writeFile(join(job, field), `${value}\n`);
+	}
+	const rows = limenWithEnv(scratch, { LIMEN_VIEW: "human" }, "jobs", "--all");
+	assert.equal(rows.status, 0, rows.stderr);
+	assert.match(rows.stdout, /limited.*rate limit \(429\); retry after 71m/);
+	assert.match(rows.stdout, /legacy.*worker crashed/);
+	assert.doesNotMatch(rows.stdout, /wake delivery failed|tab closed/);
 });

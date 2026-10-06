@@ -666,7 +666,7 @@ test("two collaborators' finishes reach only their mapped targets after edits an
 		`import { appendFileSync } from 'node:fs'; globalThis.fetch = async (url, options) => { appendFileSync(${JSON.stringify(f.observations)}, JSON.stringify({ url: String(url), auth: options.headers.Authorization }) + '\\n'); return { status: 204 }; };`,
 	);
 	const extra = { NODE_OPTIONS: `--import=${transport}` };
-	const aliceId = onlyJobId(f.command(["spawn", "--detached", "--label", "alice job", `make commit Ticket: ${moved}`], extra));
+	const aliceId = onlyJobId(f.command(["spawn", "--detached", "--label", "alice job", `make commit (Ticket:  ${moved}).`], extra));
 	const aliceJob = join(f.root, ".limen/jobs", aliceId);
 	assert.match(await delivery(aliceJob), /^accepted:/);
 	assert.match(await readFile(join(aliceJob, "finish-webhook-author"), "utf8"), new RegExp(`^@alice\\n${aliceCommit}\\n$`));
