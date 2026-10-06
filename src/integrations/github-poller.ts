@@ -3,8 +3,7 @@ import { createHash, createSign, randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claimId, claimPath, type GithubBinding, githubDir, originRepository, readBinding } from "../commands/github.ts";
-import { type GithubClaim, githubSubject, matchedGithubJob } from "./github-review.ts";
+import { claimId, claimPath, type GithubBinding, type GithubClaim, githubDir, githubSubject, matchedGithubJob, originRepository, readBinding } from "./github-review.ts";
 
 const API = "https://api.github.com";
 type Comment = { id: number; body: string | null; created_at: string; html_url: string; issue_url: string; user: { login: string } | null };

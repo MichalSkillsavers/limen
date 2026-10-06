@@ -4,8 +4,8 @@ import { access, lstat, readdir, readFile, realpath, stat } from "node:fs/promis
 import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bindingPath, liveCoordinator, originRepository, readBinding } from "../integrations/github-review.ts";
 import { herdrBinary } from "../integrations/herdr.ts";
-import { bindingPath, liveCoordinator, originRepository, readBinding } from "./github.ts";
 
 type Seat = {
 	release: string;
