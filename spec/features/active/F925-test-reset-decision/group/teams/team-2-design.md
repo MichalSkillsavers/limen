@@ -4,7 +4,7 @@ Author: team-2 worker (job `2026-10-06-f925-team-2-design-502a23e2`). Read-only 
 
 ## 1. Verdict from the design side
 
-The from-scratch set is one shared fixture, ten scenarios on a throwaway plant, and eight small unit files. It is about **3,300 lines** (today 17,094) and runs in about **4 minutes serial** (estimate: 3.5 to 5 minutes at the load of the F783 run, up to 11 minutes at load 80 and above) or **about 1.5 minutes with four files at a time**. The hypothesis of 2,500 lines is about 30% low; "under 3 minutes" holds only with four-way concurrency. Calendar time to reach it on this plant: about 1.5 working days [estimate, section 5]. For the decision this means **staged replace, written from scratch, done fast**: the first landing carries the fixture and the vision cap; each scenario then lands together with the deletion of the files it replaces. Each of five historical regression families must first fail on its pre-fix commit (closed list in section 8b). A full restart (delete all, then rebuild) leaves the plant with no guard for a day or more and gains nothing, because the old and new files share no code. A deep cut keeps today's per-test fixtures, engines and polling, which are where the time and the random failures come from.
+The from-scratch set is one shared fixture, ten scenarios on a throwaway plant, and nine small unit files. It is about **3,350 lines** (today 17,094) and runs in about **4 minutes serial** (estimate: 3.5 to 5 minutes at the load of the F783 run, up to 11 minutes at load 80 and above) or **about 1.5 minutes with four files at a time**. The hypothesis of 2,500 lines is about 35% low; "under 3 minutes" holds only with four-way concurrency. Calendar time to reach it on this plant: about 1.5 working days [estimate, section 5]. For the decision this means **staged replace, written from scratch, done fast**: the first landing carries the fixture and the vision cap; each scenario then lands together with the deletion of the files it replaces. Each of five historical regression families must first fail on its pre-fix commit (closed list in section 8b). A full restart (delete all, then rebuild) leaves the plant with no guard for a day or more and gains nothing, because the old and new files share no code. A deep cut keeps today's per-test fixtures, engines and polling, which are where the time and the random failures come from.
 
 ## 2. The shared fixture
 
@@ -36,7 +36,7 @@ Ten scenarios, one file each, `test/s<N>-<seam>.test.ts`. Line and time estimate
 
 **S1 · Spawn, detached.** About 230 lines, 3 RT, 8 calls. Setup: plant with committed F001 ticket. Commands: `limen spawn --detached --label "F001 demo" "commit"`; while it blocks, set an old mtime on a tracked file in its worktree and run `limen jobs` and `limen status`; release; `limen wait <id>`; `limen jobs <id>`; one workspace spawn (two child repos); four refusals: an uncommitted ticket, `--role coordinator`, `--engine claude`, and `--engine pi` with no `pi` on `PATH`. Checks: worktree on branch `limen/<id>` from the base commit; `task.md` holds the exact bytes; argv is the omp detached argv; the engine env has no `HERDR_*` or `PI_SESSION_*`; `.git/index` of the worktree is byte-identical and no `index.lock` appeared during `jobs`/`status`; state `done`, result text and one commit in `jobs`; each refusal exits 1 and leaves no job dir and no worktree. Must catch: a job that edits the caller's tree, a ticket missing from the base, a half-made job after a refusal, a status read that takes the worker's index lock (`43c01cf`). Replaces: `spawn-command`, `engine`, `git-status`, `init-command`, `wait-command`, `workspace-command`.
 
-**S2 · Spawn, hosted.** About 300 lines (including the 80-line fake Herdr), 3 RT, 5 calls. Setup: plant, fake Herdr, `HERDR_ENV=1`, the caller in a coordinator pane with no Pi session. Commands: `limen spawn "F001 hosted" "say hi"`; the fake engine ends its session; `limen wait`; a second hosted job with `block`; the fake Herdr drops its agent row while the engine process lives; release; a third hosted job with `block`, then `limen stop <id>`. Checks: one tab in the role space; the pane command has no json flag; the task reaches the engine as `@task`, never as shell text; session end records `done` with the last assistant text; the coordinator pane receives one wake prompt; the job without an agent row stays `running`, then ends `done`; stop records `stopped` once. Must catch: Herdr idle taken as finish, task text in shell argv, a live OMP job failed because Herdr lost its row (`88fd5ac`), a stop that leaves `running`. Replaces: `hosted-spawn`, `hosted-hook`, `coordinator-wake`, `open-command`, `recovery` (hosted part).
+**S2 · Spawn, hosted.** About 320 lines (including the 80-line fake Herdr), 3 RT, 7 calls. Setup: plant, fake Herdr, `HERDR_ENV=1`, the caller in a coordinator pane with no Pi session. Commands: `limen spawn "F001 hosted" "say hi"`; the fake engine ends its session; `limen wait`; a second hosted job with `block`; the fake Herdr drops its agent row while the engine process lives; kill that job's supervisor and start two `limen jobs` sweeps at once; release; a third hosted job with `block`, then `limen stop <id>`. Checks: one tab in the role space; the pane command has no json flag; the task reaches the engine as `@task`, never as shell text; session end records `done` with the last assistant text; the coordinator pane receives one wake prompt; the job without an agent row stays `running`, then ends `done`; the two sweeps start exactly one replacement supervisor; stop records `stopped` once. Must catch: Herdr idle taken as finish, task text in shell argv, a live OMP job failed because Herdr lost its row (`88fd5ac`), two sweeps adopting one orphaned hosted job twice (`5754dad`, recovery.test.ts line 188), a stop that leaves `running`. Replaces: `hosted-spawn`, `hosted-hook`, `coordinator-wake`, `open-command`, `recovery` (hosted part).
 
 **S3 · Finish and wake.** About 320 lines, 6 RT, 5 calls. Setup: plant; a fake coordinator process loads `hook/wake.ts` through the fake extension API with `PI_SESSION_ID=coord`. Commands, from that session: spawn `commit`; `fail 7`; `error-after-commit`; `block` then `limen stop`; `block` with `--timeout 1s`; then a second listener for the same session; `/limen off`, a sixth job, `/limen on`. Checks: each job gets exactly one wake with label, state (`done`, `failed`, `failed` with the provider stop reason and its commit kept, `stopped`, `failed` timed out), commits and final text; a job with no tools and no commits says it produced nothing; the stopped job has one `finished-at` and one terminal state line; two listeners deliver each wake once; two jobs that end in one turn are confirmed once each; the muted wake arrives once after `on`; `limen watch`/`unwatch` moves the wake to another session. Must catch: a lost wake, a duplicate wake (F042 review-1: three injections for two jobs; a live claim stolen after 31 s, fixed in `7e43d23`), a wake before the state file is durable, two finalizers racing (`a5c5e49`), a provider error recorded as done (`967ab4b`). Replaces: `wake-hook`, `wake-sweep`, `finalize`, `watch-command`.
 
@@ -60,43 +60,44 @@ Ten scenarios, one file each, `test/s<N>-<seam>.test.ts`. Line and time estimate
 
 ## 4. Pure unit tests worth keeping
 
-Eight files, about 555 lines. Each runs in under one second (TAP times in section 5).
+Nine files, about 605 lines. Each runs in under one second (TAP times in section 5). U2, U4 and U9 carry the rows settled with team 1 (lead point 4, findings 00000079 and 00000084).
 
 | Unit | Function and file | Why tricky | Why not a scenario | Size |
 | --- | --- | --- | --- | --- |
 | U1 ticket diagnostics | `readTickets`, `checkTickets`, src/picture/tickets.ts lines 27, 67 | Seven keys, paired dated flags, block lists, duplicate F numbers (`7e11c21`); each fault must give file, line and fix | S6 can afford one or two faults; each further fault would cost a plant and a CLI call | 90 |
-| U2 webhook trust table | `bin/tony-finish-ping.sh` run with the fetch preload | Trust boundary: raw, Basic and malformed Bearer; non-https, userinfo and fragment URLs; invalid target list and author map; redirect, non-2xx, stalled request. Each row must make **zero requests** and print no secret | Each row is a 50 ms helper run; through spawn each would be a full job | 120 |
+| U2 webhook trust table | `bin/tony-finish-ping.sh` run with the fetch preload | Trust boundary: raw, Basic and malformed Bearer; non-https, userinfo and fragment URLs; invalid target list and author map; redirect, non-2xx, stalled request. Each row must make **zero requests** and print no secret. One more row replaces `finish-receipt`: the sender prints malformed or secret-bearing output, and the receipt drops it (finish-webhook.test.ts line 352) | Each row is a 50 ms helper run; through spawn each would be a full job | 130 |
 | U3 coordinator turn signal | `turnSignal`, src/integrations/coordinator-signal.ts line 39 | Decision table: blocked always counts; idle and done wait for owned jobs; an aborted turn never counts | No engine produces these turn shapes on demand | 60 |
-| U4 wake claims | `claimDelivery`, `recordUnconfirmed`, `recoverClaims`, src/job/wake-delivery.ts lines 24-165 | Two listeners, a live owner with a 31-second-old claim (mtime set with `fs.utimes`), a dead owner, a batched turn; the F042 defects (`7e43d23`) | S3 proves the happy two-listener path; the aged live claim needs a 30 s wait in a scenario | 80 |
+| U4 wake claims | `claimDelivery`, `recordUnconfirmed`, `recoverClaims`, src/job/wake-delivery.ts lines 24-165 | Two listeners, a live owner with a 31-second-old claim (mtime set with `fs.utimes`), a dead owner, a batched turn; the F042 defects (`7e43d23`); a rejected or errored wake stops after two tries instead of retrying forever (`a14640f`, wake-sweep.test.ts line 234) | S3 proves the happy two-listener path; the aged live claim needs a 30 s wait in a scenario | 90 |
 | U5 engine stream | `createStreamParser`, `assistantStopReason`, src/runtime/stream.ts lines 7, 58 | Decides done versus failed from split JSON lines and stop reasons | Cheap and exact here; S3 covers one error shape only | 40 |
 | U6 front matter and Markdown | `parseFrontmatter`, src/picture/frontmatter.ts line 36; Markdown escape | Hand-written parser; malformed boundaries, prototype keys, executable links | Parser edge cases are inputs, not paths | 60 |
 | U7 job ids and durations | `resolveJobId`, `makeJobId`, `parseDuration`, src/job/job.ts lines 77, 89, 109 | Suffix and label resolution must be unique; feature number hoisting; bounded durations | Every scenario uses ids, but only the happy shape | 60 |
 | U8 structure | test/structure.test.ts | Runtime stays dependency-free, basenames unique, and `test/` stays under the vision cap (section 7) | It is a repo rule, not a path | 45 |
+| U9 process identity | the reaper's process-group identity check (reaper.test.ts line 16, "recycled pgids cannot fake life when born mismatches") | A recycled process group id with a mismatched birth is dead. Without the rule a stale job looks alive, and `stop` can signal a stranger's process group | No scenario can recycle a pgid | 30 |
 
 The next free F number is not a unit: `nextFeatureNumber` is private and reads folders, branches and job labels (src/commands/ticket.ts line 23), so S6 covers it on the real plant at the cost of one CLI call. The land refusal rules are not a unit either: they are eight early `throw`s in `landCommand` (src/commands/land.ts lines 14-38) and S5 drives them through the CLI.
 
-**Answer to team 1's unit floor.** Team 1 reads a safe unit floor of about 1,210 lines (finding 00000063). This design keeps about 555. The difference, file by file:
+**Answer to team 1's unit floor.** Team 1 reads a safe unit floor of about 1,210 lines (finding 00000063). This design keeps about 605, after the settlement with team 1 (finding 00000084, confirmed by team 1 in 00000085). The difference, file by file:
 
 | Today's unit body (team 1) | Team 1 floor | This design | Reason |
 | --- | --- | --- | --- |
-| wake-sweep 347 | 150 | 0 (U4 80) | Claim rules move to U4; sweep cache and settlement counts restate the implementation |
-| finish-webhook-helper 289 | 100 | 120 (U2) | Kept: trust boundary, one zero-request table |
+| wake-sweep 347 | 150 | 0 (U4 90) | Claim rules and the two-failure stop (`a14640f`) move to U4; sweep cache and settlement counts restate the implementation |
+| finish-webhook-helper 289 | 100 | 130 (U2) | Kept: trust boundary, one zero-request table, plus the receipt row from finish-receipt |
 | hosted-spawn units 302 | 120 | 0 | `noteHostedIdle` writes advisories (inform only); `hostedAgentStatus` envelope parsing is reached in S2 through the fake Herdr |
 | group-command units 244 | 120 | 0 | Event delivery once per recipient and bounded waits are checked in S8 on the real cabinet |
-| recovery 195 | 100 | 0 | Herdr-uncertainty adoption; the seen failure (`88fd5ac`) is in S2, the killed supervisor in S9 |
+| recovery 195 | 100 | 0 | Herdr-uncertainty adoption; the seen failure (`88fd5ac`) and the competing sweeps on a killed hosted supervisor (`5754dad`) are in S2 |
 | github-doorbell units 185 | 90 | 0 | Authorized, unauthorized, forged and restart cases run in S10 through the fetch preload |
 | picture-generator 248 | 90 | 60 (U6) | Kept: parser and escape; graph build cases dropped (picture is not a seam) |
 | picture-tickets 193 | 90 | 90 (U1) | Same |
-| finish-receipt 154 | 70 | 0 | S7 checks end to end that no secret reaches any job file |
-| reaper 177 | 60 | 0 | S9 kills a real wrapper; pgid recycling is accepted risk |
+| finish-receipt 154 | 70 | 0 (one row in U2) | S7 checks end to end that no secret reaches any job file; U2 keeps the malformed, secret-bearing sender output row |
+| reaper 177 | 60 | 30 (U9) | S9 kills a real wrapper for the dead pid; U9 keeps only the recycled-pgid identity rule |
 
-If the lead adopts team 1's floor, the total becomes about 3,950 lines. This design holds 3,300 because each dropped unit either restates the code or guards a path a scenario drives for real.
+If the lead adopts team 1's original floor, the total becomes about 3,950 lines. This design holds about 3,350 because each dropped unit either restates the code or guards a path a scenario drives for real. Team 1 accepted this list (finding 00000085).
 
 ## 5. Targets and method
 
-**Target size: 3,300 lines in `test/`** (today 17,094; `wc -l test/*`). **Target time: 4 minutes serial with today's `--test-concurrency=1`, 1.5 minutes with `--test-concurrency=4`.** The plan picks four-way: the scenarios share no state (own temp dir, allowlisted env, no `process.env` writes in the test process).
+**Target size: about 3,350 lines in `test/`** (today 17,094; `wc -l test/*`), under the lead's hard cap of 3,500. **Target time: 4 minutes serial with today's `--test-concurrency=1`, 1.5 minutes with `--test-concurrency=4`.** The plan picks four-way: the scenarios share no state (own temp dir, allowlisted env, no `process.env` writes in the test process).
 
-**End-state number for the lead:** 3,300 lines, about 4 minutes serial at today's load. **Calendar time:** about 1.5 working days on this plant [estimate]: one fixture job (about 1 hour with review), two waves of five scenario jobs (about 1.5 hours each, limited by load on this Mac), one unit job in parallel, six pre-fix replays (2 to 5 minutes each), and one cut-and-gate landing per seam.
+**End-state number for the lead:** about 3,350 lines, about 4 minutes serial at today's load. **Calendar time:** about 1.5 working days on this plant [estimate]: one fixture job (about 1 hour with review), two waves of five scenario jobs (about 1.5 hours each, limited by load on this Mac), one unit job in parallel, seven pre-fix replays (2 to 5 minutes each), and one cut-and-gate landing per seam. Teams 1 and 3 estimate 2 to 3 days; the gap is the scenario-job time, which nobody has measured on this plant.
 
 **Lines, method.** For each scenario, the closest existing end-to-end tests, measured as top-level `test(` block lengths (Python block scan over test/*.ts, 12:38):
 
@@ -113,7 +114,7 @@ If the lead adopts team 1's floor, the total becomes about 3,950 lines. This des
 | S9 | prune "nested running jobs" 49, sweep "registry … dead locks" 39, stop "escaped-group child" 21, reaper and retire about 120 | 280 |
 | S10 | github-doorbell "only an exact write-authorized…" 69 plus issue and restart cases | 200 |
 
-Sum: fixture 260 + scenarios 2,480 + units 555 = **3,295 lines**. The shared fixture saves the per-test setup today's files repeat (each seam file defines its own engine and `init`). The hypothesis of 2,500 lines is low by about 800 lines; the extra comes from the contention and regression cases the other teams showed (S8, S9, U4) and the fake Herdr (S2).
+Sum: fixture 260 + scenarios 2,500 (S2 grew by 20 lines for the competing sweeps) + units 605 = **3,365 lines**, rounded to 3,350. The shared fixture saves the per-test setup today's files repeat (each seam file defines its own engine and `init`). The hypothesis of 2,500 lines is low by about 850 lines; the extra comes from the contention and regression cases the other teams showed (S2, S8, S9, U4, U9) and the fake Herdr (S2).
 
 **Time, method.** Measured step costs on a throwaway plant with a 5-line fake engine:
 
@@ -129,7 +130,7 @@ Counts for the set (section 3): 35 RT, 60 CLI calls, 11 inits, 13 s of fixed rea
 
 Calibration against a real file: the same formula for `land-command.test.ts` (7 spawns, 14 other calls, 4 inits; `grep -c` on the file) gives 21 + 6 + 4 = 31 s. The F783 TAP has 40.8 s; the coordinator measured 89.5 s at load 74 to 89 (steer 1), and team 1 measured 48 s at load 87 to 116 (finding 00000073). So the formula under-predicts by 1.3x at the F783 load and up to 2.9x at load 80 and above. Applied to 164 to 236 s: **serial 3.5 to 5 minutes at the F783 load (213 to 307 s), up to 11 minutes at load 80 and above**, with 4 minutes as the planning target [estimate; not an observed suite]. Four-way: the longest file (S8: 6 RT, 7 calls, the 12 s hold; about 35 to 50 s raw) bounds it, and the total divided by four is 40 to 60 s raw, so **about 1.5 minutes** after the 1.3x calibration; more under heavy load, because the Mac is then CPU-bound.
 
-**Hypothesis check.** "About 2,500 lines and under 3 minutes": corrected to about 3,300 lines; under 3 minutes holds four-way, not serial under today's load. For comparison: today 1,502 s for 532 tests (`/tmp/f783-lead/full-suite.tap` line 3294); 116 tests over 5 s take 973 s (coordinator count from the same TAP); the five largest files take 52% of the run (lead finding).
+**Hypothesis check.** "About 2,500 lines and under 3 minutes": corrected to about 3,350 lines; under 3 minutes holds four-way, not serial under today's load. For comparison: today 1,502 s for 532 tests (`/tmp/f783-lead/full-suite.tap` line 3294); 116 tests over 5 s take 973 s (coordinator count from the same TAP); the five largest files take 52% of the run (lead finding).
 
 **Today's time per file** (sum of top-level `duration_ms` in the F783 TAP, names matched to files by substring and by hand for 26 templated names; 495 of 532 tests matched): group-command 259.8 s, hosted-spawn 175.7 s, finish-webhook 146.9 s, spawn-command 127.0 s, continue-command 113.3 s, stop-command 52.7 s, prune-command 47.3 s, land-command 40.8 s. Full list: /tmp/f925-team-2-tap-by-file.txt.
 
@@ -154,10 +155,10 @@ How the new set avoids them: `limen wait` and `fs.watch` instead of polling; FIF
 
 ## 7. Anti-bloat rule
 
-**Rule: `test/` stays at or under the cap written in `spec/vision.md`.** One vision line, for example `Tests stay at or under 3,300 lines in test/.` Only Adam edits it. `test/structure.test.ts` reads that number, counts the lines of `test/*`, and fails `npm test` above it. `limen land` prints one information line about it and refuses nothing.
+**Rule: `test/` stays at or under the cap written in `spec/vision.md`.** One vision line, for example `Tests stay at or under 3,500 lines in test/.` (the lead's hard cap; the set starts at about 3,350, so there is room for one new seam before a feature must delete). Only Adam edits it. `test/structure.test.ts` reads that number, counts the lines of `test/*`, and fails `npm test` above it. `limen land` prints one information line about it and refuses nothing.
 
-- **Where it runs.** The check runs in `npm test` and `npm run check` (package.json lines 24 and 27), so every worker sees it on its own branch before it hands off. `limen land` adds one information line beside the ticket check (src/commands/land.ts lines 35-37), computed at the branch tip: `test/: 3,280 lines at the tip (cap 3,300, spec/vision.md); this branch +120 -40`. It adds `over the cap` when the tip is above the cap, and it names a branch that edits `spec/vision.md`.
-- **Exact error (structure test):** `test/ has 3,424 lines; spec/vision.md caps it at 3,300. Remove 124 test lines, or ask Adam to raise the cap.`
+- **Where it runs.** The check runs in `npm test` and `npm run check` (package.json lines 24 and 27), so every worker sees it on its own branch before it hands off. `limen land` adds one information line beside the ticket check (src/commands/land.ts lines 35-37), computed at the branch tip: `test/: 3,420 lines at the tip (cap 3,500, spec/vision.md); this branch +120 -40`. It adds `over the cap` when the tip is above the cap, and it names a branch that edits `spec/vision.md`.
+- **Exact error (structure test):** `test/ has 3,624 lines; spec/vision.md caps it at 3,500. Remove 124 test lines, or ask Adam to raise the cap.`
 - **How a feature gets more test lines.** At the cap, it removes as many in the same branch: a weaker check, a duplicate case, a wording assert. Raising the cap is an edit to `spec/vision.md`, which is human-owned: "propose a change and ask before rewriting it" (templates/agents.md line 46; roles explainer, "Plant coordinator · Must not").
 - **Why this stops the old pattern.** `test/structure.test.ts` once pinned `src/` size: `git log -G 'sourceLines <=' -- test/structure.test.ts` shows 50 raises in 37 days (800 at `6743d9e`, 2026-08-13, to 4,280 at `58c9c4f`, 2026-09-19), one cut, then the budget was deleted in `1ffb7c4` (2026-09-24) (team-2 coordinator finding 00000012). Each raise edited a number inside the test file, in the same branch as the feature. A number in the owner's file cannot move in that commit without a visible vision edit, and land names that edit.
 - **The hole that remains, and what closes it.** The hole is landing without a full run, not raising. `main` was red twice today (`edc1630` "Fix two red tests on main"; merge `e288a4c` "focused tests green except two load-timing flakes, one also red on main") because nobody runs a 25-minute suite before land. A 1.5- to 4-minute suite makes the full run before land realistic, and that is what makes the cap bind. Regrowth without a gate is fast: the F776 trim was half undone in 11 hours, 15,551 lines at its merge (`2855cd5`) to 17,094 now (`5df0697`), +2,153 / -610 in 54 commits (finding 00000048); since 2026-09-06, `test/` took +12,950 / -4,268 lines and `src/` +10,295 / -2,331 (`git log --numstat --since=2026-09-06`, 12:37). So the cap ships in the same landing as the first cut.
@@ -179,17 +180,17 @@ One row per file in `test/`, sorted by lines (`wc -l test/*`, 12:27). Seconds ar
 | continue-command.test.ts | 506 | steering | seam | scenario S4 | Real continue; flag-forwarding cases duplicate spawn; publication race moves to S9. 113.3 s |
 | communication-hook.test.ts | 504 | steering | wording | scenario S4 | 51 `assert.match` on prompt text; S4 keeps one prompt-content check. 15.4 s |
 | jobs-command.test.ts | 466 | sweep/recovery | wording | scenario S9 | Row and snapshot text (43 `assert.match`); S1/S9 read `limen jobs` for state only. 30.1 s |
-| wake-sweep.test.ts | 443 | finish and wake | copy | delete | Restates sweep cache internals ("skips 473 settled records"); claim logic moves to U4. 1.1 s |
-| finish-webhook-helper.test.ts | 427 | webhooks | unit | keep (U2, shrink to 120) | Trust boundary; 54 variants collapse to one zero-request table. 3.3 s |
-| recovery.test.ts | 386 | sweep/recovery | mock | scenario S2, S9 | Herdr-uncertainty internals; missing-row case (`88fd5ac`) to S2, killed supervisor to S9. 19.9 s |
+| wake-sweep.test.ts | 443 | finish and wake | copy | delete | Restates sweep cache internals ("skips 473 settled records"); claim logic and the two-failure stop (`a14640f`) move to U4. 1.1 s |
+| finish-webhook-helper.test.ts | 427 | webhooks | unit | keep (U2, shrink to 130) | Trust boundary; 54 variants collapse to one zero-request table. 3.3 s |
+| recovery.test.ts | 386 | sweep/recovery | mock | scenario S2, S9 | Herdr-uncertainty internals; missing-row case (`88fd5ac`) and competing sweeps on a killed hosted supervisor (`5754dad`, line 188) to S2; killed detached wrapper to S9. 19.9 s |
 | coordinator-wake.test.ts | 339 | finish and wake | mock | scenario S2 | Herdr pane wake for OMP coordinators; S2 checks one pane prompt. 29.1 s |
 | prune-command.test.ts | 338 | sweep/recovery | seam | scenario S9 | Real prune on worktrees; pins `11ae41d`, `30cff7a`. 47.3 s |
 | picture-viewer.test.ts | 328 | picture | unit | delete | Browser route and HTML rendering of a read-only view. 0.0 s |
 | hosted-binding.test.ts | 322 | spawn | timing | delete | Both tests skip off Linux (TAP lines 1255, 1261); never run on this Mac; 10 s polling of process births |
 | stop-command.test.ts | 315 | sweep/recovery | timing | scenario S9 | 11 timers, 10 `Date.now()`, the 900-2,000 ms window F776 kept; escaped-child case to S9. 52.7 s |
-| status-command.test.ts | 293 | none | wording | delete | Plant plate text; S8 checks group status by state only. 25.9 s |
+| status-command.test.ts | 293 | none | wording | delete | Plant plate text; the candidate rule is display (settled with team 1); S8 checks group status by state only. 25.9 s |
 | picture-layers.test.ts | 281 | picture | unit | delete | Browser history stack of the picture page. 0.0 s |
-| stalled-tool.test.ts | 279 | finish and wake | timing | delete | Real sleeping children and observation windows; stall is an advisory. 29.0 s |
+| stalled-tool.test.ts | 279 | finish and wake | timing | delete | Real sleeping children and observation windows; stall is an advisory, and the outer job timeout still bounds a stuck tool (settled with team 1). 29.0 s |
 | sweep-command.test.ts | 267 | sweep/recovery | seam | scenario S9 | Registry contention (`4e84296`, `8548de0`, `996bba9`) moves to S9; launchd install is trivia. 10.8 s |
 | plant-events.test.ts | 263 | webhooks | mock | keep (U3, shrink to 60) | Turn-signal table is pure; ring-once cases mock the sweep. 3.9 s |
 | open-command.test.ts | 252 | none | mock | delete | Fake-Herdr tab calls; the index-lock bug it caught (`43c01cf`) moves to S1. 20.4 s |
@@ -201,12 +202,12 @@ One row per file in `test/`, sorted by lines (`wc -l test/*`, 12:27). Seconds ar
 | picture-tickets.test.ts | 193 | spec keeper | unit | keep (U1, shrink to 90) | Ticket diagnostics feed `ticket check` and land. 0.0 s |
 | steer-command.test.ts | 186 | steering | seam | scenario S4 | Real steer through the real hook. 33.6 s |
 | land-command.test.ts | 179 | land | seam | scenario S5 | The one real land file. 40.8 s |
-| reaper.test.ts | 177 | sweep/recovery | seam | scenario S9 | Dead pid reaped (`5754dad`, `a5c5e49`); pgid recycling internals go. 11.6 s |
+| reaper.test.ts | 177 | sweep/recovery | seam | scenario S9; unit U9 | Dead pid reaped in S9 (`5754dad`, `a5c5e49`); the recycled-pgid identity rule (line 16) stays as U9; other pgid internals go. 11.6 s |
 | engine.test.ts | 175 | spawn | copy | delete | Restates `argvFor` output; S1/S2 check the argv the fake engine received. 0.3 s |
 | github-issue-body.test.ts | 174 | doorbell | duplicate | scenario S10 | Same claim path as the doorbell file. 7.3 s |
 | hosted-hook.test.ts | 168 | spawn | mock | scenario S2 | Hosted finish handoff; in-process with env writes. 0.9 s |
 | picture-work.test.ts | 161 | spec keeper | seam | scenario S6 | Build determinism check. 2.0 s |
-| finish-receipt.test.ts | 154 | webhooks | unit | delete | Receipt allowlist; S7 checks no secret in any job file end to end. 0.0 s |
+| finish-receipt.test.ts | 154 | webhooks | unit | delete | Receipt allowlist; S7 checks no secret in any job file end to end; the malformed, secret-bearing sender output row moves into U2. 0.0 s |
 | picture-overlay.test.ts | 154 | picture | unit | delete | Overlay graph rules of the map (`4d003dc` pin accepted as risk). 0.0 s |
 | view.test.ts | 154 | none | wording | delete | Row glyphs, colors and footer text. 3.8 s |
 | init-command.test.ts | 150 | spawn | wording | scenario S1, S4 | 25 `assert.match`; fixture runs init; hook-copy cleanup (`236b8e7`) to S4. 34.9 s |
@@ -222,14 +223,14 @@ One row per file in `test/`, sorted by lines (`wc -l test/*`, 12:27). Seconds ar
 | ticket-command.test.ts | 81 | spec keeper | seam | scenario S6 | Calls `ticketCommand` in-process; S6 runs it through the CLI (`2aaf43b`). 2.9 s |
 | picture-board.test.ts | 80 | picture | unit | delete | Board line reader for the picture. 0.0 s |
 | watch-command.test.ts | 71 | finish and wake | seam | scenario S3 | Watch moves the wake. 15.6 s |
-| git-status.test.ts | 48 | spawn | unit | scenario S1 | Index invariant (`43c01cf`) checked end to end in S1. 4.3 s |
+| git-status.test.ts | 48 | spawn | unit | scenario S1 | Index invariant (`43c01cf`) checked end to end in S1. S1 must go red on `43c01cf^`; if it does not, the 20-line first test stays as a unit. 4.3 s |
 | hosted-uncertainty.test.ts | 37 | finish and wake | unit | delete | One constant-driven transition; risk accepted (8b). 0.0 s |
 | linear-command.test.ts | 37 | none | trivia | delete | Renames a config file. 4.9 s |
 | wait-command.test.ts | 35 | finish and wake | timing | scenario S1 | Two elapsed-time asserts; `limen wait` is the fixture's wait. 6.4 s |
 | stream.test.ts | 27 | finish and wake | unit | keep (U5, 40) | Done versus failed from the stream. 0.0 s |
-| structure.test.ts | 26 | none | unit | keep (U8, 45) | Adds the line ceiling. 0.0 s |
+| structure.test.ts | 26 | none | unit | keep (U8, 45) | Adds the `test/` cap check that reads its number from `spec/vision.md` (section 7). 0.0 s |
 
-Totals by action (summed from this table): keep 1,276 lines in 7 files (shrinking to about 475); scenario 12,150 in 32 files (rewritten into about 2,480 scenario lines and the 260-line fixture); delete 3,668 in 19 files. Total 17,094. By class: mock 6,081, seam 5,240, unit 2,095, wording 1,567, timing 951, copy 719, duplicate 287, trivia 154. A file's class is its main class; most large files mix classes, so these totals differ from team 1's per-test split (team-1 finding 00000059: seam 4,939, mock 2,626).
+Totals by action (summed from this table): keep 1,276 lines in 7 files (shrinking to about 485); scenario 12,150 in 32 files (rewritten into about 2,500 scenario lines, the 260-line fixture, and units U4 and U9, 120 lines, carved from wake-sweep and reaper); delete 3,668 in 19 files. Total 17,094. By class: mock 6,081, seam 5,240, unit 2,095, wording 1,567, timing 951, copy 719, duplicate 287, trivia 154. A file's class is its main class; most large files mix classes, so these totals differ from team 1's per-test split (team-1 finding 00000059: seam 4,939, mock 2,626).
 
 ### 8b. Bug coverage and the cutover rule
 
@@ -237,7 +238,7 @@ Cutover rule (agreed with team 3, closed list per the lead): an old regression t
 
 | Bug | Fix | Covered by | Replay |
 | --- | --- | --- | --- |
-| Status read takes the worker's index.lock (caught by open-command) | `43c01cf` | S1 | `43c01cf^` |
+| Status read takes the worker's index.lock (caught by open-command) | `43c01cf` | S1; fallback: the 20-line narrow test stays if S1 does not go red on the replay | `43c01cf^` |
 | Registry: lost registrations, then `ENOTEMPTY` (F043) | `4e84296`, `8548de0`, `996bba9` | S9 | `4e84296^`, `8548de0^`, `996bba9^` |
 | Wake: batched follow-ups injected three times, live claim stolen (F042) | `7e43d23` | S3, U4 | `7e43d23^` |
 | Group launch lock fails past 10 s; deferred finish | `b62b837` | S8 | `b62b837^` |
@@ -249,7 +250,7 @@ Cutover rule (agreed with team 3, closed list per the lead): an old regression t
 | Prune races a half-published job | `30cff7a` | S9 (FIFO in `LIMEN_PREPARE`) | none |
 | Stop leaves escaped descendants | `9e2d7c7`, `501aa0f` | S9 (`spawn-orphan`); the 900-2,000 ms bound is dropped | none |
 | Provider error recorded as done | `967ab4b` | S3 | none |
-| Dead pid not reaped at once; reaper grace | `5754dad`, `a482020` | S9 (dead pid); grace: accepted risk | none |
+| Dead pid not reaped at once; two sweeps adopt one orphan; reaper grace | `5754dad`, `a482020` | S9 (dead pid), S2 (two sweeps, one replacement), U9 (recycled pgid); grace: accepted risk | none |
 | Observed child exits without ending its tool | `9c5aa8c` | accepted risk: stall is an advisory | none |
 | Hosted refresh warnings | `839db44` | accepted risk | none |
 | Hosted binding, uncertainty, quiet tools, seat bell | `951282a` | accepted risk: Linux-only or wall-clock; S2 covers the missing-row failure that was seen | none |
@@ -261,4 +262,23 @@ Cutover rule (agreed with team 3, closed list per the lead): an old regression t
 
 ## 9. Points from other teams
 
-Filled by the coordinator.
+Written by the team-2 coordinator. Each row: the point, who raised it (group message id in the group cabinet), the answer, and whether it changed this note.
+
+| Point | From | Answer | Changed this note? |
+| --- | --- | --- | --- |
+| Six happy-path seams miss group slot and membership races. | team 3, 00000015, 00000016 | S8 races two spawns for the last slot. The check is the invariant (one member, one cabinet, the loser refuses, no half-claimed record), not the order. | Yes: S8 contention block. |
+| A sink that only sees success misses the webhook trust checks. | team 3, 00000016 | U2 is a rejection table on `bin/tony-finish-ping.sh`; each rejected row must leave zero requests in the sink. Team 3 agreed that 54 variants are not needed (00000019). | Yes: U2. |
+| A barrier released before the old 10 s lock deadline cannot catch that deadline (`b62b837`). | team 3, 00000019, 00000020 | Agreed. S8 holds the Git post-checkout hook past the deadline: 12 s now, about 200 ms after a lock-deadline override lands as a product change. | Yes: S8 keeps one 12 s hold. |
+| Registry contention must start from a dead-owner lock and race reclaim with a new live owner (F043: 78 of 80 registrations; then `ENOTEMPTY`). | team 3, 00000021, 00000024, 00000031 | S9 plants a dead-owner `projects.lock`, then releases 80 registrants and 12 pruners with one FIFO write; every registration must survive and no child may report `ENOTEMPTY`. | Yes: S9. |
+| One finish and one wake miss F042: batched follow-ups injected [one, two, one], and a second listener stole a 31 s live claim. | team 3, 00000026, 00000035 | S3 ends two jobs in one turn and runs two listeners; each wake must arrive once. The claim aged past 30 s is U4, with the mtime set by `fs.utimes`. | Yes: S3 and U4. |
+| Delete an old regression test only after its replacement fails on the pre-fix commit and passes on `main`. | team 3, 00000035, 00000042, 00000045 | Adopted as the cutover rule (8b). | Yes. |
+| Keep the replay rule cheap: a closed list, and a fallback when the new CLI cannot run on the old commit. | lead, 00000050 | Closed list of five families and seven commits (8b). Fallback: old `src/`, `hook/`, `bin/` under the new `test/`; else replay the narrow unit; else record the risk for the owner. | Yes: 8b. |
+| Add hosted OMP failing when Herdr loses its agent row (`88fd5ac`; reproduction `7cbce5c`). | team 3, 00000054 | Added to S2 and to the replay list. | Yes: S2. |
+| If nothing narrow can replay, keep the old test until the owner accepts the risk. | team 3, 00000054, 00000057 | Agreed in part: keep a narrow current-code check if one exists; otherwise record the gap and ask the owner. A whole slow legacy file is not kept by default. Team 3 agreed (00000057). | No. |
+| The tests that caught or pinned real bugs (4 caught, about 20 pinned with their fix). | team 1, 00000036 | Each one has a row in 8b with the scenario or unit that covers it, or an accepted risk. | Yes: 8b. |
+| Process launches, not sleeps, drive run time under load. | team 1, 00000063 | Agreed. The team-2 coordinator withdrew its earlier claim (00000069). Section 5 now estimates time from launches times measured step cost, plus fixed holds. | Yes: section 5 method. |
+| The safe unit floor is about 1,210 lines, not 555. | team 1, 00000063; team 3, 00000066 | Answered file by file in section 4. After the 12-file settlement the design keeps about 605 unit lines and about 3,350 in total. Team 1 confirmed the settled list (00000085). | Yes: U2, U4 and U9 grew; total from 3,300 to 3,350. |
+| Settle the 12 files where team 1 and team 2 disagreed. | lead, 00000074 | Settled in 00000084 and confirmed by team 1 in 00000085: wake-sweep, finish-receipt, hosted-uncertainty, stalled-tool and status-command are deleted; recovery goes to S2 and S9; reaper goes to S9 plus U9; git-status goes to S1, with the narrow test as fallback; land-command, keeper-command, ticket-command and picture-work go to S5 and S6. | Yes: sections 4 and 8. |
+| Use a cap in `spec/vision.md`, read by `test/structure.test.ts`, with an information line in land, not a new land refusal. | lead, 00000074 | Adopted as the primary rule (section 7). The note keeps the net-zero land refusal as an escalation that needs Adam's yes. Team 1 agreed and added that the cap binds only if people run the full suite before land (00000079). | Yes: section 7. |
+| Context injection, `limen ticket new` and `check` through the CLI, and the in-session Pi wake have no real end-to-end test today. | team 1, 00000059 | Already in the design. S4 checks the injected context through the real hook extensions that the fake engine loads. S6 runs `ticket new` and `ticket check` through `bin/limen`. S3 drives `hook/wake.ts` with jobs that were really spawned. | No. |
+| Run one live hosted smoke when the rebuild starts, because the fake Herdr can drift from the real one. | team 3, 00000045 | Agreed. Each cutover that touches hosted runs one manual check with real Herdr and OMP, and records it in the cutover notes. It is not part of `npm test`. | Yes: section 2, fixture item 5. |
