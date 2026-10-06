@@ -3,7 +3,7 @@ import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
-import { limen, scratchRepo, scratchWorkspace } from "./scratch.ts";
+import { git, limen, scratchRepo, scratchWorkspace } from "./scratch.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 
@@ -26,6 +26,21 @@ test("init refuses a non-Git directory with guidance", async (context) => {
 	assert.equal(result.status, 1);
 	assert.match(result.stderr, /requires a Git repository/);
 	assert.match(result.stderr, /limen workspace init/);
+});
+
+test("init ends with the next step and says when the repository has no commit", async (context) => {
+	const committed = await scratchRepo();
+	context.after(committed.cleanup);
+	const ready = limen(committed, "init");
+	assert.equal(ready.status, 0, ready.stderr);
+	assert.match(ready.stdout, /\nnext: .*open a coordinator.*\n$/);
+	assert.doesNotMatch(ready.stdout, /no commit yet/);
+	const empty = await scratchWorkspace();
+	context.after(empty.cleanup);
+	git(empty.root, "init", "-b", "main");
+	const fresh = limen(empty, "init");
+	assert.equal(fresh.status, 0, fresh.stderr);
+	assert.match(fresh.stdout, /no commit yet; commit once, then spawn\.\nnext: /);
 });
 
 test("init plants project-owned files and a hook stub, never role or hook copies", async (context) => {

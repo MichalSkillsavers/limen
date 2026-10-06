@@ -111,7 +111,7 @@ You run these one time for each project or seat, or a scheduler runs them.
 
 ### Project setup
 
-Create the project files, or set up a parent workspace for child repositories.
+Create the project files, or set up a parent workspace for child repositories. `limen init` ends with a `next:` line that names the next step, and says so when the repository has no commit yet.
 
 ```text
 limen init

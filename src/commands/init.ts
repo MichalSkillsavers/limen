@@ -2,7 +2,7 @@ import { constants } from "node:fs";
 import { access, appendFile, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isGitRepository, repoRoot, workspaceRoot } from "../project/git.ts";
+import { hasCommit, isGitRepository, NO_COMMIT, repoRoot, workspaceRoot } from "../project/git.ts";
 import { formatDrift, listDrift, removeHookCopies } from "../project/inherit.ts";
 import { registerProject } from "../project/seat.ts";
 
@@ -35,6 +35,8 @@ export async function initCommand(args: readonly string[], cwd: string): Promise
 		if (await pathExists(`${root}/${legacy}`)) throw new Error(`legacy ${legacy} exists; leftover Control path — rename or remove it by hand`);
 	}
 	await initialize(root, true);
+	if (!hasCommit(root)) console.log(NO_COMMIT);
+	console.log("next: write spec/vision.md and .agents/limen/styleguide.md, commit, then open a coordinator in this folder (docs/setup.md)");
 }
 export async function workspaceCommand(args: readonly string[], cwd: string): Promise<void> {
 	if (args.length !== 1 || args[0] !== "init") throw new Error("workspace requires init");
