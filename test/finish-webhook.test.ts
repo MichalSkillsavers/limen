@@ -92,7 +92,7 @@ async function runModule(pkg: string, env: NodeJS.ProcessEnv, code: string): Pro
 }
 
 for (const state of ["failed", "stopped", "done"]) {
-	for (const result of [undefined, "Failure investigated; see committed repair.\nSecond line."] as const) {
+	for (const result of [undefined, "\n## Failure investigated; see committed repair.\nSecond line."] as const) {
 		test(`automatic finish decision: ${state} with ${result === undefined ? "missing" : "a"} result sends once with its reason`, async (context) => {
 			const f = await fixture(context);
 			const job = await bareJob(f.root);

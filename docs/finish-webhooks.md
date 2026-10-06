@@ -108,8 +108,9 @@ can still launch the sender. Manual launchers still need Node.js 24+ on `PATH`.
 A configured `failed` or `stopped` job always sends, also when its `result` file
 is missing or empty. Its `reason` is the finish detail: the failed gate, for
 example `timeout after 5400000ms`, `hosted start failed: …`, or `group deadline
-or stop`. A `done` job's `reason` is the first nonempty line of its `result`, or
-the finish detail when there is no result. Native coordinator notifications and
+or stop`. A `done` job's `reason` is the first text line of its `result`, without
+leading Markdown markers such as `#` or `-`, or the finish detail when there is
+no result. Native coordinator notifications and
 terminal state do not change.
 
 Automatic delivery is claimed by the job's `finish-webhook-attempt` file, which
@@ -193,7 +194,7 @@ URL/AUTH pair needs no change. One event sends one ping.
 
 | `event` | `status` | Sent when | `reason` |
 | --- | --- | --- | --- |
-| `job.done` | `waiting` | a job finishes done | first result line, or the finish detail |
+| `job.done` | `waiting` | a job finishes done | first result text line, or the finish detail |
 | `job.failed` | `failed` | a job fails | the finish detail (the failed gate) |
 | `job.timed-out` | `failed` | a detached job reaches `--timeout` | `timeout after Nms` |
 | `job.stalled` | `failed` | a detached job's tool stalls and the job ends | `stalled tool …` |

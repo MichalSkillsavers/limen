@@ -72,8 +72,14 @@ export async function deliverFinishWebhook(jobDir: string, shutdownDeadline = Nu
 	await atomicWrite(`${jobDir}/finish-webhook`, `attempting ${new Date().toISOString()}\n${manual}\n`);
 	await appendLimenLog(jobDir, "finish webhook: attempting; inspect finish-webhook for status and manual finish-ping retry");
 	const deadline = Math.min(shutdownDeadline, Date.now() + DELIVERY_MS);
-	// A done job's reason is its handoff's first line; every other end names the finish detail, which is the failed gate.
-	const summary = state === "done" ? ((await textFile(`${jobDir}/result`)).split("\n").find((line) => line.trim()) ?? "") : "";
+	// A done job's reason is its handoff's first text line, without Markdown markers; every other end names the finish detail, which is the failed gate.
+	const summary =
+		state === "done"
+			? ((await textFile(`${jobDir}/result`))
+					.split("\n")
+					.map((line) => line.replace(/^[\s#>*-]+/, "").trim())
+					.find(Boolean) ?? "")
+			: "";
 	const event: PlantEvent = { ...(await jobFields(jobDir)), kind: terminalKind(state, detail), status: state, reason: summary || detail || state };
 	const timeoutMs = Math.min(SEND_MS, deadline - Date.now());
 	let result = !isAbsolute(config)
