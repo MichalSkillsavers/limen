@@ -277,16 +277,16 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 	const { source } = file;
 	if (!/^(nodes|edges|features|journeys)\/[^/]+\.md$/.test(source)) return null;
 	const fm = parseFrontmatter(file.text);
-	const d = fm.data;
-	const guessId = typeof d.id === "string" ? d.id : null;
-	for (const e of fm.errors) {
-		diag("error", "parse.frontmatter", e.message + (fm.ok ? "" : "; file skipped"), source, guessId, e.line);
+	const data = fm.data;
+	const guessId = typeof data.id === "string" ? data.id : null;
+	for (const error of fm.errors) {
+		diag("error", "parse.frontmatter", error.message + (fm.ok ? "" : "; file skipped"), source, guessId, error.line);
 	}
 	if (!fm.ok) return null;
 
 	const at = (key: string) => fm.lines[key] ?? null;
 	const text = (key: string) => {
-		const v = d[key];
+		const v = data[key];
 		if (v !== null && typeof v === "object") {
 			diag("error", "node.bad-field", `"${key}" must be a single value`, source, guessId, at(key));
 			return "";
@@ -340,7 +340,7 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 		project: text("project"),
 		title: text("title"),
 		status: text("status"),
-		sources: readSources(d.sources, (msg) => diag("warn", "node.bad-field", msg, source, id, at("sources"))),
+		sources: readSources(data.sources, (msg) => diag("warn", "node.bad-field", msg, source, id, at("sources"))),
 		source,
 		lines: fm.lines,
 		meta: Object.create(null) as Record<string, unknown>,
@@ -370,7 +370,7 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 	}
 
 	const known = kindDirectory?.keys ?? NODE_KEYS;
-	for (const [k, v] of Object.entries(d)) if (!Object.hasOwn(known, k)) rec.meta[k] = v;
+	for (const [k, v] of Object.entries(data)) if (!Object.hasOwn(known, k)) rec.meta[k] = v;
 	const body = splitOwner(fm.body);
 	if (body.owner !== null) rec.meta.owner = body.owner;
 	rec.bodyHtml = renderMarkdown(body.markdown);
@@ -383,19 +383,19 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 		rec.complete = absent.length === 0;
 	} else if (isOverlay) {
 		const key = kind === "feature" ? "touches" : "steps";
-		if (!Object.hasOwn(d, key)) missing(key);
-		else rec[key] = readOverlayList(d[key], kind === "feature" ? 1 : 2, (message) => diag("error", `${kind}.bad-field`, `"${key}" ${message}`, source, id, at(key)));
+		if (!Object.hasOwn(data, key)) missing(key);
+		else rec[key] = readOverlayList(data[key], kind === "feature" ? 1 : 2, (message) => diag("error", `${kind}.bad-field`, `"${key}" ${message}`, source, id, at(key)));
 	} else if (rec.kind === "plant") {
 		rec.parent = null;
-		if (!Object.hasOwn(d, "parent")) missing("parent");
-		else if (d.parent !== null) diag("error", "node.bad-field", '"parent" of a plant must be null', source, id, at("parent"));
-		if (Object.hasOwn(d, "revision")) {
-			if (typeof d.revision === "string" && /^[0-9a-fA-F]{40}$/.test(d.revision)) rec.revision = d.revision.toLowerCase();
+		if (!Object.hasOwn(data, "parent")) missing("parent");
+		else if (data.parent !== null) diag("error", "node.bad-field", '"parent" of a plant must be null', source, id, at("parent"));
+		if (Object.hasOwn(data, "revision")) {
+			if (typeof data.revision === "string" && /^[0-9a-fA-F]{40}$/.test(data.revision)) rec.revision = data.revision.toLowerCase();
 			else diag("error", "plant.bad-revision", '"revision" must be a full 40-character hexadecimal commit SHA; ignored', source, id, at("revision"));
 		}
 	} else {
 		rec.parent = text("parent") || null;
-		if (!Object.hasOwn(d, "parent")) missing("parent");
+		if (!Object.hasOwn(data, "parent")) missing("parent");
 	}
 
 	return rec;
@@ -523,49 +523,49 @@ function orderNodes(nodes: Map<string, RecordNode>): RecordNode[] {
 
 function buildEdges(records: RecordNode[], nodes: Map<string, RecordNode>, plantIds: Set<string>, featureIds: Set<string>, journeyIds: Set<string>, diag: Report): PictureEdge[] {
 	const edges: PictureEdge[] = [];
-	for (const e of records) {
-		if (!e.complete) continue;
-		const at = (key: string) => e.lines[key] ?? null;
-		const overlayEnd = (["from", "to"] as const).find((key) => featureIds.has(e[key]) || journeyIds.has(e[key]));
+	for (const edge of records) {
+		if (!edge.complete) continue;
+		const at = (key: string) => edge.lines[key] ?? null;
+		const overlayEnd = (["from", "to"] as const).find((key) => featureIds.has(edge[key]) || journeyIds.has(edge[key]));
 		if (overlayEnd) {
-			const kind = featureIds.has(e[overlayEnd]) ? "feature" : "journey";
-			diag("warn", `edge.${kind}`, `edge touches the ${kind} "${e[overlayEnd]}"; edge dropped`, e.source, e.id, at(overlayEnd));
+			const kind = featureIds.has(edge[overlayEnd]) ? "feature" : "journey";
+			diag("warn", `edge.${kind}`, `edge touches the ${kind} "${edge[overlayEnd]}"; edge dropped`, edge.source, edge.id, at(overlayEnd));
 			continue;
 		}
-		if (e.relation === "contains") {
-			diag("warn", "edge.contains", 'containment comes from "parent", not from edges; edge dropped', e.source, e.id, at("relation"));
+		if (edge.relation === "contains") {
+			diag("warn", "edge.contains", 'containment comes from "parent", not from edges; edge dropped', edge.source, edge.id, at("relation"));
 			continue;
 		}
-		const plantEnd = [e.from, e.to].find((x) => plantIds.has(x));
+		const plantEnd = [edge.from, edge.to].find((x) => plantIds.has(x));
 		if (plantEnd) {
-			diag("info", "edge.plant", `edge touches the plant "${plantEnd}"; edge dropped`, e.source, e.id, at(plantEnd === e.from ? "from" : "to"));
+			diag("info", "edge.plant", `edge touches the plant "${plantEnd}"; edge dropped`, edge.source, edge.id, at(plantEnd === edge.from ? "from" : "to"));
 			continue;
 		}
-		const dangling = (["from", "to"] as const).filter((k) => !nodes.has(e[k]));
+		const dangling = (["from", "to"] as const).filter((k) => !nodes.has(edge[k]));
 		if (dangling.length) {
-			const what = dangling.map((k) => `${k} "${e[k]}"`).join(" and ");
-			diag("error", "edge.dangling", `${what} is not a node; edge dropped`, e.source, e.id, at(dangling[0]!));
+			const what = dangling.map((k) => `${k} "${edge[k]}"`).join(" and ");
+			diag("error", "edge.dangling", `${what} is not a node; edge dropped`, edge.source, edge.id, at(dangling[0]!));
 			continue;
 		}
-		if (e.from === e.to) {
-			diag("warn", "edge.self", "from and to are the same node; edge dropped", e.source, e.id, at("to"));
+		if (edge.from === edge.to) {
+			diag("warn", "edge.self", "from and to are the same node; edge dropped", edge.source, edge.id, at("to"));
 			continue;
 		}
-		if (!RELATIONS.includes(e.relation)) {
-			diag("warn", "edge.unknown-relation", `relation "${e.relation}" is not one of ${RELATIONS.join(", ")}; kept`, e.source, e.id, at("relation"));
+		if (!RELATIONS.includes(edge.relation)) {
+			diag("warn", "edge.unknown-relation", `relation "${edge.relation}" is not one of ${RELATIONS.join(", ")}; kept`, edge.source, edge.id, at("relation"));
 		}
 		edges.push({
-			id: e.id,
-			from: e.from,
-			to: e.to,
-			kind: e.relation,
-			title: e.title,
-			status: e.status,
-			summary: e.summary,
-			bodyHtml: e.bodyHtml,
-			sources: e.sources,
-			source: e.source,
-			meta: e.meta,
+			id: edge.id,
+			from: edge.from,
+			to: edge.to,
+			kind: edge.relation,
+			title: edge.title,
+			status: edge.status,
+			summary: edge.summary,
+			bodyHtml: edge.bodyHtml,
+			sources: edge.sources,
+			source: edge.source,
+			meta: edge.meta,
 		});
 	}
 	return edges;

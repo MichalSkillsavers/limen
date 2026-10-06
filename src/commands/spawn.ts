@@ -102,12 +102,12 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		}
 	}
 	const herdr = herdrAvailable();
-	const tab = parsed.detached ? false : parsed.tab || herdr;
+	const hosted = parsed.detached ? false : parsed.tab || herdr;
 	if (parsed.tab && parsed.detached) throw new Error("--tab and --detached cannot be combined");
-	if (tab && parsed.timeoutMs) throw new Error("hosted jobs have no timeout; omit --timeout or use --detached");
-	if (tab && !herdr) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
+	if (hosted && parsed.timeoutMs) throw new Error("hosted jobs have no timeout; omit --timeout or use --detached");
+	if (hosted && !herdr) throw new Error("hosted spawn requires Herdr (HERDR_ENV=1); use --detached for an ordinary job");
 	const loaded = await readSpawnTask(parsed.task, parsed.taskFile, cwd);
-	const options = { ...parsed, tab, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
+	const options = { ...parsed, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
 	const profile = resolveSpawnEngine(options.engine);
 	const engine = profile.id;
 	const model = options.model ?? defaultModel(options.review);
@@ -204,7 +204,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		planningSource: source,
 		finishAuthor: captureFinishAuthor(cwd, loaded.text, Boolean(workspace)),
 		...(repo ? { repo } : {}),
-		...(options.tab ? { agentName: hostedAgentName(id) } : {}),
+		...(hosted ? { agentName: hostedAgentName(id) } : {}),
 		...(!group && notificationSession ? { notificationSession } : {}),
 		...(coordinatorTab ? { originTab: coordinatorTab } : {}),
 		...(coordinatorPane ? { originPane: coordinatorPane } : {}),
@@ -225,7 +225,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const versions = capturedVersions(profile).then((text) => writeFile(`${jobDir}/versions`, text, { flag: "wx", flush: true }));
 	await atomicWrite(`${jobDir}/state`, "running\n");
 	if (group) await syncLifecycle(group.run, "skip");
-	if (options.tab) {
+	if (hosted) {
 		await startHosted({
 			jobDir,
 			id,
@@ -481,9 +481,9 @@ export async function capturedVersions(profile: EngineProfile): Promise<string> 
 	const herdr = herdrBinary();
 	const hunk = hunkBinary();
 	const version = (await probeVersion(engineBinary(profile) || profile.binaryDefault)) || "unavailable";
-	const extra = herdr && (await probeVersion(herdr));
+	const herdrVersion = herdr && (await probeVersion(herdr));
 	const hunkVersion = hunk && (await probeVersion(hunk));
-	return `${profile.id} ${version}\n${extra ? `herdr ${extra}\n` : ""}${hunkVersion ? `hunk ${hunkVersion}\n` : ""}`;
+	return `${profile.id} ${version}\n${herdrVersion ? `herdr ${herdrVersion}\n` : ""}${hunkVersion ? `hunk ${hunkVersion}\n` : ""}`;
 }
 function workspaceTask(task: string, root: string, repo: string): string {
 	let rewritten = task;

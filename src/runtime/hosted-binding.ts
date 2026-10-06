@@ -3,6 +3,7 @@ import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, rmSync, wr
 import { dirname, join } from "node:path";
 import { hostedForegroundPid } from "../integrations/herdr.ts";
 import { processInfo } from "./contain.ts";
+import type { EngineId } from "./engine.ts";
 
 export type HostedLaunch = {
 	readonly launchId: string;
@@ -60,7 +61,7 @@ export async function hostedIdentityObservation(binding: HostedBinding): Promise
 	return current.kind === "present" && current.process.born === binding.born ? "present" : "mismatch";
 }
 /** Current pane membership is checked between two fresh checks of the immutable binding. */
-export async function hostedBindingInPane(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
+export async function hostedBindingInPane(target: string, pid: number, engine: EngineId, jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
 	const binding = readHostedBinding(jobDir);
 	if (!binding || binding.pid !== pid || binding.engine !== engine) return "mismatch";
 	let session: string;
@@ -83,7 +84,7 @@ export async function hostedBindingInPane(target: string, pid: number, engine: "
 		return "mismatch";
 	}
 }
-export async function hostedEngineObservation(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
+export async function hostedEngineObservation(target: string, pid: number, engine: EngineId, jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
 	try {
 		if (readFileSync(`${jobDir}/herdr/pane`, "utf8").trim() !== target) return "mismatch";
 	} catch {
@@ -91,7 +92,7 @@ export async function hostedEngineObservation(target: string, pid: number, engin
 	}
 	return hostedBindingInPane(target, pid, engine, jobDir);
 }
-export async function hostedEngineOwned(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<boolean> {
+export async function hostedEngineOwned(target: string, pid: number, engine: EngineId, jobDir: string): Promise<boolean> {
 	return (await hostedEngineObservation(target, pid, engine, jobDir)) === "owned";
 }
 function publishExclusive(path: string, value: unknown): void {
