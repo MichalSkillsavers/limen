@@ -491,4 +491,140 @@ TAP time (sum of per-test `duration_ms`, `/tmp/f783-lead/full-suite.tap`): 19.9 
 
 ## 4. Git history
 
-Pending: not written yet.
+Source: `git log --follow --format='%h %ad %s' --date=short --numstat -- test/<file>`, then `git show --name-only <sha>` and the commit body for each of the 182 distinct commits. Each (file, commit) pair goes in one bucket.
+
+- `bug-pinned`: the commit fixes product behavior in `src/`, `hook/` or `bin/` that its message or notes call wrong, and the same commit adds or changes an assertion on the fixed behavior.
+- `bug-caught`: an existing test went red on a later change and forced a product fix. I searched the commit log and `spec/features/**` notes for this pattern; the searches and what they found are listed under (a).
+- `feature-add`: new behavior, or a behavior change that no note calls a bug.
+- `refactor-only`: test-only deflakes and formatting, renames and moves, and product commits that only reword text the tests pin.
+- `trim`: F776 (`45d93a9`) and `e030714` "test: stop inventorying prompt prose".
+
+### (b) Commits per bucket, per file
+
+| File | Commits | bug-pinned | bug-caught | feature-add | refactor-only | trim |
+| --- | --- | --- | --- | --- | --- | --- |
+| `wake-hook` | 49 | 8 | 0 | 33 | 7 | 1 |
+| `hosted-spawn` | 52 | 17 | 0 | 24 | 10 | 1 |
+| `spawn-command` | 51 | 4 | 0 | 35 | 10 | 2 |
+| `group-command` | 15 | 2 | 0 | 7 | 5 | 1 |
+| `finish-webhook` | 19 | 4 | 0 | 11 | 3 | 1 |
+| `github-doorbell` | 9 | 0 | 0 | 5 | 3 | 1 |
+| `continue-command` | 15 | 1 | 0 | 10 | 3 | 1 |
+| `communication-hook` | 25 | 1 | 0 | 11 | 11 | 2 |
+| `jobs-command` | 23 | 2 | 0 | 17 | 3 | 1 |
+| `wake-sweep` | 6 | 2 | 0 | 1 | 2 | 1 |
+| `finish-webhook-helper` | 12 | 0 | 0 | 9 | 2 | 1 |
+| `recovery` | 5 | 4 | 0 | 0 | 1 | 0 |
+| total (file × commit) | 281 | 45 | 0 | 163 | 60 | 13 |
+
+### (a) Bug list
+
+All entries are `pinned`. None is `caught`. Evidence for zero `caught`:
+
+- `git log --format='%h %s%n%b' | rg -i 'caught|exposed|surfaced|revealed|found by|failing test|test failed|went red|red on'` finds no product fix forced by one of these 12 files. The two hits are `e59e829` (picture watch test, not in my set) and `e8edbc3` (a deflake): `group-command` "detached role deadlines stop a real child…" failed on clean `main` under load and the test was changed, not the product.
+- `rg` over `spec/features/**/*.md` for these file names next to fail/red/caught/flake finds only flakes and environment leaks. Examples: `F741 checks.md:30`, two `finish-webhook` timing tests fail at load 55–62. `F728 reproduction.md:29`, "two long hosted labels" timed out with no product cause. `F018 review-1:17` and `F054 review-1:17`, `communication-hook` failed on a reviewer's leaked `LIMEN_*` env. `F085 review-1:17`, a hosted-start handshake flake. `F761 notes.md:20` and `F029 review-1:13`, a spawn concurrency flake.
+- Counter-evidence that a mock missed a real bug: in `F045 review-1:5-9`, the reviewer found that Herdr 0.8.2 rejects the `stalled` state label, so no stall metadata was ever applied. They also found that "the fake at test/hosted-spawn.test.ts:74 only records arguments and cannot detect this failure." The fix (`c064d3e`) taught the fake to reject bad labels, which means the test now copies Herdr's allowlist.
+- Team 3 (`team-3-incidents.md`, commit `586c334`) reports that the F042 wake bugs and the F043 registry race were found by reviewer probes, and that regression tests were written afterwards. The one test that caught a real race, `open-command` (`43c01cf`), is not in my 12 files.
+
+| Commit | File | Current test (line, title) | Bug, in one clause |
+| --- | --- | --- | --- |
+| `951282a` 2026-10-05 | `wake-hook` | L1767 "standing uncertainty waits one minute and delivers once across transit"; L1819 "uncertainty does not queue into a busy recipient or consume failure an" | a hosted job launched from a moved or unbound pane was attributed and adopted wrongly, and ownership uncertainty was not persisted |
+| `a14640f` 2026-09-19 | `wake-hook` | L1454 "provider-error turns exhaust the allowance after two failures" | provider errors, aborts and rejected injections released wake claims without counting, so a wake could retry forever |
+| `bc9476f` 2026-09-08 | `wake-hook` | L530 "settled coordinator labels count watched and visible unwatched RUNNING" | settled Herdr panes hid RUNNING jobs from the coordinator line |
+| `a70cf2a` 2026-08-26 | `wake-hook` | L188 "a reloaded coordinator tab resubscribes to its running jobs" | a reloaded coordinator tab lost the wakes of jobs it had started |
+| `7e43d23` 2026-08-25 | `wake-hook` | L1175 "one assistant response confirms every batched followUp wake in the tur"; L1355 "another listener does not recover a live accepted claim" | batched follow-up wakes were injected three times for two jobs, and a second listener stole a live 31 s claim (F042 review-1) |
+| `af12f1b` 2026-08-25 | `wake-hook` | L1300 "an accepted wake is recovered after shutdown when no turn ran" | a wake was marked delivered when the host accepted it, before any turn ran, so a lost turn lost the wake |
+| `96344eb` 2026-08-16 | `wake-hook` | L30 "wake ignores history, announces start, and steers once on terminal cha" | completion wakes went in as a steer that idle coordinators easily missed |
+| `d9a92fb` 2026-08-14 | `wake-hook` | pinning test since removed or rewritten | a footer timer outliving /reload crashed Pi |
+| `125d71a` 2026-10-06 | `hosted-spawn` | L924 "makeJobId never leaves a run of dashes where a feature number or the c" | job IDs could carry a run of dashes |
+| `951282a` 2026-10-05 | `hosted-spawn` | L673 "hosted supervisor refuses an unbound moved pane and finalizes when its" | a hosted job launched from a moved or unbound pane was attributed and adopted wrongly, and ownership uncertainty was not persisted |
+| `88fd5ac` 2026-10-03 | `hosted-spawn` | L930 "startHostedPi recovers an unclassified OMP process after a start warni" | Herdr losing an OMP agent row made a live hosted job fail |
+| `a14640f` 2026-09-19 | `hosted-spawn` | L147 "noteHostedIdle writes one stall marker, skips zero tools, and re-arms " | provider errors, aborts and rejected injections released wake claims without counting, so a wake could retry forever |
+| `ccf3e7e` 2026-09-16 | `hosted-spawn` | L466 "hosted start records PATH with /usr/bin and HERDR_ENV=1; detached watc" | hosted tabs lost /usr/bin and HERDR_ENV, so the hosted engine could not find git |
+| `a3872a6` 2026-09-11 | `hosted-spawn` | L565 "hosted spawn and continuation keep quoted multiline tasks out of shell"; L868 "hosted continue survives a killed caller and passes durable @continue," | a multiline or quoted task passed as a shell argument broke hosted continuation |
+| `967ab4b` 2026-08-26 | `hosted-spawn` | L24 "hosted result capture follows the last assistant stop reason"; L846 "a hosted session error fails with its stop reason" | a hosted session that ended on a provider error was recorded done, not failed |
+| `9139a20` 2026-08-25 | `hosted-spawn` | L188 "noteHostedIdle rings and stamps unheard stalls until delivery, then re" | stall labels were stamped with a state label Herdr rejects |
+| `c064d3e` 2026-08-25 | `hosted-spawn` | L188 "noteHostedIdle rings and stamps unheard stalls until delivery, then re" | same bug as 9139a20: Herdr 0.8.2 rejected the `stalled` label so no metadata applied; the call-log fake could not see it (F045 review-1) |
+| `fe510dd` 2026-08-25 | `hosted-spawn` | L605 "hosted start finalizes failed after two pane-shell failures"; L702 "hosted start does not retry a non-pane-shell error" | one transient pane-shell failure failed a hosted start |
+| `2ef9f40` 2026-08-19 | `hosted-spawn` | L350 "hostedAgentStatus reads nested 0.8.0 envelope and flat legacy"; L381 "hostedAgentStatus keeps last known status across a non-not-found CLI f" | the supervisor misread Herdr 0.8's nested agent status and finalized jobs on one missing sample |
+| `c8200bb` 2026-08-18 | `hosted-spawn` | L13 "hosted completion is session end or vanished agent, not Herdr idle" | hosted jobs were marked done after 90 s of Herdr idle while the session kept working (F015) |
+| `1dbcdd8` 2026-08-18 | `hosted-spawn` | L424 "ordinary lead-in labels start hosted; --detached keeps a watch tab" | Herdr 0.8 would not start an agent in a background pane |
+| `2a1b848` 2026-08-17 | `hosted-spawn` | L424 "ordinary lead-in labels start hosted; --detached keeps a watch tab" | a --no-focus tab was not an available shell, so agent start failed |
+| `c316fce` 2026-08-16 | `hosted-spawn` | L816 "a hosted job finalizes on session end, never on unseen idle after tool" | the supervisor treated Herdr `done` (unseen idle) as process exit and finalized live jobs |
+| `73b129b` 2026-08-16 | `hosted-spawn` | L424 "ordinary lead-in labels start hosted; --detached keeps a watch tab" | spawn --tab stole macOS focus |
+| `755d762` 2026-08-15 | `hosted-spawn` | L424 "ordinary lead-in labels start hosted; --detached keeps a watch tab" | agent start raced prompt hooks still running in a new tab |
+| `30cff7a` 2026-09-19 | `spawn-command` | L591 "overlapping starts keep both worktrees; prune still drops a genuine le"; L671 "a second spawn cannot delete a worktree still being added"; L737 "prune between job-directory creation and marker writes cannot delete t" | prune could delete a job directory in the window before its markers were written |
+| `e5feac5` 2026-09-19 | `spawn-command` | L591 "overlapping starts keep both worktrees; prune still drops a genuine le"; L671 "a second spawn cannot delete a worktree still being added" | overlapping spawns let prune delete the other start's worktree |
+| `d220b3b` 2026-09-16 | `spawn-command` | L537 "spawn refuses a ticket missing from the base commit and starts when it" | spawn started a job whose ticket was missing from the base commit |
+| `e63c790` 2026-08-13 | `spawn-command` | L68 "spawn creates isolated branch, canonical record, defaults to omp, and " | wrapper Herdr/Pi state leaked into the worker environment |
+| `b62b837` 2026-10-01 | `group-command` | L770 "busy cabinet never blocks finalization or loses its deferred lifecycle"; L808 "a ${command} waits beyond ten seconds for a real sibling launch withou"; L861 "cabinet recovery reclaims a dead owner but never displaces an aged liv" | a busy group lock failed live members and sibling launches past a 10 s deadline (team-3 note) |
+| `57ad3e9` 2026-09-30 | `group-command` | L365 "lifecycle advisories repeat after clearing without duplicates from con"; L397 "lifecycle recovery completes an interrupted occurrence before observin" | recurring group lifecycle advisories were dropped or duplicated under concurrent sync |
+| `16939e1` 2026-09-28 | `finish-webhook` | L138 "jobs at the same recorded tip each send, including with a legacy tip m"; L162 "two detached jobs that settle at the same HEAD each send an automatic " | the tip rule from 1cd1f68 silenced the second job's legitimate ping; dedupe moved to per job |
+| `1cd1f68` 2026-09-16 | `finish-webhook` | pinning test since removed or rewritten | two jobs at the same tip both pinged (later judged wrong and reversed by 16939e1) |
+| `2cddbb6` 2026-09-13 | `finish-webhook` | L96 "automatic finish decision: … sends once with its reason (rule since re" | empty failed/stopped jobs sent finish pings (rule later reversed: the current L96 sends for every terminal state) |
+| `a777385` 2026-09-10 | `finish-webhook` | L203 "automatic delivery finds Limen's Node runtime when the inherited PATH can" | automatic finish webhooks failed when the service PATH had no runnable node |
+| `533be73` 2026-09-13 | `continue-command` | L177 "continue restores a pruned finished checkout from its branch and saved"; L292 "continue refuses a running job or missing transcript without writing r" | continue refused a finished job whose checkout had been pruned |
+| `b962dd4` 2026-08-23 | `communication-hook` | pinning test since removed or rewritten | wake turns re-injected vision and board context |
+| `951282a` 2026-10-05 | `jobs-command` | L243 "jobs shows the advisory line on a running hosted job" | a hosted job launched from a moved or unbound pane was attributed and adopted wrongly, and ownership uncertainty was not persisted |
+| `5754dad` 2026-09-11 | `jobs-command` | L337 "hosted pulse uses wrapper identity even when the agent is idle" | orphaned hosted jobs lost watch-only ownership after a supervisor died |
+| `a14640f` 2026-09-19 | `wake-sweep` | L234 "${advisory} ${fallback} stops after two ${failure} failures" | provider errors, aborts and rejected injections released wake claims without counting, so a wake could retry forever |
+| `a482020` 2026-09-05 | `wake-sweep` | L12 "unwatched completion crosses fallback grace on the timer alone"; L36 "busy completion stays claimed until its one followUp turn finishes"; L62 "second full sweep skips 473 settled records and shares two running job"; L80 "settlement keeps fallback, blocked claims, and new subscriptions obser"; L95 "cache invalidates ready, subscriptions, whole-job changes, and manual "; L122 "ownership cache notices whole-job addition and deletion"; L145 "missed events and watcher failure recover settled records and ownershi"; L169 "progress events neither invalidate settled records nor schedule sweeps" | coordinator sweeps re-read every settled job record on each tick |
+| `951282a` 2026-10-05 | `recovery` | L286 "uncertain Herdr never adopts or fails, including cached life and a fai" | a hosted job launched from a moved or unbound pane was attributed and adopted wrongly, and ownership uncertainty was not persisted |
+| `88fd5ac` 2026-10-03 | `recovery` | L165 "hosted recovery matches only the recorded engine or node on its record" | Herdr losing an OMP agent row made a live hosted job fail |
+| `7cbce5c` 2026-10-03 | `recovery` | L148 "hosted OMP recovery stays running without an agent row while omp remai" | same bug as 88fd5ac; reproduction test committed first, red 0/1 before the fix (team-3 note) |
+| `5754dad` 2026-09-11 | `recovery` | L188 "competing real sweeps replace a killed young supervisor exactly once, "; L231 "a killed recovery claimant is reclaimed by competing sweeps"; L255 "missing and malformed PID/timestamp shapes expire; a real startup grac"; L286 "uncertain Herdr never adopts or fails, including cached life and a fai"; L353 "uncertain then concretely missing agent fails with handoff and wake el" | orphaned hosted jobs lost watch-only ownership after a supervisor died |
+
+### (c) Files that never changed with a bug fix
+
+- `github-doorbell` (9 commits), `finish-webhook-helper` (12 commits): only `feature-add`, `refactor-only` or `trim` commits.
+- Files with at most two bug-pinned commits, against many feature and wording commits: `group-command` (2 of 15), `continue-command` (1 of 15), `communication-hook` (1 of 25), `jobs-command` (2 of 23), `wake-sweep` (2 of 6). The bug in `communication-hook` (`b962dd4`) was pinned by a test that later rewrites removed. Both `jobs-command` bugs are display side effects of recovery fixes.
+- Tests that pinned a rule later reversed: `finish-webhook` `1cd1f68` (same-tip skip, reversed by `16939e1`) and `2cddbb6` (skip empty failed/stopped, reversed in the current L96 decision table). Both pinned behavior the owner later judged wrong. The tests guarded the bug, not the intent.
+
+## 5. Notes for the scenario design
+
+One line per pinned bug: the seam a scenario must exercise to catch it again. Bugs on this list that team 3 and the lead put on the closed replay list: `7e43d23`, `88fd5ac`/`7cbce5c`, `b62b837`.
+
+- `951282a`: recovery: a moved or unbound pane is not adopted and uncertainty persists. Unit (`recovery` L286) plus the hosted scenario.
+- `a14640f`: finish-wake: a host that rejects or errors twice stops retrying. Fake-clock unit `wake-sweep` L234.
+- `bc9476f`: none: Herdr footer display. Accept the risk or check by hand.
+- `a70cf2a`: finish-wake: restart the coordinator listener between spawn and finish; the wake still arrives.
+- `7e43d23`: finish-wake: two listeners and two jobs finish in one turn; each wake is injected once and a live claim is not stolen. Replay against `7e43d23^`.
+- `af12f1b`: finish-wake: the host accepts the wake, the session shuts down before a turn runs, and the next session gets the wake.
+- `96344eb`: finish-wake: an idle coordinator gets the wake as a normal user turn (no `deliverAs`).
+- `d9a92fb`: none: crash on /reload; the pinning test is gone. Hook-level smoke only.
+- `125d71a`: unit: `makeJobId` (`hosted-spawn` L924).
+- `88fd5ac`: recovery: the hosted scenario's fake Herdr drops the agent row while the pane foreground is still `omp`; the job stays running. Replay against `88fd5ac^` (team-3 lists it).
+- `ccf3e7e`: spawn (hosted): the engine launched in the hosted tab can run `git` with a stripped caller PATH.
+- `a3872a6`: spawn (hosted) and continue: a quoted multiline task reaches the engine byte for byte.
+- `967ab4b`: finish-wake: an engine whose last turn is a provider error ends `failed` with a stop-reason.
+- `9139a20`: none in a scenario: Herdr metadata. Only a live Herdr can prove it (F045 review-1).
+- `c064d3e`: same as 9139a20.
+- `fe510dd`: spawn (hosted): one failed agent start is retried; two fail the job.
+- `2ef9f40`: unit: `hostedAgentStatus` envelope parsing (`hosted-spawn` L350, L381).
+- `c8200bb`: finish-wake (hosted): an idle agent after tool calls is not done until the session ends.
+- `1dbcdd8`: spawn (hosted): only against real Herdr 0.8. The fake encodes the focus rule, so this is a copy check.
+- `2a1b848`: same as 1dbcdd8.
+- `c316fce`: finish-wake (hosted): Herdr `done` does not finalize a live job.
+- `73b129b`: none: focus theft. Herdr argv copy only.
+- `755d762`: same as 1dbcdd8.
+- `30cff7a`: spawn and prune: a prune during a spawn leaves the new job intact. Gate-file race; `spawn-command` L591 is the cheap form.
+- `e5feac5`: spawn: two overlapping spawns keep both worktrees (`spawn-command` L591, L671).
+- `d220b3b`: spec-keeper and spawn: spawn refuses a ticket that is not committed on the base.
+- `e63c790`: spawn: the worker env does not carry the caller's Herdr/Pi variables (the fake engine dumps its env).
+- `b62b837`: groups: a launch held past 10 s does not fail a sibling, and a busy cabinet does not lose a finish event. Replay against `b62b837^`; make the hold a gate, not a 12 s sleep.
+- `57ad3e9`: groups: unit `syncLifecycle` (`group-command` L365, L397).
+- `16939e1`: webhooks: two jobs that finish at the same HEAD each send one ping.
+- `1cd1f68`: none: the rule was reversed.
+- `2cddbb6`: none: the rule was reversed. The current decision table sends for every terminal state.
+- `a777385`: webhooks: delivery works when the service PATH has no runnable node. One env tweak in the webhook scenario.
+- `533be73`: steer-context: continue after prune restores the checkout from the branch.
+- `b962dd4`: none: the pinning test was removed and the rule now lives in `communication-hook` L142 (a wake turn shares the system prompt).
+- `5754dad`: recovery: competing sweeps adopt a dead hosted supervisor exactly once (`recovery` L188, L231).
+- `a482020`: finish-wake: unit on a fake clock (`wake-sweep` L62 counts reads). Performance; no user-facing failure.
+- `7cbce5c`: same as 88fd5ac.
+
+## Notes from other teams that changed this note
+
+- Team 3 (F042 review-1, `7e43d23`): the batched-followUp and live-claim tests (`wake-hook` L1175, L1355) were written after reviewer probes reproduced the bugs. I kept their classes (`mock`, `timing`) but list `7e43d23` in section 5 as a replay case. L1175 stays `scenario`. L1355 stays `delete` as a test, and its behavior moves into the finish-wake scenario.
+- Team 3 (`b62b837`): `group-command` L770 and L808 are `timing` by form and `scenario` by action. Their 11 s and 12 s holds should become gates.
+- Team 2 (fixture env): the `scratch.ts` env denylist misses `LIMEN_GROUP_ID`/`LIMEN_TEAM_ID`. I ran no test files, so this did not affect my numbers.
