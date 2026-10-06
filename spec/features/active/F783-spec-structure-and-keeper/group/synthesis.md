@@ -52,6 +52,10 @@ Nothing at worker finish or at `limen land` read a ticket. `picture build --stri
 
 Three live runs on a throwaway plant with real Sol jobs. Run 3 used the integrated commit `e423ef1` exactly. The keeper refused while the worker ran. After a scripted break (unknown place id, missing board line, stale map source), `limen ticket check` and `limen land --yes` both refused with exit 1. The keeper followed the moved ticket, fixed all three links in one commit in 38 seconds, and its own `limen ticket check` passed. `limen land` of the keeper job then succeeded, and the strict build had zero diagnostics. Limit: the breaks were scripted after the worker finished, so the proof tests the keeper and the gate, not whether a worker leaves links broken.
 
+Live run on this plant, after the land (`ce96460`): `limen keeper spec/features/active/F783-spec-structure-and-keeper/ticket.md --group f79c4724-3bbd-4c02-b10d-23acc60e9cd0 --candidate main` on Sol at `high` started `2026-10-06-f783-spec-keeper-93143e7a`. Its packet listed all seven member jobs with their session files. It finished in about 80 seconds with one commit (`43d91c2`, the missing F783 board line under NOW), strict build exit 0, and its own `limen ticket check` passed. `limen land … --yes` then fast-forwarded `main`. Finding: the packet said "Changed tickets: none", because a group's feature ticket reaches `main` before the work starts. The keeper checked it anyway; `templates/keeper.md` now says to check the packet's ticket as well.
+
+The lead also fixed the four stale map sources for F728, F740 and F741 in the plant map (outside Git), as the new lane-move step says. The strict build on this plant now shows two warnings and no error: the F778 duplicate and F782 without `touches`.
+
 ## Open
 
 - The two F778 tickets still share a number. Renumbering one is a coordinator decision; the build keeps a warning.

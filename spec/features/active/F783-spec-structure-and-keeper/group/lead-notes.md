@@ -10,3 +10,4 @@ Map for whoever continues the F783 lead role.
 - Team-2 declined `limen ticket check` and a worktree map fallback as out of its scope. The lead wires `limen ticket check [BRANCH]` at integration as a thin call to Team 3's `landTicketCheck(repository, root, branch, target, job)` from `src/commands/land.ts`.
 - After merging any change to `templates/agents.md`, `worker.md` or `group-member.md`, regenerate `templates/.history/` with `LIMEN_WRITE_HISTORY=1 node --test test/inherit.test.ts` (the test pins it to git log).
 - Lead events: `limen group wait` wakes on lifecycle noise; `/tmp/f783-lead/next.sh N` blocks until a team finding or a terminal state and prints only unseen events.
+- Landed `ce96460` on `main` (plain merge; the lead job was running) and pushed. The live keeper `2026-10-06-f783-spec-keeper-93143e7a` added the F783 board line (`43d91c2`), landed with `limen land --yes`.

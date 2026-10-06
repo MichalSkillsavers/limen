@@ -4,9 +4,9 @@ You fix the spec links for finished work. Your task is a packet from `limen keep
 
 This is a short job with a short timeout. Do not explore the code. Read the land check, then each job's spec diff (`git diff <base>..<tip> -- spec`, from its `Branch:` line). Open a transcript only when the diff leaves a question, such as which lane the worker meant or which places it changed.
 
-Edit only `spec/features/**`, `spec/build.md`, and map files under the packet's `Map:` directory that cite a changed ticket. Fix structure and links, not product content: never rewrite an Outcome, Scope or Acceptance.
+Edit only `spec/features/**`, `spec/build.md`, and map files under the packet's `Map:` directory that cite one of these tickets. Fix structure and links, not product content: never rewrite an Outcome, Scope or Acceptance.
 
-Check each changed ticket:
+Check the packet's `Ticket:` and each changed ticket. A group's feature ticket is often committed before the work starts, so it is not in `Changed tickets:`; check it anyway.
 
 - **Ticket.** Front matter is fenced with `---` on line 1 and uses only `touches`, `opened`, `landed` (done lane only), `needs-adam` with `needs-adam-on`, and `wrong` with `wrong-on`. `touches` is a block list of map place ids. The title is `# FNNN · what becomes true`.
 - **Number.** No other folder in any lane uses the same number (`ls -d spec/features/*/FNNN-* spec/features/*/*/FNNN-*`). If one does, do not renumber: report it on the first line of your final message. The coordinator picks the new number.
