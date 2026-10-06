@@ -652,8 +652,9 @@ test("automatic lead updates stay agent-attributed and only processed context su
 		on: (name: string, handler: Handler) => {
 			handlers[name] = handler;
 		},
-		sendMessage: (payload: { content: string; attribution: string }) => {
-			message.resolve(payload);
+		sendMessage: (payload: { content: string; attribution: string }, options: { deliverAs: string; triggerTurn: boolean }) => {
+			// Pi parks nextTurn on an idle lead even with triggerTurn, and steer would interrupt a busy one; only followUp does both jobs.
+			if (options.deliverAs === "followUp" && options.triggerTurn) message.resolve(payload);
 		},
 	} as Parameters<typeof groupPeer>[0]);
 	const ctx = { cwd: scratch.root, sessionManager: { getSessionId: () => run.lead }, ui: { notify: () => {} } };
