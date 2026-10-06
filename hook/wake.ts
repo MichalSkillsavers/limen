@@ -1,6 +1,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, type FSWatcher, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { coordinatorSignals } from "../src/integrations/coordinator-signal.ts";
 import { derivePulse, type Pulse } from "../src/job/job.ts";
 import { advisoryWake, completionWake } from "../src/job/wake-text.ts";
 import { unlandedBranches } from "../src/project/git.ts";
@@ -18,7 +19,19 @@ type Context = {
 	};
 };
 type PiApi = {
-	on(event: "session_start" | "session_shutdown" | "agent_settled" | "message_start" | "message_end", handler: (event: unknown, context: Context) => void): void;
+	on(
+		event:
+			| "session_start"
+			| "session_shutdown"
+			| "agent_settled"
+			| "message_start"
+			| "message_end"
+			| "tool_execution_start"
+			| "tool_execution_end"
+			| "tool_result"
+			| "goal_updated",
+		handler: (event: unknown, context: Context) => void,
+	): void;
 	sendUserMessage(content: string, options?: { readonly deliverAs: "steer" | "followUp" }): Promise<void> | void;
 	registerCommand?(
 		name: string,
@@ -65,6 +78,7 @@ export default function limenWake(pi: PiApi): void {
 	let ownsJobs: boolean | undefined;
 	let cacheExpiresAt = 0;
 	let sweeping = false;
+	const coordinator = coordinatorSignals();
 	let injectedThisSweep = false;
 	type PendingDelivery = {
 		readonly claim: string;
@@ -465,6 +479,7 @@ export default function limenWake(pi: PiApi): void {
 		if (process.env.LIMEN_JOB === "1" || process.env.LIMEN_WAKE === "0") return;
 		const root = projectRoot(context.cwd);
 		if (!root) return;
+		coordinator.start(root, context);
 		stopTimers();
 		const id = context.sessionManager.getSessionId();
 		if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) return;
@@ -540,6 +555,7 @@ export default function limenWake(pi: PiApi): void {
 	pi.on("message_end", (event) => {
 		const message = eventMessage(event);
 		if (!message || message.role !== "assistant") return;
+		coordinator.messageEnd(message.stopReason);
 		const failed = message.stopReason === "error" || message.stopReason === "aborted";
 		for (const claim of activeDeliveries) {
 			const pending = pendingDeliveries.get(claim);
@@ -549,6 +565,7 @@ export default function limenWake(pi: PiApi): void {
 		}
 	});
 	pi.on("agent_settled", () => {
+		coordinator.settled();
 		for (const pending of pendingDeliveries.values()) pending.settled = true;
 		confirmDeliveries();
 		activeDeliveries.clear();
@@ -556,6 +573,7 @@ export default function limenWake(pi: PiApi): void {
 		sweep();
 	});
 	pi.on("session_shutdown", () => {
+		coordinator.shutdown();
 		if (!active && !sweepTimer) return;
 		watcher?.close();
 		watcher = undefined;
@@ -571,6 +589,10 @@ export default function limenWake(pi: PiApi): void {
 		retire(false);
 		releaseHerdr();
 	});
+	pi.on("tool_execution_start", (event) => coordinator.toolStart(event));
+	pi.on("tool_execution_end", (event) => coordinator.toolEnd(event));
+	pi.on("tool_result", (event) => coordinator.toolResult(event));
+	pi.on("goal_updated", (event) => coordinator.goalUpdated(event));
 	if (process.env.LIMEN_JOB === "1") return;
 	pi.registerCommand?.("limen", {
 		description: "Mute or resume limen job display and wakes for this session",

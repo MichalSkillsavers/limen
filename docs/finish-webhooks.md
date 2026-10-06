@@ -8,7 +8,9 @@ mistaken for landing approval by a recipient that ignores new fields. Existing
 receivers that only accept `status: "done"` must handle `waiting` as a handoff,
 not as an error or a new-spawn signal. Failed and stopped jobs retain their
 status and direct inspection of the job record. Automatic sends include stable
-`finishEvent`; all sends include `job`, `status`, `branch`, and `handoff`.
+`finishEvent`; all sends include `job`, `status`, `branch`, `handoff`, and
+`event`. Automatic sends also carry `plant`, `title`, `jobId`, and `reason`
+(see [Plant events](#plant-events)).
 The finish-ping sender keeps its file name for compatibility; the name does not limit who receives the finish.
 It requires Node.js 24+ and Git, on macOS or Linux. It uses Node's HTTP client,
 not curl; credentials never enter child-process arguments. HTTP acceptance
@@ -103,28 +105,21 @@ The automatic caller prepends the directory of Limen's running Node executable
 to the helper's `PATH`, so a noninteractive environment missing that directory
 can still launch the sender. Manual launchers still need Node.js 24+ on `PATH`.
 
-A configured `failed` or `stopped` job skips automatic delivery when its `result`
-file is missing, zero-byte, or whitespace-only. The existing `finish-webhook`
-receipt and job log record `skipped: <state> with empty result; not sent`, visible
-in both job detail views. Non-whitespace results still send, regardless of job
-runtime or whether the handoff describes success. An unreadable result is not
-assumed empty and still sends. A `done` job still sends even with no result;
-this preserves the completion contract without treating an empty success as
-proof of useful work. Native coordinator notifications and terminal state do
-not change. Logs, commits and transcript text are not substitutes for `result`.
+A configured `failed` or `stopped` job always sends, also when its `result` file
+is missing or empty. Its `reason` is the finish detail: the failed gate, for
+example `timeout after 5400000ms`, `hosted start failed: …`, or `group deadline
+or stop`. A `done` job's `reason` is the first text line of its `result`, without
+leading Markdown markers such as `#` or `-`, or the finish detail when there is
+no result. Native coordinator notifications and
+terminal state do not change.
 
 Automatic delivery is claimed by the job's `finish-webhook-attempt` file, which
 records its terminal state. Each job rings once for its final state, even when
 another job finishes at the same Git tip. The claim is never reclaimed: a crash
-after HTTP acceptance may already have sent. Older
+after HTTP acceptance may already have sent. A later result edit or a repeated
+finalization does not re-arm sending. Older
 `.limen/finish-webhook-tips/<sha>` markers are ignored and no new tip markers
 are written.
-
-A skipped empty failed/stopped result consumes that job's claim and creates no
-target transport receipts. Later result edits or repeated finalization do not
-re-arm sending. The standalone manual helper remains unchanged; an operator may
-deliberately send after inspecting the skip, but workers must not routinely
-bypass it.
 
 At `limen spawn`, selection is deliberately narrower than the standalone helper:
 
@@ -179,16 +174,104 @@ The notice uses the same sender, project opt-in, and payload fields as a `done`
 job. `job` names the feature and the step, for example `F757 lead synthesis` or
 `F757 lead close`. `branch` is the lead checkout's branch. `handoff` reads
 `Lead step done: <job>. Next step: owner decision on group/synthesis.md, or
-close the group.` (or `owner decision` after close). It never says "land it";
-when the ticket or `group/brief.md` says not to land, it adds
-`The feature says do not land.` The sender reads this text from
-`LIMEN_FINISH_HANDOFF`, which only the lead path sets.
+close the group.` (or `owner decision` after close) for every feature. It never
+says "land it". The sender reads this text from
+`LIMEN_FINISH_HANDOFF`, which lead steps and non-terminal events set; a
+terminal job never sets it.
 
 Each step is claimed once under
 `.limen/groups/GROUP-ID/lead-steps/<step>/finish-webhook-attempt`, with the
 result in `finish-webhook` beside it. A second idle turn, a pane reload, or the
 same synthesis content again sends nothing. A project without a selected config
 sends nothing and records no receipt.
+
+## Plant events
+
+The same sender, env file, target list, and author map carry every event that a
+plant's shepherd must see. A plant whose env file has only the single
+URL/AUTH pair needs no change. One event sends one ping.
+
+| `event` | `status` | Sent when | `reason` |
+| --- | --- | --- | --- |
+| `job.done` | `waiting` | a job finishes done | first result text line, or the finish detail |
+| `job.failed` | `failed` | a job fails | the finish detail (the failed gate) |
+| `job.timed-out` | `failed` | a detached job reaches `--timeout` | `timeout after Nms` |
+| `job.stalled` | `failed` | a detached job's tool stalls and the job ends | `stalled tool …` |
+| `job.stalled` | `stalled` | a hosted job's supervisor writes an idle, blocked, or errored advisory while the session stays open | the advisory line |
+| `job.stopped` | `stopped` | a job is stopped | the stop reason |
+| `coordinator.idle` | `idle` | a coordinator turn settles with open todos, an open goal, or a failed last turn, and no running job it owns will wake it | for example `turn ended with 2 open todos; next: Land F781` |
+| `coordinator.blocked` | `blocked` | a turn settles with a blocked todo or a goal out of token budget, or an `ask` waits 60 seconds | the blocker or the question |
+| `coordinator.goal-done` | `goal-done` | an omp goal becomes complete, or a turn closes every todo while no owned job runs | the goal objective, or the last done todo |
+| `coordinator.exited` | `exited` | the sweep finds a registered coordinator process gone without omp's `normal` exit | pid, exit kind, and the tool it was running |
+| `lead.step-done` | `waiting` | a lead group step (see above) | the step |
+| `webhook.test` | `test` | `limen webhook test` | host and time |
+
+A sample `job.failed` body:
+
+```json
+{
+  "job": "F781 plant webhook events",
+  "status": "failed",
+  "branch": "limen/2026-10-05-f781-plant-webhook-events-1a2b3c4d",
+  "finishEvent": "limen-finish-<sha256>",
+  "handoff": "Job failed or stopped; inspect the job record before proceeding",
+  "event": "job.timed-out",
+  "plant": "chilly",
+  "title": "F781 plant webhook events",
+  "jobId": "2026-10-05-f781-plant-webhook-events-1a2b3c4d",
+  "reason": "timeout after 5400000ms"
+}
+```
+
+`job` and `title` both carry the label; `job` stays for existing receivers.
+Coordinator events set `jobId` to the coordinator's session id and `title` to
+its session name, or `coordinator <pane>`. `handoff` names the next step for
+each kind. A `job.stalled` ping goes only while the job is still running; a
+hosted session that closes clean and idle sends only `job.done`. A supervisor
+that restarts on a standing advisory of the same kind does not ping again. A
+coordinator turn that settles in the same state as the previous ping sends
+nothing; a goal that completes in a turn replaces that turn's idle or done
+signal.
+
+Coordinator events come from the wake hook, which every plant loader already
+loads, in an interactive session with `LIMEN_COORDINATOR=1` or a Herdr pane
+(`HERDR_ENV=1` and `HERDR_PANE_ID`). The hook registers the session under
+`.limen/coordinators/<session-id>/` with its pid, process start time, pane,
+session file, title, and the tool it is running. Receipts for each event stay
+in `events/<event>.<claim>/finish-webhook` beside the registration; job stall
+receipts stay in the job's `events/` folder.
+
+Process exit needs no code in the dead process. Each `limen sweep` pass (the
+installed LaunchAgent runs it every 60 seconds) checks every registration. When
+the recorded pid is gone or now belongs to another process, the sweep reads the
+newest omp `session_exit` record written after the registration started. A
+`normal` exit, or a Pi shutdown mark without a record, removes the
+registration silently. Any other exit sends one `coordinator.exited`, also
+`signal: sighup` from a closed pane: a missed crash costs more than one extra
+ping. A process that died with no record, such as `SIGKILL`, reads `exited
+without a session shutdown (killed or crashed)`. The reason ends with the tool
+in flight, for example `while running bash: limen land 2026-10-05-f781 --yes`.
+
+### Rolling out to a plant
+
+- The env file and the target list do not change.
+- Job events start with the next `limen` process: the shared install updates on
+  merge, and running hosted supervisors keep their loaded code until their job ends.
+- Coordinator events start after the plant's coordinator reloads its hooks, so the
+  wake hook registers it. Reload when the coordinator is idle; do not kill a
+  working agent.
+- Exit detection needs `limen sweep --install` on the machine. Check with
+  `launchctl list | grep limen-sweep`.
+
+Send one test ping to the plant's targets from the plant root:
+
+```sh
+limen webhook test
+```
+
+The output is the sender's per-target lines, for example
+`finish webhook: accepted (HTTP 204)`. HTTP acceptance is not proof that a bot woke.
+With an author map and no `*` route, the test reports `not sent: no author route`.
 
 ## Private env format
 
