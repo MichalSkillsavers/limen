@@ -49,7 +49,7 @@ export function unlandedBranches(cwd: string, branches: Iterable<string>): Reado
 	const wanted = new Set(branches);
 	const tips = new Map<string, string[]>();
 	for (const line of requireGit(cwd, ["for-each-ref", "--format=%(objectname) %(refname)", "refs/heads"]).stdout.split("\n")) {
-		const [oid, ref] = [line.slice(0, line.indexOf(" ")), line.slice(line.indexOf(" ") + 12)];
+		const [oid, ref] = [line.slice(0, line.indexOf(" ")), line.slice(line.indexOf(" ") + " refs/heads/".length)];
 		if (wanted.has(ref)) tips.set(oid, [...(tips.get(oid) ?? []), ref]);
 	}
 	if (!tips.size) return new Set();
@@ -63,12 +63,13 @@ export function unlandedBranches(cwd: string, branches: Iterable<string>): Reado
 		oldest = Math.min(oldest, Number(time));
 	}
 	if (!graph.size) return new Set();
+	const oneDay = 86_400; // seconds of slack before the oldest unlanded commit
 	const patches = requireGit(
 		cwd,
-		["log", "-p", "--no-merges", "--no-color", "--no-ext-diff", "--format=commit %H", `--since=${oldest - 86_400}`, "--stdin"],
+		["log", "-p", "--no-merges", "--no-color", "--no-ext-diff", "--format=commit %H", `--since=${oldest - oneDay}`, "--stdin"],
 		`${input}HEAD\n`,
 	).stdout;
-	const seen = new Set(patches.match(/^commit [0-9a-f]+$/gm)?.map((line) => line.slice(7)));
+	const seen = new Set(patches.match(/^commit [0-9a-f]+$/gm)?.map((line) => line.slice("commit ".length)));
 	const patchIds = new Map<string, string>();
 	for (const line of requireGit(cwd, ["patch-id", "--stable"], patches).stdout.split("\n")) {
 		const [patch, oid] = line.split(" ");
@@ -116,8 +117,8 @@ export function listWorktrees(cwd: string): readonly GitWorktree[] {
 	for (const field of fields) {
 		if (field.startsWith("worktree ")) {
 			finish();
-			path = field.slice(9);
-		} else if (field.startsWith("branch refs/heads/")) branch = field.slice(18);
+			path = field.slice("worktree ".length);
+		} else if (field.startsWith("branch refs/heads/")) branch = field.slice("branch refs/heads/".length);
 		else if (field === "detached") detached = true;
 	}
 	finish();
