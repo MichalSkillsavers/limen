@@ -171,7 +171,7 @@ test("a hosted job with the same file change sends nothing from the lead path", 
 	assert.equal(existsSync(join(groupPath(f.run), "lead-steps")), false);
 });
 
-test("a feature whose packet says do not land never gets a land-it handoff", async (context) => {
+test("the lead-step handoff ignores ticket prose and never says land it", async (context) => {
 	const f = await fixture(context, { brief: "# Brief\n\n- Do not land. Commit notes only on your job branch.\n" });
 	const turn = await f.pane();
 	await f.synthesis("# Synthesis\n");
@@ -182,7 +182,7 @@ test("a feature whose packet says do not land never gets a land-it handoff", asy
 	assert.equal(handoffs.length, 2);
 	for (const handoff of handoffs) {
 		assert.doesNotMatch(handoff, /land it/i);
-		assert.match(handoff, /^Lead step done: F900 lead (synthesis|close)\. Next step: owner decision.*\. The feature says do not land\.$/);
+		assert.match(handoff, /^Lead step done: F900 lead (synthesis|close)\. Next step: owner decision( on group\/synthesis\.md, or close the group)?\.$/);
 	}
 });
 
