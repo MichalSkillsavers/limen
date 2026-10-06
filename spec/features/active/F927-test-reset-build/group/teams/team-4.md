@@ -23,3 +23,9 @@ Deletes when S7 lands: `test/finish-webhook.test.ts`. `finish-webhook-helper`, `
 ## Order
 
 S5, S6, then S7. S5 is small and proves the land refusals the lead depends on.
+
+## Resume (second run)
+
+- On `main`: S6 (`1cbdd52`). `ticket-command`, `keeper-command` and `picture-work` are deleted.
+- Saved: S5 on `limen/2026-10-06-f927-team-4-coordinator-d8c1533c` at `c76b44c` (`test/s5-land.test.ts`, 142 lines). S7 on `limen/2026-10-06-f927-team-4-s6-keeper-and-s7-web-be959c09` at `4fe1670` (`test/s7-webhooks.test.ts`, 119 lines). Both not verified. `4fe1670` also breaks `src/commands/continue.ts` (finish author): that is a probe break; do not carry it.
+- Left: S5, then S7. S7 deletes `finish-webhook` and `ticket-author-command` (S6 is on `main`, so S7 lands second).

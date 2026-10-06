@@ -21,3 +21,9 @@ Deletes when S9 lands: `test/prune-command.test.ts`, `test/sweep-command.test.ts
 ## Order
 
 S8 first: `group-command` is the slowest old file (about 260 seconds). Then S9.
+
+## Resume (second run)
+
+- Saved: `limen/2026-10-06-f927-team-1-s9-housekeeping-8585a40f` at `953ef71`: `test/s9-housekeeping.test.ts`, 170 lines, not verified. S8 has no saved work.
+- Left: S8 with the `b62b837` replay, plus the guard PR 8 added to `group-command`: a lead update reaches an idle lead only as a followUp (group leads wake without an interrupt). Then finish S9 from the saved file, with the F043 replays.
+- Shared deletions you make as second lander: `spawn-command` (S1 is on `main`), `recovery` once team 2's S2 is on `main`, `stop-command` once team 3's S3 is on `main`.
