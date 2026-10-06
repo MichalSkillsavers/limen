@@ -1,10 +1,9 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { ENGINES, type EngineId, engineProfile } from "../runtime/engine.ts";
-import { hostedIdentityObservation, readHostedBinding } from "../runtime/hosted-binding.ts";
 
 export type HerdrPlace = { readonly workspace: string; readonly tab: string; readonly pane: string; readonly mode: "watch" | "log" | "hosted" | "diff" };
 export type HostedAgentStatus = "idle" | "working" | "blocked" | "done" | "unknown" | "missing";
@@ -270,41 +269,6 @@ export function hostedForegroundPid(target: string, pid: number): "present" | "m
 	} catch {
 		return "unavailable";
 	}
-}
-/** Current pane membership is checked between two fresh checks of the immutable binding. */
-export async function hostedBindingInPane(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
-	const binding = readHostedBinding(jobDir);
-	if (!binding || binding.pid !== pid || binding.engine !== engine) return "mismatch";
-	let session: string;
-	try {
-		session = readFileSync(`${jobDir}/engine-session`, "utf8");
-		const association = JSON.parse(session);
-		if (association.pid !== binding.pid || association.born !== binding.born || association.sessionId !== binding.sessionId) return "mismatch";
-	} catch {
-		return "mismatch";
-	}
-	const before = await hostedIdentityObservation(binding);
-	if (before !== "present") return before;
-	const foreground = hostedForegroundPid(target, pid);
-	if (foreground !== "present") return foreground;
-	const after = await hostedIdentityObservation(binding);
-	if (after !== "present") return after;
-	try {
-		return readFileSync(`${jobDir}/engine-session`, "utf8") === session ? "owned" : "mismatch";
-	} catch {
-		return "mismatch";
-	}
-}
-export async function hostedEngineObservation(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
-	try {
-		if (readFileSync(`${jobDir}/herdr/pane`, "utf8").trim() !== target) return "mismatch";
-	} catch {
-		return "mismatch";
-	}
-	return hostedBindingInPane(target, pid, engine, jobDir);
-}
-export async function hostedEngineOwned(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<boolean> {
-	return (await hostedEngineObservation(target, pid, engine, jobDir)) === "owned";
 }
 
 export function stopHostedAgent(target: string): void {

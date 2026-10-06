@@ -4,9 +4,8 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { hostedEngineObservation, hostedEngineOwned } from "../src/integrations/herdr.ts";
 import { processInfo } from "../src/runtime/contain.ts";
-import { prepareHostedLaunch, readHostedBinding } from "../src/runtime/hosted-binding.ts";
+import { hostedEngineObservation, hostedEngineOwned, prepareHostedLaunch, readHostedBinding } from "../src/runtime/hosted-binding.ts";
 import { signalOwnedProcess } from "../src/runtime/stalled-tool.ts";
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -245,7 +244,7 @@ const timer = setInterval(async () => {
 		[
 			"--input-type=module",
 			"-e",
-			`import { hostedEngineOwned } from ${JSON.stringify(new URL("../src/integrations/herdr.ts", import.meta.url).href)}; process.exit(await hostedEngineOwned('test:p2', ${worker.pid}, 'pi', ${JSON.stringify(job)}) ? 0 : 1);`,
+			`import { hostedEngineOwned } from ${JSON.stringify(new URL("../src/runtime/hosted-binding.ts", import.meta.url).href)}; process.exit(await hostedEngineOwned('test:p2', ${worker.pid}, 'pi', ${JSON.stringify(job)}) ? 0 : 1);`,
 		],
 		{ env: process.env, stdio: "ignore" },
 	);
@@ -295,10 +294,9 @@ fs.readFileSync = function(path, ...args) {
 };
 syncBuiltinESMExports();
 const binding = await import(${JSON.stringify(new URL("../src/runtime/hosted-binding.ts", import.meta.url).href)});
-const herdr = await import(${JSON.stringify(new URL("../src/integrations/herdr.ts", import.meta.url).href)});
 const recovery = await import(${JSON.stringify(new URL("../src/runtime/recovery.ts", import.meta.url).href)});
 const saved = binding.readHostedBinding(${JSON.stringify(job)});
-fs.writeFileSync(${JSON.stringify(deniedEvidence)}, JSON.stringify({pid:saved?.pid, identity:saved ? await binding.hostedIdentityObservation(saved) : 'dropped', ownership:await herdr.hostedEngineObservation('test:p2', ${worker.pid}, 'pi', ${JSON.stringify(job)}), recovery:await recovery.recoveryTarget(${JSON.stringify(job)})}));
+fs.writeFileSync(${JSON.stringify(deniedEvidence)}, JSON.stringify({pid:saved?.pid, identity:saved ? await binding.hostedIdentityObservation(saved) : 'dropped', ownership:await binding.hostedEngineObservation('test:p2', ${worker.pid}, 'pi', ${JSON.stringify(job)}), recovery:await recovery.recoveryTarget(${JSON.stringify(job)})}));
 await (await import(${JSON.stringify(new URL("../src/runtime/supervisor.ts", import.meta.url).href)})).runHostedSupervisor();
 `,
 		],
