@@ -49,7 +49,7 @@ export async function readTickets(root: string): Promise<{ tickets: TicketRecord
 					diagnostics.push({
 						level: "warn",
 						code: "ticket.duplicate-id",
-						message: `${ticket.code} is also ${first.path}; this ticket is left out; fix: assign an unused F number to this folder and its heading`,
+						message: `${ticket.code} is also used by ${first.path}, so this ticket is left out; fix: give this folder and its heading an unused F number (limen ticket new picks one)`,
 						source: path,
 						id: ticket.id,
 						line: 1,
@@ -73,7 +73,7 @@ export function checkTickets(tickets: readonly TicketRecord[], placeIds: Readonl
 					diagnostic(
 						"error",
 						"ticket.unknown-touch",
-						`unknown place id "${place}"; fix: replace it with an id from limen picture build --json <file>`,
+						`unknown place id "${place}"; fix: replace it with the id: of a module or plant file in the map's nodes/ folder`,
 						ticket,
 						ticket.touchLines[place] ?? 1,
 					),
@@ -107,7 +107,7 @@ function parseTicket(text: string, path: string, lane: TicketRecord["lane"], cod
 				"error",
 				"ticket.bad-field",
 				error.message,
-				error.message.includes("fence is not closed") ? 'add a closing "---" fence' : "correct this front matter line using scalar or block-list syntax",
+				error.message.includes("fence is not closed") ? 'add a closing "---" fence' : "write this line as `key: value`, or as a list with one `  - item` per line",
 				error.line,
 			);
 	const body = fm?.ok ? fm.body : text;
@@ -166,7 +166,7 @@ function parseTicket(text: string, path: string, lane: TicketRecord["lane"], cod
 			for (const [index, value] of touches.entries()) {
 				const line = fm.lines[`touches.${index}`] ?? firstLine;
 				if (typeof value !== "string" || !value.trim() || value !== value.trim()) {
-					report("error", "ticket.bad-field", "touches entries must be place ids", "replace this entry with one nonempty, unpadded place id", line);
+					report("error", "ticket.bad-field", "touches entries must be place ids", "replace this entry with one place id, with no spaces around it", line);
 				} else if (Object.hasOwn(ticket.touchLines, value)) {
 					report("error", "ticket.bad-field", `duplicate place id "${value}"`, "remove this repeated list item", line);
 				} else {

@@ -72,8 +72,10 @@ export async function landTicketCheck(
 		for (const record of [...model.nodes, ...model.edges, ...model.features, ...model.journeys])
 			for (const source of record.sources) {
 				const current = codes.get(/\/(F\d+)-/.exec(source)?.[1] ?? "");
-				if (current && !gitOk(repository, ["cat-file", "-e", `${branch}:${source.replace(/\/$/, "")}`]))
-					lines.push(`warn ${map}/${record.source}: source "${source}" does not exist at ${branch}; fix: change it to ${current}`);
+				if (current && !gitOk(repository, ["cat-file", "-e", `${branch}:${source.replace(/\/$/, "")}`])) {
+					const at = (await readFile(join(map, record.source), "utf8")).split("\n").findIndex((line) => line.includes(source)) + 1;
+					lines.push(`warn ${map}/${record.source}:${at || 1}: source "${source}" does not exist at ${branch}; fix: change it to ${current}`);
+				}
 			}
 	} else lines.push(`land: no picture map at ${map}; touches place ids not checked`);
 	const tip = await mkdtemp(join(tmpdir(), "limen-land-"));

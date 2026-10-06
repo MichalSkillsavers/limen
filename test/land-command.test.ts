@@ -168,7 +168,7 @@ test("land refuses tickets that fail the strict check, prints the keeper command
 	assert.match(landed.stdout, /^warn spec\/build\.md: no board line for F001; fix: add - `F001-good-touch` \(🟠 ACTIVE\)/m);
 	assert.match(
 		landed.stdout,
-		/^warn .*\/\.limen\/picture\/nodes\/sample\.worker\.md: source "spec\/features\/planned\/F001-good-touch\/ticket\.md" does not exist at .*; fix: change it to spec\/features\/active\/F001-good-touch\/ticket\.md$/m,
+		/^warn .*\/\.limen\/picture\/nodes\/sample\.worker\.md:\d+: source "spec\/features\/planned\/F001-good-touch\/ticket\.md" does not exist at .*; fix: change it to spec\/features\/active\/F001-good-touch\/ticket\.md$/m,
 	);
 
 	// A new folder that reuses a number already on main is refused even when its fields are valid.

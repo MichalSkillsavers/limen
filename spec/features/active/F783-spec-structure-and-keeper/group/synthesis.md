@@ -36,3 +36,26 @@ Nothing at worker finish or at `limen land` read a ticket. `picture build --stri
 
 - Team 3 added `--candidate BRANCH` and exported `landTicketCheck(repository, root, branch, target, job)`.
 - Team 2 declined `limen ticket check`, a worktree map fallback and a branch number scan as outside its ticket scope. The lead took the first and the last into integration.
+- The lead added `--group GROUP-ID` expansion to `limen keeper`, so a lead does not list each member job.
+
+## What landed
+
+- `limen ticket new` writes a ticket from the template with a number that no lane, local `limen/*` branch or job label uses.
+- `limen ticket check [BRANCH]` runs the land gate on demand, before a hand merge or as the keeper's last step.
+- Every ticket diagnostic ends with `fix:` and one action. An active ticket with no front matter is an error (`ticket.no-front-matter`).
+- Worker and team coordinator instructions carry a four-line ticket contract: new ticket, front matter, place ids, check.
+- `limen keeper` and `templates/keeper.md`: the keeper job, its packet, and its own branch.
+- `limen land` refuses a branch whose changed tickets fail the check, and prints the keeper command. `--yes` does not skip it.
+- The completion wake and the coordinator manual name the keeper step; a keeper's own wake says to land it.
+
+## Proof (Team 4, `qa/results.md`)
+
+Three live runs on a throwaway plant with real Sol jobs. Run 3 used the integrated commit `e423ef1` exactly. The keeper refused while the worker ran. After a scripted break (unknown place id, missing board line, stale map source), `limen ticket check` and `limen land --yes` both refused with exit 1. The keeper followed the moved ticket, fixed all three links in one commit in 38 seconds, and its own `limen ticket check` passed. `limen land` of the keeper job then succeeded, and the strict build had zero diagnostics. Limit: the breaks were scripted after the worker finished, so the proof tests the keeper and the gate, not whether a worker leaves links broken.
+
+## Open
+
+- The two F778 tickets still share a number. Renumbering one is a coordinator decision; the build keeps a warning.
+- F782 has no `touches` because it changes no code. The contract allows this; a marker for "no code place" is a product decision.
+- A direct commit on `main` is checked only when the coordinator runs the strict build. A Git hook would gate it; that is a separate decision.
+- Picture tick still ignores `spec/` paths, so a lane move does not refresh the map by itself. The coordinator step and the keeper now cover it by hand.
+- A lead that runs as a job still gets the worker preamble, which forbids board edits.

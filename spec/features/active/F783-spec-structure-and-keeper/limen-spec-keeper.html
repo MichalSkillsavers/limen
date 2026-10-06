@@ -103,7 +103,7 @@ pre.cmd { background: #1f2430; color: #e9edf3; border-radius: 8px; padding: 10px
 <ul>
 <li><code>limen ticket new "what becomes true"</code> takes the next free number. It looks in every lane, in <code>limen/*</code> branches and in job labels, and writes a ticket that passes the strict check.</li>
 <li>Each strict ticket message ends with <code>fix:</code> and one action.</li>
-<li>Worker and team coordinator instructions carry a five-line ticket contract: template, number, front matter, place ids, strict check.</li>
+<li>Worker and team coordinator instructions carry a four-line ticket contract: new ticket, front matter, place ids, check.</li>
 <li><code>limen ticket check BRANCH</code> runs the land gate before a hand merge.</li>
 </ul>
 </div>

@@ -52,7 +52,7 @@ A trailing body line `owner: <name>`, alone on its line, is metadata, not prose.
 
 ## Ticket front matter
 
-Create tickets with `limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]`. It chooses the next free F number across `spec/features/` and writes a ticket that passes a clean `limen picture build --strict` without editing. The board owns status; the lane holds it.
+Create tickets with `limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]`. It picks an F number that no lane, `limen/*` branch or job label uses, and writes a ticket that passes `limen picture build --strict` with no edit. The lane folder is the status. The board reports it.
 
 Example front matter, with a known map place:
 
@@ -66,7 +66,7 @@ opened: 2026-10-06
 
 Replace the date with the creation date. Omit `touches` when no place is known; never invent an id. An active ticket without touches warns. Optional one-line `needs-adam` with `needs-adam-on`, or `wrong` with `wrong-on`, needs a real `YYYY-MM-DD` date; remove both fields when resolved. A done ticket may have `landed: YYYY-MM-DD` when the landing date is known.
 
-Run `limen picture build --strict`. Each `ticket.*` diagnostic names the ticket path, line and `fix:` action. An active ticket without front matter is `ticket.no-front-matter` (error). Bad fields or pairs are `ticket.bad-field` (error), and an unknown `touches` id is `ticket.unknown-touch` (error). A duplicate F number is `ticket.duplicate-id` (warning); the second folder is not shown in the picture. Repair duplicates before landing a new ticket.
+Run `limen picture build --strict` at the plant root, or add `--dir <plant>/.limen/picture` in a job worktree. Each `ticket.*` diagnostic names the ticket path, line and `fix:` action. An active ticket without front matter is `ticket.no-front-matter` (error). Bad fields or pairs are `ticket.bad-field` (error), and an unknown `touches` id is `ticket.unknown-touch` (error). A duplicate F number is `ticket.duplicate-id` (warning); the second folder is not shown in the picture. `limen land` and `limen ticket check` refuse a branch that adds a ticket with a used number.
 
 ## Identifiers and relations
 

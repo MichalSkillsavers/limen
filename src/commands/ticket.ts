@@ -70,12 +70,14 @@ export async function ticketCommand(args: readonly string[], cwd: string): Promi
 	const plant = process.env.LIMEN_CONTEXT_ROOT ?? root;
 	if (touches.length) {
 		const local = join(root, ".limen", "picture");
-		const map = await readPicture(existsSync(local) ? local : join(plant, ".limen", "picture"));
-		if (map.diagnostics.some((item) => item.level === "error")) throw new Error("the picture has errors; fix them before linking a ticket");
-		const places = new Set(map.nodes.map((node) => node.id));
+		const dir = existsSync(local) ? local : join(plant, ".limen", "picture");
+		const map = await readPicture(dir);
+		if (map.diagnostics.some((item) => item.level === "error")) throw new Error(`the map at ${dir} has errors; run limen picture build --dir ${dir} --strict to see them`);
+		// The same places the strict check and the land gate accept: modules and the plant.
+		const places = new Set(map.nodes.filter((node) => node.kind === "module").map((node) => node.id));
 		if (map.project.rootId) places.add(map.project.rootId);
 		const unknown = touches.find((id) => !places.has(id));
-		if (unknown) throw new Error(`unknown map place id "${unknown}"; choose an id from .limen/picture/nodes/`);
+		if (unknown) throw new Error(`unknown map place id "${unknown}"; choose the id: of a module or plant file in ${dir}/nodes/`);
 	}
 	const base = join(root, "spec", "features");
 	const code = `F${String(await nextFeatureNumber(root, plant)).padStart(3, "0")}`;
@@ -105,8 +107,9 @@ async function ticketCheck(args: readonly string[], cwd: string): Promise<void> 
 	const target = currentBranch(plant);
 	const branch = args[0] ?? currentBranch(repository);
 	if (branch === target) throw new Error(`ticket check compares a branch with ${target}; name the branch to check: limen ticket check BRANCH`);
-	const gate = await landTicketCheck(repository, plant, branch, target);
-	if (!gate.tickets.length) console.log(`no ticket changes on ${branch} against ${target}`);
+	const job = branch.startsWith("limen/") && existsSync(join(plant, ".limen", "jobs", branch.slice("limen/".length))) ? branch.slice("limen/".length) : "<id>";
+	const gate = await landTicketCheck(repository, plant, branch, target, job);
 	for (const line of gate.lines) (gate.ok ? console.log : console.error)(line);
 	if (!gate.ok) process.exitCode = 1;
+	else console.log(`ticket check: ${gate.tickets.length} changed ticket${gate.tickets.length === 1 ? "" : "s"} on ${branch} pass against ${target}`);
 }

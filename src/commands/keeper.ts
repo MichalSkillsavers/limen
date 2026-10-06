@@ -35,7 +35,7 @@ export async function keeperCommand(args: readonly string[], cwd: string): Promi
 	for (const query of queries) {
 		const { id, jobDir } = await resolveJob(root, query, "control");
 		const state = await text(`${jobDir}/state`);
-		if (state === "running" || (await ownerAlive(jobDir))) throw new Error(`job ${id} is still running; a keeper never commits beside a live job; wait for it, or stop it`);
+		if (state === "running" || (await ownerAlive(jobDir))) throw new Error(`job ${id} is still running. A keeper never commits beside a live job. Wait for it, or stop it.`);
 		jobs.push({ id, jobDir, state, branch: await text(`${jobDir}/branch`), repo: await text(`${jobDir}/repo`) });
 	}
 	const [first] = jobs;
