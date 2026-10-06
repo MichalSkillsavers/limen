@@ -16,6 +16,7 @@ import { statusCommand } from "./commands/status.ts";
 import { steerCommand } from "./commands/steer.ts";
 import { stopCommand } from "./commands/stop.ts";
 import { sweepCommand } from "./commands/sweep.ts";
+import { ticketCommand } from "./commands/ticket.ts";
 import { ticketAuthorCommand } from "./commands/ticket-author.ts";
 import { waitCommand } from "./commands/wait.ts";
 import { unwatchCommand, watchCommand } from "./commands/watch.ts";
@@ -48,6 +49,7 @@ const COMMANDS = {
 	sweep: sweepCommand,
 	linear: linearCommand,
 	"ticket-author": ticketAuthorCommand,
+	ticket: ticketCommand,
 	webhook: webhookCommand,
 } as const satisfies Record<
 	| "init"
@@ -73,6 +75,7 @@ const COMMANDS = {
 	| "sweep"
 	| "linear"
 	| "ticket-author"
+	| "ticket"
 	| "webhook",
 	Command
 >;
@@ -109,6 +112,7 @@ usage:
   limen open <id|suffix|label>
   limen close <FNNN>
   limen ticket-author <ticket-path>                 # creation-commit author, following Git renames
+  limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]  # next unused F number across all feature lanes
   limen sweep [--install|--uninstall]
   limen webhook test                             # send one test ping to this plant's finish webhook targets
   limen linear [on [--team T --project P]|off|status]   # Linear mirror toggle — renames spec/linear.md ↔ .off; --team/--project write a fresh config

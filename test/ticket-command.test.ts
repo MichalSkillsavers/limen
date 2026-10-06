@@ -22,7 +22,11 @@ A test plant.
 test("ticket new allocates above numbers used in done and dropped monthly folders", async (t) => {
 	const scratch = await scratchRepo();
 	t.after(scratch.cleanup);
-	for (const [lane, number] of [["active", "F800"], ["done/2026-09", "F802"], ["dropped/2026-08", "F801"]]) {
+	for (const [lane, number] of [
+		["active", "F800"],
+		["done/2026-09", "F802"],
+		["dropped/2026-08", "F801"],
+	]) {
 		await mkdir(join(scratch.root, "spec", "features", lane!, `${number}-old`), { recursive: true });
 	}
 	await ticketCommand(["new", "People can review tickets"], scratch.root);
@@ -31,6 +35,7 @@ test("ticket new allocates above numbers used in done and dropped monthly folder
 	assert.match(text, /^---\nopened: \d{4}-\d{2}-\d{2}\n---\n\n# F803 · People can review tickets\n/m);
 	const today = new Date();
 	assert.match(text, new RegExp(`opened: ${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`));
+	assert.match(text, /## Outcome[\s\S]*## Scope[\s\S]*## Out of scope[\s\S]*## Acceptance[\s\S]*## Notes/);
 });
 
 test("scaffolded active ticket has no strict picture diagnostic on a clean plant", async (t) => {
@@ -46,4 +51,15 @@ test("scaffolded active ticket has no strict picture diagnostic on a clean plant
 	assert.deepEqual(tickets[0]?.touches, ["sample.plant"]);
 	const model = await buildPicture(picture, join(picture, "map.html"), undefined, undefined, scratch.root);
 	assert.deepEqual(model.diagnostics, []);
+});
+
+test("ticket new refuses an unknown place before creating a ticket", async (t) => {
+	const scratch = await scratchRepo();
+	t.after(scratch.cleanup);
+	const picture = join(scratch.root, ".limen", "picture");
+	await mkdir(join(picture, "nodes"), { recursive: true });
+	await writeFile(join(picture, "nodes", "sample.plant.md"), PLANT);
+	await assert.rejects(ticketCommand(["new", "Operators see linked work", "--touches", "sample.unknown"], scratch.root), /unknown map place id/);
+	const { tickets } = await readTickets(scratch.root);
+	assert.deepEqual(tickets, []);
 });
