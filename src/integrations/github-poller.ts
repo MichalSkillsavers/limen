@@ -3,8 +3,19 @@ import { createHash, createSign, randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claimId, claimPath, type GithubBinding, githubDir, originRepository, readBinding } from "../commands/github.ts";
-import { type GithubClaim, githubSubject, matchedGithubJob } from "./github-review.ts";
+import {
+	claimId,
+	claimPath,
+	GITHUB_ANSWER_MAX,
+	type GithubBinding,
+	type GithubClaim,
+	githubDir,
+	githubSubject,
+	HANDOFF_NONCE_BYTES,
+	matchedGithubJob,
+	originRepository,
+	readBinding,
+} from "./github-review.ts";
 
 const API = "https://api.github.com";
 const PAGE = 100;
@@ -190,7 +201,7 @@ async function reconcile(root: string, state: string, claim: GithubClaim, token:
 				const repositoriesMatch =
 					typeof outcome.repo === "string" && sameRepo(outcome.repo, claim.repo) && sameRepo(binding.repo, claim.repo) && sameRepo(originRepository(root, true), claim.repo);
 				const requestMatches = repositoriesMatch && outcome.id === claim.id && outcome.coordinator === binding.coordinator;
-				const answerUsable = requestMatches && typeof outcome.answer === "string" && outcome.answer.trim() && outcome.answer.length <= 1600;
+				const answerUsable = requestMatches && typeof outcome.answer === "string" && outcome.answer.trim() && outcome.answer.length <= GITHUB_ANSWER_MAX;
 				if (answerUsable) {
 					claim.answer = outcome.answer.trim();
 					claim.receipt = "resolved";
@@ -353,7 +364,7 @@ async function request(root: string, state: string, binding: GithubBinding, trig
 			title: boundedContext(thread.title ?? "", 500, pull ? "PR title" : "Issue title", link),
 			body: boundedContext(thread.body ?? "", 6000, pull ? "PR body" : "Issue body", link),
 			discussion: boundedContext(excerpt, 12000, "Discussion", link),
-			outcomeNonce: randomBytes(24).toString("hex"),
+			outcomeNonce: randomBytes(HANDOFF_NONCE_BYTES).toString("hex"),
 			...(trigger.command === undefined ? {} : { command: boundedContext(trigger.command, 4000, "Triggering comment", trigger.url) }),
 		};
 		await writeFile(path, `${JSON.stringify(claim)}\n`, { flag: "wx", mode: 0o600, flush: true }); // authoritative claim before handoff
@@ -367,7 +378,7 @@ async function request(root: string, state: string, binding: GithubBinding, trig
 }
 
 async function handoff(root: string, state: string, binding: GithubBinding, claim: GithubClaim, token: string): Promise<void> {
-	claim.outcomeNonce ??= randomBytes(24).toString("hex");
+	claim.outcomeNonce ??= randomBytes(HANDOFF_NONCE_BYTES).toString("hex");
 	claim.attemptedAt = new Date().toISOString();
 	claim.receipt = "pending: coordinator unavailable";
 	await persist(root, state, claim);

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { hostedForegroundPid } from "../integrations/herdr.ts";
 import { processInfo } from "./contain.ts";
 
 export type HostedLaunch = {
@@ -57,6 +58,41 @@ export async function hostedIdentityObservation(binding: HostedBinding): Promise
 	const current = await processInfo(binding.pid);
 	if (current.kind === "unavailable") return "unavailable";
 	return current.kind === "present" && current.process.born === binding.born ? "present" : "mismatch";
+}
+/** Current pane membership is checked between two fresh checks of the immutable binding. */
+export async function hostedBindingInPane(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
+	const binding = readHostedBinding(jobDir);
+	if (!binding || binding.pid !== pid || binding.engine !== engine) return "mismatch";
+	let session: string;
+	try {
+		session = readFileSync(`${jobDir}/engine-session`, "utf8");
+		const association = JSON.parse(session);
+		if (association.pid !== binding.pid || association.born !== binding.born || association.sessionId !== binding.sessionId) return "mismatch";
+	} catch {
+		return "mismatch";
+	}
+	const before = await hostedIdentityObservation(binding);
+	if (before !== "present") return before;
+	const foreground = hostedForegroundPid(target, pid);
+	if (foreground !== "present") return foreground;
+	const after = await hostedIdentityObservation(binding);
+	if (after !== "present") return after;
+	try {
+		return readFileSync(`${jobDir}/engine-session`, "utf8") === session ? "owned" : "mismatch";
+	} catch {
+		return "mismatch";
+	}
+}
+export async function hostedEngineObservation(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<"owned" | "mismatch" | "unavailable"> {
+	try {
+		if (readFileSync(`${jobDir}/herdr/pane`, "utf8").trim() !== target) return "mismatch";
+	} catch {
+		return "mismatch";
+	}
+	return hostedBindingInPane(target, pid, engine, jobDir);
+}
+export async function hostedEngineOwned(target: string, pid: number, engine: "pi" | "omp", jobDir: string): Promise<boolean> {
+	return (await hostedEngineObservation(target, pid, engine, jobDir)) === "owned";
 }
 function publishExclusive(path: string, value: unknown): void {
 	const prepared = `${path}.${process.pid}.${randomUUID()}`;

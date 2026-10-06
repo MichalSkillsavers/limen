@@ -3,9 +3,8 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { claimPath, type GithubBinding } from "../src/commands/github.ts";
 import { acceptGithubComment, pollGithubIssues } from "../src/integrations/github-poller.ts";
-import type { GithubClaim } from "../src/integrations/github-review.ts";
+import { claimPath, type GithubBinding, type GithubClaim } from "../src/integrations/github-review.ts";
 import { git, LIMEN, limen, scratchRepo } from "./scratch.ts";
 
 const binding: GithubBinding = { repo: "acme/widget", coordinator: "coord:p1", user: "nobody", connectedAt: "2026-09-24T00:00:00Z" };

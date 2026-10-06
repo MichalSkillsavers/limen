@@ -2,10 +2,19 @@ import { createHash } from "node:crypto";
 import { open } from "node:fs/promises";
 import { basename } from "node:path";
 import { textFile } from "../job/record.ts";
-import { inspectFinishTurns } from "./finish-turn.ts";
+import { inspectFinishTurns, MAX_TARGETS } from "./finish-turn.ts";
 
+/** A GitHub login without its `@`. `bin/tony-finish-ping.sh` keeps a literal copy. */
+export const GITHUB_LOGIN = "[a-z\\d](?:[a-z\\d-]{0,37}[a-z\\d])?";
+/** A GitHub noreply email; group 1 is the login. */
+export const GITHUB_NOREPLY = new RegExp(`^(?:\\d+\\+)?(${GITHUB_LOGIN})@users\\.noreply\\.github\\.com$`, "i");
+/** The most bytes Limen reads from the sender's receipt channel and from `finish-webhook-targets`. */
+export const RECEIPT_MAX_BYTES = 32_768;
 type FinishReceipt = { target: number; at: string; transport: "pending" | "accepted" | "rejected" | "unknown"; http: "none" | "1xx" | "2xx" | "3xx" | "4xx" | "5xx" };
-const FINISH_SELECTION = /^(fan-out|mapped @[a-z\d](?:[a-z\d-]{0,37}[a-z\d])? -> \d+(?:, \d+)*|fallback \* -> \d+(?:, \d+)*|not sent: no author route|invalid author map)$/;
+const FINISH_SELECTION = new RegExp(`^(fan-out|mapped @${GITHUB_LOGIN} -> \\d+(?:, \\d+)*|fallback \\* -> \\d+(?:, \\d+)*|not sent: no author route|invalid author map)$`);
+const AUTHOR = new RegExp(`^@${GITHUB_LOGIN}$`);
+/** A login as a plant webhook author, with its `@`, in any case. */
+export const GITHUB_AUTHOR = new RegExp(`^@${GITHUB_LOGIN}$`, "i");
 export function finishEvent(jobDir: string): string {
 	return `limen-finish-${createHash("sha256").update(basename(jobDir)).digest("hex")}`;
 }
@@ -28,7 +37,7 @@ export function parseFinishReceipt(line: string): FinishReceipt | undefined {
 		if (
 			!Number.isInteger(target) ||
 			target < 1 ||
-			target > 64 ||
+			target > MAX_TARGETS ||
 			typeof at !== "string" ||
 			!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(at) ||
 			!Number.isFinite(Date.parse(at))
@@ -52,7 +61,7 @@ export async function inspectFinishWebhook(jobDir: string): Promise<string> {
 	else if (state === "failed" || state === "stopped") lines.push(`handoff: ${state}; inspect failure before proceeding`);
 	const [first, second, third] = (await textFile(`${jobDir}/finish-webhook-author`)).split("\n");
 	const commit = second && /^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(second) ? second : third && /^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(third) ? third : "";
-	if (first && /^@[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/.test(first)) lines.push(`author: ${first}${commit ? ` · commit ${commit}` : ""}`);
+	if (first && AUTHOR.test(first)) lines.push(`author: ${first}${commit ? ` · commit ${commit}` : ""}`);
 	else if (first === "unavailable" && second && /^[a-zA-Z0-9 :._-]{1,80}$/.test(second))
 		lines.push(`author: unavailable · ${second}${third && commit === third ? ` · commit ${third}` : ""}`);
 	else lines.push("author: unavailable · missing evidence");
@@ -62,7 +71,7 @@ export async function inspectFinishWebhook(jobDir: string): Promise<string> {
 	const handle = await open(`${jobDir}/finish-webhook-targets`, "r").catch(() => undefined);
 	if (handle) {
 		try {
-			const buffer = Buffer.alloc(32_768);
+			const buffer = Buffer.alloc(RECEIPT_MAX_BYTES);
 			const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
 			for (const line of buffer.toString("utf8", 0, bytesRead).split("\n").slice(0, -1)) {
 				const receipt = parseFinishReceipt(line);

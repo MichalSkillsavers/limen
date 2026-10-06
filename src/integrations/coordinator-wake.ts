@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { jobMembership, leadHookLive } from "../job/group-cabinet.ts";
+import { isTerminal } from "../job/job.ts";
 import { appendLimenLog, atomicWrite, textFile } from "../job/record.ts";
 import { completionWake, groupLeadWake } from "../job/wake-text.ts";
+import { herdrBinary } from "./herdr.ts";
 
 const PROMPT_MS = 15_000;
 const ATTEMPTS = 2;
@@ -18,8 +20,8 @@ const ATTEMPTS = 2;
 export async function promptCoordinator(jobDir: string, shutdownDeadline = Number.POSITIVE_INFINITY): Promise<void> {
 	const pane = await textFile(`${jobDir}/origin-pane`);
 	const message = await wakeMessage(jobDir, pane);
-	const herdr = process.env.LIMEN_HERDR || "herdr";
-	if (!message || !pane || herdr === "0" || shutdownDeadline - Date.now() < 1_000) return;
+	const herdr = herdrBinary();
+	if (!message || !pane || !herdr || shutdownDeadline - Date.now() < 1_000) return;
 	await mkdir(`${jobDir}/notify`, { recursive: true });
 	try {
 		await writeFile(`${jobDir}/notify/herdr-prompt`, `attempting ${pane} ${new Date().toISOString()}\n`, { flag: "wx", flush: true });
@@ -75,7 +77,7 @@ async function wakeMessage(jobDir: string, pane: string): Promise<string | undef
 	);
 	const coordinators = run.members.filter((entry) => entry.role === "coordinator");
 	const states = await Promise.all(coordinators.map((entry) => textFile(`${run.root}/.limen/jobs/${entry.id}/state`)));
-	const finished = states.filter((value) => value === "done" || value === "failed" || value === "stopped").length;
+	const finished = states.filter(isTerminal).length;
 	return groupLeadWake(jobDir, label || id, state, id, branch, { group: run.id, feature: run.feature, lead: run.lead, team: member.team, finished, total: coordinators.length });
 }
 

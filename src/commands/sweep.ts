@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { sweepCoordinators } from "../integrations/coordinator-signal.ts";
+import { isTerminal } from "../job/job.ts";
 import { noteKind } from "../job/view.ts";
 import { receiptFamily } from "../job/wake-delivery.ts";
 import { installSeatSweep, showSeatNotification, uninstallSeatSweep, updateRegisteredProjects } from "../project/seat.ts";
@@ -58,7 +59,7 @@ async function sweepProject(root: string): Promise<void> {
 			since = stamp.mtimeMs;
 			event = `_advisory.${since}.${stamp.birthtimeMs}`;
 			headline = ` · ${noteKind(advisoryText)}`;
-		} else if (["done", "failed", "stopped"].includes(state)) {
+		} else if (isTerminal(state)) {
 			if (heard.has("_completion")) continue;
 			since = Math.max(modified(join(job, "finished-at")), modified(statePath));
 			event = `_terminal.${state}.${since}`;

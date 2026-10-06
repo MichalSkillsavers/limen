@@ -5,16 +5,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isTerminal, type TerminalState } from "../job/job.ts";
 import { appendLimenLog, atomicWrite, textFile } from "../job/record.ts";
 import { currentBranch, listWorktrees, ticketAuthor, workspaceRoot } from "../project/git.ts";
 import { ticketPointers } from "../project/planning.ts";
-import { finishEvent, parseFinishReceipt, parseFinishSelection } from "./finish-receipt.ts";
+import { finishEvent, GITHUB_AUTHOR, GITHUB_NOREPLY, parseFinishReceipt, parseFinishSelection, RECEIPT_MAX_BYTES } from "./finish-receipt.ts";
 
 const SENDER = fileURLToPath(new URL("../../bin/tony-finish-ping.sh", import.meta.url));
 // Leave time inside the detached wrapper's 5s termination grace to record the outcome.
 const SEND_MS = 3_000;
 const DELIVERY_MS = 4_000;
-const LOGIN = /^@[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
 /** One plant webhook: what happened (`kind`), to what (`title`, `id`), where (`plant`), and why (`reason`). `status` is the sender's state argument. */
 export type PlantEvent = {
 	readonly kind: string;
@@ -40,7 +40,7 @@ export function captureFinishAuthor(cwd: string, task: string, workspace = false
 	if (!ticket) return `unavailable\n${tickets.length ? "ambiguous Ticket: pointer" : "missing Ticket: pointer"}`;
 	try {
 		const author = ticketAuthor(cwd, ticket);
-		const login = /^(?:\d+\+)?([a-z\d](?:[a-z\d-]{0,37}[a-z\d])?)@users\.noreply\.github\.com$/i.exec(author.email)?.[1];
+		const login = GITHUB_NOREPLY.exec(author.email)?.[1];
 		return login ? `@${login.toLowerCase()}\n${author.commit}` : `unavailable\nordinary email\n${author.commit}`;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "";
@@ -60,7 +60,7 @@ export async function deliverFinishWebhook(jobDir: string, shutdownDeadline = Nu
 	const config = await textFile(`${jobDir}/finish-webhook-env`);
 	if (!config) return;
 	const state = await textFile(`${jobDir}/state`);
-	if (state !== "done" && state !== "failed" && state !== "stopped") return;
+	if (!isTerminal(state)) return;
 	try {
 		// Never reclaim: a crash after HTTP acceptance but before recording it is ambiguous.
 		await writeFile(`${jobDir}/finish-webhook-attempt`, `${state} ${new Date().toISOString()}\n`, { flag: "wx", mode: 0o600, flush: true });
@@ -113,7 +113,7 @@ export async function deliverFinishWebhook(jobDir: string, shutdownDeadline = Nu
 	await appendLimenLog(jobDir, `finish webhook: ${result}${result.startsWith("skipped:") ? "" : "; inspect finish-webhook for manual finish-ping retry"}`);
 }
 /** Timeouts and stalled tools end a job as failed; the webhook names the gate that ended it. */
-function terminalKind(state: "done" | "failed" | "stopped", detail: string): string {
+function terminalKind(state: TerminalState, detail: string): string {
 	if (state === "failed" && detail.startsWith("timeout after ")) return "job.timed-out";
 	if (state === "failed" && detail.startsWith("stalled tool ")) return "job.stalled";
 	return `job.${state}`;
@@ -121,7 +121,7 @@ function terminalKind(state: "done" | "failed" | "stopped", detail: string): str
 async function jobFields(jobDir: string): Promise<Omit<PlantEvent, "kind" | "status" | "reason">> {
 	const [title, branch, author] = await Promise.all([textFile(`${jobDir}/label`), textFile(`${jobDir}/branch`), textFile(`${jobDir}/finish-webhook-author`)]);
 	const login = author.split("\n")[0] ?? "";
-	return { title, id: basename(jobDir), branch, plant: basename(resolve(jobDir, "../../..")), author: LOGIN.test(login) ? login.toLowerCase() : "" };
+	return { title, id: basename(jobDir), branch, plant: basename(resolve(jobDir, "../../..")), author: GITHUB_AUTHOR.test(login) ? login.toLowerCase() : "" };
 }
 /** A hosted stall pings once per advisory while the job still runs; a job that ends first sends only its terminal ping. */
 export async function deliverJobStall(jobDir: string, line: string): Promise<void> {
@@ -233,7 +233,7 @@ function send(receiptDir: string, config: string, event: PlantEvent, id: string,
 		const seen = new Map<number, string>();
 		child.stdio[3]?.on("data", (chunk: Buffer) => {
 			bytes += chunk.length;
-			if (bytes > 32_768) return;
+			if (bytes > RECEIPT_MAX_BYTES) return;
 			pending += chunk.toString("utf8");
 			const lines = pending.split("\n");
 			pending = lines.pop() ?? "";

@@ -6,8 +6,6 @@ import {
 	type HerdrPlace,
 	type HostedAgentStatus,
 	hostedAgentStatus,
-	hostedBindingInPane,
-	hostedEngineOwned,
 	hostedLaunchParent,
 	hostedTerminalReason,
 	locateHostedAgent,
@@ -22,7 +20,7 @@ import { appendLimenLog, atomicWrite, finalizeJob, isFailedStopReason, recordCom
 import { noteKind } from "../job/view.ts";
 import { cleanWorktree } from "../project/git.ts";
 import { argvFor, jobProfile, prepareSkillConfig } from "./engine.ts";
-import { hostedBindingSupported, hostedIdentityObservation, prepareHostedLaunch, readHostedBinding } from "./hosted-binding.ts";
+import { hostedBindingInPane, hostedBindingSupported, hostedEngineOwned, hostedIdentityObservation, prepareHostedLaunch, readHostedBinding } from "./hosted-binding.ts";
 import { noteHostedUncertainty } from "./hosted-uncertainty.ts";
 import { prepareRecoveredOwner } from "./recovery.ts";
 import { observeToolStall, type ToolStallWatch } from "./stalled-tool.ts";

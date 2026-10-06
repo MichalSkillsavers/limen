@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { hostedAgentStatus, stopHostedAgent } from "../integrations/herdr.ts";
+import { SESSION_ID } from "../job/job.ts";
 import { resolveJob } from "../job/lookup.ts";
 import { appendLimenLog, finalizeJob, requestedTerminal } from "../job/record.ts";
 import { containEscapedDescendants, discoverEscapedDescendants, processGroupAlive, signalProcessGroup, waitForProcessGroup } from "../runtime/contain.ts";
@@ -63,7 +64,7 @@ export async function stopCommand(args: readonly string[], cwd: string): Promise
 }
 async function markCallerDelivered(jobDir: string): Promise<void> {
 	const session = process.env.PI_SESSION_ID?.trim();
-	if (session && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(session)) await mkdir(`${jobDir}/notify/delivered/${session}`, { recursive: true });
+	if (session && SESSION_ID.test(session)) await mkdir(`${jobDir}/notify/delivered/${session}`, { recursive: true });
 }
 function text(path: string): Promise<string> {
 	return readFile(path, "utf8").then(

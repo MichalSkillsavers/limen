@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
-import { hostedAgentStatus, hostedBindingInPane, locateHostedAgent } from "../integrations/herdr.ts";
+import { hostedAgentStatus, locateHostedAgent } from "../integrations/herdr.ts";
 import { hostedAgentName } from "../job/job.ts";
 import { atomicWrite, textFile } from "../job/record.ts";
 import { processAlive, processInfo } from "./contain.ts";
 import { jobProfile } from "./engine.ts";
-import { hostedIdentityObservation, readHostedBinding } from "./hosted-binding.ts";
+import { hostedBindingInPane, hostedIdentityObservation, readHostedBinding } from "./hosted-binding.ts";
 import { ownerAlive } from "./reap.ts";
 import { launchHostedSupervisor } from "./wrapper.ts";
 

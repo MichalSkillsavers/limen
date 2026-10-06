@@ -5,9 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { hostedEngineOwned } from "../src/integrations/herdr.ts";
 import { processInfo } from "../src/runtime/contain.ts";
-import { hostedBindingSupported } from "../src/runtime/hosted-binding.ts";
+import { hostedBindingSupported, hostedEngineOwned } from "../src/runtime/hosted-binding.ts";
 import { observeToolStall, signalOwnedProcess, type ToolStallWatch } from "../src/runtime/stalled-tool.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));

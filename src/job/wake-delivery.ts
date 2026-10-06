@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isTerminal } from "./job.ts";
 
 // The notify/ record of who heard a job: claims, delivered slots, unconfirmed attempts, subscribers, and the ready marker.
 const DEFAULT_FALLBACK_GRACE_MS = 5 * 60_000;
@@ -235,7 +236,4 @@ export function completionSlots(names: readonly string[]): string[] {
 function text(path: string): string {
 	if (!existsSync(path)) return "";
 	return readFileSync(path, "utf8").trim();
-}
-function isTerminal(state: string): boolean {
-	return state === "done" || state === "failed" || state === "stopped";
 }

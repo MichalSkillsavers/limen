@@ -7,7 +7,7 @@ import { herdrAvailable } from "../integrations/herdr.ts";
 import type { GroupIdentity, GroupRun } from "../job/group-cabinet.ts";
 import { groupIdentity, groupLock, groupPath, leadHookLive, leadSession, memberLive, readRun, runs, saveJson, teamRoute } from "../job/group-cabinet.ts";
 import { acceptBatch, acceptTransport, groupEvents, publishEvent, syncLifecycle } from "../job/group-events.ts";
-import { parseDuration } from "../job/job.ts";
+import { parseDuration, SESSION_ID } from "../job/job.ts";
 import { cleanWorktree, commitHasFile, headCommit, repoRoot } from "../project/git.ts";
 import { planningSource, privatePlanningFile } from "../project/planning.ts";
 import { preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
@@ -77,7 +77,7 @@ export async function startGroup(args: readonly string[], cwd: string): Promise<
 	if (source === "private" && featureArgument.split(/[\\/]/).includes(".."))
 		throw new Error("private planning feature path must not contain '..'; run limen group start spec/features/active/FEATURE from the project root");
 	const lead = (await leadSession(root)) ?? "";
-	if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(lead))
+	if (!SESSION_ID.test(lead))
 		throw new Error(
 			"group start requires the interactive Herdr coordinator pane (LIMEN_COORDINATOR=1) with hook/group-peer.ts loaded and registered under .limen/group-leads — reload that pane after updating the package; a hosted limen job never registers as lead",
 		);

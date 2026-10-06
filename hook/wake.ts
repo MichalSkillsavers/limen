@@ -2,7 +2,8 @@ import { execFile, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, type FSWatcher, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { coordinatorSignals } from "../src/integrations/coordinator-signal.ts";
-import { closedFeatures, closedJobFeatures, derivePulse, type Pulse } from "../src/job/job.ts";
+import { herdrBinary } from "../src/integrations/herdr.ts";
+import { closedFeatures, closedJobFeatures, derivePulse, isTerminal, type Pulse, SESSION_ID } from "../src/job/job.ts";
 import {
 	CLAIM_STALE_MS,
 	claimDelivery,
@@ -507,7 +508,7 @@ export default function limenWake(pi: PiApi): void {
 		coordinator.start(root, context);
 		stopTimers();
 		const id = context.sessionManager.getSessionId();
-		if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) return;
+		if (!SESSION_ID.test(id)) return;
 		const jobs = join(root, ".limen", "jobs");
 		try {
 			mkdirSync(jobs, { recursive: true });
@@ -770,9 +771,9 @@ function record(value: unknown): Record<string, unknown> {
 	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 function herdrTarget(): HerdrPane | undefined {
-	const binary = process.env.LIMEN_HERDR || "herdr";
+	const binary = herdrBinary();
 	const pane = process.env.HERDR_PANE_ID;
-	if (binary === "0" || process.env.HERDR_ENV !== "1" || !pane) return undefined;
+	if (!binary || process.env.HERDR_ENV !== "1" || !pane) return undefined;
 	return { binary, pane };
 }
 // The display agent names the lead pane, so it describes the lead: an idle lead waits on its jobs; a working lead only counts them.
@@ -800,7 +801,4 @@ function text(path: string): string {
 }
 function isObservable(state: string): boolean {
 	return state === "running" || isTerminal(state);
-}
-function isTerminal(state: string): boolean {
-	return state === "done" || state === "failed" || state === "stopped";
 }

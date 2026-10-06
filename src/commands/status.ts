@@ -2,7 +2,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
+import { herdrBinary } from "../integrations/herdr.ts";
 import { type GroupIdentity, jobMembership } from "../job/group-cabinet.ts";
+import { isTerminal } from "../job/job.ts";
 import { noteKind } from "../job/view.ts";
 import { limenRoot, unlandedBranches, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
@@ -73,7 +75,7 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 			continue;
 		}
 		let group: GroupIdentity | undefined;
-		if (state === "done" || state === "failed" || state === "stopped") {
+		if (isTerminal(state)) {
 			try {
 				group = await jobMembership(dir);
 				if (group && (group.run.root !== root || typeof group.run.feature !== "string" || !group.run.feature.trim() || typeof group.run.closed !== "boolean")) group = undefined;
@@ -93,7 +95,7 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 			older++;
 			continue;
 		}
-		if (state !== "done" && state !== "failed" && state !== "stopped") {
+		if (!isTerminal(state)) {
 			uncertain.push(`  ${label || id} (${id}) · unknown state ${state || "missing"}`);
 			continue;
 		}
@@ -151,8 +153,8 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 }
 
 function coordinatorLines(root: string, workspace: boolean, workers: ReadonlySet<string>, worktrees: ReadonlySet<string>, origins: ReadonlySet<string>): string[] {
-	const bin = process.env.LIMEN_HERDR?.trim() || "herdr";
-	if (bin === "0") return ["  unknown (Herdr unavailable)"];
+	const bin = herdrBinary();
+	if (!bin) return ["  unknown (Herdr unavailable)"];
 	const result = spawnSync(bin, ["agent", "list"], { encoding: "utf8", timeout: 5_000 });
 	if (result.error || result.status !== 0) return recordedOriginLines(bin, origins, workers);
 	try {

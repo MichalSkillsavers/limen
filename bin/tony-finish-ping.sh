@@ -47,6 +47,7 @@ let targets = [{ url: config.LIMEN_FINISH_WEBHOOK_URL, auth: config.LIMEN_FINISH
 if (multi) {
   try {
     targets = JSON.parse(config.LIMEN_FINISH_WEBHOOK_TARGETS);
+    // 64 is MAX_TARGETS in src/integrations/finish-turn.ts.
     if (!Array.isArray(targets) || !targets.length || targets.length > 64) throw new Error();
     if (targets.some(target => !target || typeof target !== 'object' || Array.isArray(target)
       || Object.keys(target).some(key => !['url', 'auth'].includes(key)))) throw new Error();
@@ -94,6 +95,7 @@ if (mapRaw !== undefined) {
     map = JSON.parse(mapRaw);
     if (!map || typeof map !== 'object' || Array.isArray(map)) throw new Error();
     for (const [key, value] of Object.entries(map)) {
+      // The login pattern is GITHUB_LOGIN in src/integrations/finish-receipt.ts.
       if (key !== '*' && !/^@[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/.test(key)) throw new Error();
       if (!Array.isArray(value) || !value.length || new Set(value).size !== value.length) throw new Error();
       if (value.some(n => !Number.isInteger(n) || n < 1 || n > targets.length)) throw new Error();
