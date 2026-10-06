@@ -90,7 +90,7 @@ See the [Picture guide](docs/picture.md) for navigation and updates.
 | Code structure, features, and journeys | [Picture](docs/picture.md) |
 | Several teams on one feature | [Team groups](docs/groups.md) |
 | Remote jobs and GitHub requests | [Remote seats](docs/remote.md) |
-| Job completion notifications | [Finish webhooks](docs/finish-webhooks.md) |
+| Job and coordinator event webhooks | [Finish webhooks](docs/finish-webhooks.md) |
 | Pane status and job status | [Herdr status](docs/herdr-status.md) |
 | Optional Linear mirror | [Linear](templates/linear.md) |
 
