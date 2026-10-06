@@ -1,10 +1,11 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { resolveJob } from "../job/lookup.ts";
+import { readBoard } from "../picture/board.ts";
 import { readPicture } from "../picture/picture-build.ts";
 import { checkTickets, readTickets } from "../picture/tickets.ts";
 import { cleanWorktree, commitList, currentBranch, limenRoot, mergeBranch, workspaceRepository } from "../project/git.ts";
@@ -67,11 +68,39 @@ export async function landTicketCheck(
 	if (existsSync(map)) {
 		const model = await readPicture(map);
 		placeIds = new Set([...model.nodes.filter((node) => node.kind === "module").map((node) => node.id), ...(model.project.rootId ? [model.project.rootId] : [])]);
+		const codes = new Map(tickets.map((path) => [TICKET_PATH.exec(path)?.[1] ?? "", path]));
+		for (const record of [...model.nodes, ...model.edges, ...model.features, ...model.journeys])
+			for (const source of record.sources) {
+				const current = codes.get(/\/(F\d+)-/.exec(source)?.[1] ?? "");
+				if (current && !gitOk(repository, ["cat-file", "-e", `${branch}:${source.replace(/\/$/, "")}`]))
+					lines.push(`warn ${map}/${record.source}: source "${source}" does not exist at ${branch}; fix: change it to ${current}`);
+			}
 	} else lines.push(`land: no picture map at ${map}; touches place ids not checked`);
 	const tip = await mkdtemp(join(tmpdir(), "limen-land-"));
 	try {
 		const archive = execFileSync("git", ["archive", branch, "--", ":(glob)spec/features/**/ticket.md"], { cwd: repository, maxBuffer: 256 * 1024 * 1024 });
 		execFileSync("tar", ["-x", "-C", tip], { input: archive });
+		const board = spawnSync("git", ["show", `${branch}:spec/build.md`], { cwd: repository, maxBuffer: 64 * 1024 * 1024 });
+		if (board.status === 0) await writeFile(join(tip, "spec/build.md"), board.stdout);
+		const entries = await readBoard(tip);
+		for (const path of tickets) {
+			const lane = path.split("/")[2];
+			const folder = path.split("/").at(-2) ?? "";
+			const code = TICKET_PATH.exec(path)?.[1] ?? "";
+			const want =
+				lane === "active"
+					? { state: "ACTIVE", line: `- \`${folder}\` (🟠 ACTIVE): <one clause> under ## NOW` }
+					: lane === "done"
+						? { state: "PROVEN", line: `- \`${folder}\` (🟢 PROVEN): <one clause> under ## PROVEN` }
+						: undefined;
+			if (!want) continue;
+			const entry = entries.get(code.toLowerCase());
+			if (!entry) lines.push(`warn spec/build.md: no board line for ${code}; fix: add ${want.line}`);
+			else if (entry.state !== want.state)
+				lines.push(
+					`warn spec/build.md:${entry.line}: ${code} is ${entry.state} on the board but its folder is in ${lane}; fix: mark it ${want.state} in the ${lane === "active" ? "NOW" : "PROVEN"} section`,
+				);
+		}
 		const read = await readTickets(tip);
 		const diagnostics = [...read.diagnostics, ...(placeIds ? checkTickets(read.tickets, placeIds) : [])].filter((d) => d.source !== null && changed.has(d.source));
 		const errors = diagnostics.filter((d) => d.level === "error").map((d) => `${d.source}:${d.line ?? 1}: ${d.message}`);
@@ -95,6 +124,10 @@ export async function landTicketCheck(
 
 function gitText(cwd: string, args: readonly string[]): string {
 	return execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
+}
+
+function gitOk(cwd: string, args: readonly string[]): boolean {
+	return spawnSync("git", args, { cwd, stdio: "ignore" }).status === 0;
 }
 
 function parseLandArgs(args: readonly string[]): { readonly query: string; readonly yes: boolean; readonly onto?: string } {

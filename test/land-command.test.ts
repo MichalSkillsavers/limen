@@ -123,10 +123,13 @@ setInterval(() => {}, 1000);
 async function writeMap(root: string): Promise<void> {
 	const dir = join(root, ".limen/picture/nodes");
 	await mkdir(dir, { recursive: true });
-	await writeFile(join(dir, "sample.plant.md"), "---\nschema: architecture-map/1\nkind: plant\nid: sample.plant\nproject: sample\ntitle: Sample\nstatus: ready\nparent: null\n---\nSample plant.\n");
+	await writeFile(
+		join(dir, "sample.plant.md"),
+		"---\nschema: architecture-map/1\nkind: plant\nid: sample.plant\nproject: sample\ntitle: Sample\nstatus: ready\nparent: null\n---\nSample plant.\n",
+	);
 	await writeFile(
 		join(dir, "sample.worker.md"),
-		"---\nschema: architecture-map/1\nkind: module\nid: sample.worker\nproject: sample\ntitle: Worker\nstatus: ready\nparent: sample.plant\n---\nThe worker runs the task.\n",
+		"---\nschema: architecture-map/1\nkind: module\nid: sample.worker\nproject: sample\ntitle: Worker\nstatus: ready\nparent: sample.plant\nsources:\n  - spec/features/planned/F001-good-touch/ticket.md\n---\nThe worker runs the task.\n",
 	);
 }
 
@@ -161,6 +164,12 @@ test("land refuses tickets that fail the strict check, prints the keeper command
 	const landed = limen(scratch, "land", good, "--yes");
 	assert.equal(landed.status, 0, landed.stderr);
 	assert.match(landed.stdout, new RegExp(`landed ${good} onto main`));
+	// The board line and a moved map source only warn; the keeper or the coordinator fixes them.
+	assert.match(landed.stdout, /^warn spec\/build\.md: no board line for F001; fix: add - `F001-good-touch` \(🟠 ACTIVE\)/m);
+	assert.match(
+		landed.stdout,
+		/^warn .*\/\.limen\/picture\/nodes\/sample\.worker\.md: source "spec\/features\/planned\/F001-good-touch\/ticket\.md" does not exist at .*; fix: change it to spec\/features\/active\/F001-good-touch\/ticket\.md$/m,
+	);
 
 	// A new folder that reuses a number already on main is refused even when its fields are valid.
 	const reuse = await ticketJob(scratch, "spec/features/planned/F001-second-use/ticket.md", "sample.worker");
