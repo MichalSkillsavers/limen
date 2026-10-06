@@ -8,7 +8,7 @@ import { resolveJob } from "../job/lookup.ts";
 import { readBoard } from "../picture/board.ts";
 import { readPicture } from "../picture/picture-build.ts";
 import { checkTickets, readTickets } from "../picture/tickets.ts";
-import { cleanWorktree, commitList, currentBranch, limenRoot, mergeBranch, workspaceRepository } from "../project/git.ts";
+import { abortMerge, commitList, currentBranch, dirtyPaths, limenRoot, mergeBranch, mergePaths, workspaceRepository } from "../project/git.ts";
 
 export async function landCommand(args: readonly string[], cwd: string): Promise<void> {
 	if (process.env.LIMEN_GROUP_ID) throw new Error("group members cannot land; the owner-facing lead owns landing");
@@ -29,14 +29,28 @@ export async function landCommand(args: readonly string[], cwd: string): Promise
 	const target = parsed.onto ?? current;
 	if (target !== current) throw new Error(`land merges onto the current branch (${current}); checkout ${target} first`);
 	if (target === branch) throw new Error(`already on job branch ${branch}`);
-	if (!cleanWorktree(repository)) throw new Error(`target ${target} is dirty`);
+	// Another session may be editing this checkout. Land merges beside its files and never touches them.
+	const dirty = dirtyPaths(repository);
+	if (dirty.staged.length)
+		throw new Error(`target ${target} has staged changes, and a merge would refuse or sweep them in: ${dirty.staged.join(", ")}; commit or unstage them first`);
 	const commits = commitList(repository, base, branch);
 	if (!commits) throw new Error(`job ${id} has no commits to land`);
+	const merged = dirty.paths.length ? mergePaths(repository, branch) : new Set<string>();
+	const overlap = dirty.paths.filter((path) => merged.has(path));
+	if (overlap.length) throw new Error(`target ${target} has uncommitted changes in files this land would change: ${overlap.join(", ")}; commit or move them first`);
+	if (dirty.paths.length) console.log(`land: ${dirty.paths.length} uncommitted file${dirty.paths.length === 1 ? "" : "s"} in ${repository} stay untouched; none is in this merge`);
 	const gate = await landTicketCheck(repository, root, branch, "HEAD", id);
 	if (!gate.ok) throw new Error(`land refused: ${branch} has tickets that fail the strict check\n${gate.lines.join("\n")}`);
 	for (const line of gate.lines) console.log(line);
 	if (!parsed.yes && !(await confirm(`Land ${label || id} onto ${target}? [y/N] `))) throw new Error("land cancelled");
-	const output = mergeBranch(repository, branch);
+	let output: string;
+	try {
+		output = mergeBranch(repository, branch);
+	} catch (error) {
+		// A half-done merge beside another session's files would turn its next commit into this merge.
+		if (dirty.paths.length) abortMerge(repository);
+		throw error;
+	}
 	if (output) console.log(output);
 	console.log(`landed ${id} onto ${target}`);
 }

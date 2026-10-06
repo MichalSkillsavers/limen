@@ -58,7 +58,7 @@ test("land --yes merges when the target has moved", async (context) => {
 	assert.equal(await readFile(join(scratch.root, "main-only.txt"), "utf8"), "main\n");
 });
 
-test("land refuses running job, empty commits, dirty target, and unconfirmed merge", async (context) => {
+test("land refuses running job, empty commits, an uncommitted file in the merge, and unconfirmed merge", async (context) => {
 	const scratch = await scratchRepo(`#!/usr/bin/env node
 process.on("SIGTERM", () => process.exit(0));
 console.log("waiting");
@@ -95,11 +95,13 @@ setInterval(() => {}, 1000);
 	const dirtyId = onlyJobId(limen(dirtyScratch, "spawn", "--label", "F717 dirty", "make commit").stdout);
 	await waitForState(dirtyScratch.root, dirtyId, "done");
 	const dirtyMain = git(dirtyScratch.root, "rev-parse", "HEAD");
-	await writeFile(join(dirtyScratch.root, "dirt.txt"), "dirt\n");
+	// The job adds candidate.txt; an uncommitted copy in the checkout belongs to another session.
+	await writeFile(join(dirtyScratch.root, "candidate.txt"), "another session\n");
 	const dirty = limen(dirtyScratch, "land", dirtyId, "--yes");
 	assert.equal(dirty.status, 1);
-	assert.match(dirty.stderr, /target main is dirty/);
+	assert.match(dirty.stderr, /target main has uncommitted changes in files this land would change: candidate\.txt/);
 	assert.equal(git(dirtyScratch.root, "rev-parse", "HEAD"), dirtyMain);
+	assert.equal(await readFile(join(dirtyScratch.root, "candidate.txt"), "utf8"), "another session\n");
 
 	const confirmScratch = await scratchRepo();
 	context.after(confirmScratch.cleanup);
@@ -118,6 +120,65 @@ setInterval(() => {}, 1000);
 	assert.match(onto.stderr, /checkout other first/);
 	assert.equal(git(confirmScratch.root, "rev-parse", "HEAD"), confirmMain);
 	assert.equal(git(confirmScratch.root, "rev-parse", "other"), confirmMain);
+});
+
+test("land merges beside another session's uncommitted files and never touches them", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	limen(scratch, "init");
+	await writeFile(join(scratch.root, "shared.txt"), "committed\n");
+	commitProject(scratch.root);
+	const id = onlyJobId(limen(scratch, "spawn", "--label", "F925 beside", "make commit").stdout);
+	await waitForState(scratch.root, id, "done");
+	const branch = (await readFile(join(scratch.root, ".limen/jobs", id, "branch"), "utf8")).trim();
+	await writeFile(join(scratch.root, "main-only.txt"), "main\n");
+	git(scratch.root, "add", "main-only.txt");
+	git(scratch.root, "commit", "-m", "main moves");
+	await writeFile(join(scratch.root, "shared.txt"), "another session edits\n");
+	await writeFile(join(scratch.root, "draft.txt"), "another session drafts\n");
+	const staged = join(scratch.root, "staged.txt");
+	await writeFile(staged, "staged\n");
+	git(scratch.root, "add", "staged.txt");
+	const refused = limen(scratch, "land", id, "--yes");
+	assert.equal(refused.status, 1);
+	assert.match(refused.stderr, /target main has staged changes.*staged\.txt/);
+	git(scratch.root, "rm", "--cached", "--quiet", "staged.txt");
+	const before = git(scratch.root, "status", "--porcelain");
+
+	const landed = limen(scratch, "land", id, "--yes");
+	assert.equal(landed.status, 0, landed.stderr);
+	assert.match(landed.stdout, /3 uncommitted files .* stay untouched/);
+	git(scratch.root, "merge-base", "--is-ancestor", branch, "HEAD");
+	assert.equal(await readFile(join(scratch.root, "candidate.txt"), "utf8"), "candidate\n");
+	const merged = git(scratch.root, "diff", "--name-only", "HEAD^1", "HEAD").split("\n");
+	assert.ok(merged.includes("candidate.txt"), merged.join(", "));
+	for (const name of ["shared.txt", "draft.txt", "staged.txt"]) assert.ok(!merged.includes(name), `${name} entered the merge`);
+	assert.equal(git(scratch.root, "show", "HEAD:shared.txt"), "committed");
+	assert.equal(git(scratch.root, "status", "--porcelain"), before);
+	assert.equal(await readFile(join(scratch.root, "shared.txt"), "utf8"), "another session edits\n");
+	assert.equal(await readFile(join(scratch.root, "draft.txt"), "utf8"), "another session drafts\n");
+});
+
+test("a land that conflicts beside another session's files aborts and leaves them as they were", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	limen(scratch, "init");
+	await writeFile(join(scratch.root, "shared.txt"), "committed\n");
+	commitProject(scratch.root);
+	const id = onlyJobId(limen(scratch, "spawn", "--label", "F925 conflict", "make commit").stdout);
+	await waitForState(scratch.root, id, "done");
+	await writeFile(join(scratch.root, "candidate.txt"), "main disagrees\n");
+	git(scratch.root, "add", "candidate.txt");
+	git(scratch.root, "commit", "-m", "main adds its own candidate");
+	const main = git(scratch.root, "rev-parse", "HEAD");
+	await writeFile(join(scratch.root, "shared.txt"), "another session edits\n");
+
+	const landed = limen(scratch, "land", id, "--yes");
+	assert.equal(landed.status, 1);
+	assert.equal(git(scratch.root, "rev-parse", "HEAD"), main);
+	assert.equal(git(scratch.root, "status", "--porcelain"), "M shared.txt");
+	assert.equal(await readFile(join(scratch.root, "shared.txt"), "utf8"), "another session edits\n");
+	assert.equal(await readFile(join(scratch.root, "candidate.txt"), "utf8"), "main disagrees\n");
 });
 
 async function writeMap(root: string): Promise<void> {
