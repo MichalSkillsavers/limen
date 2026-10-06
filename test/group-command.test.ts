@@ -572,8 +572,6 @@ test("detached role deadlines stop a real child and hosted supervision enforces 
 	const scratch = await fixture();
 	context.after(scratch.cleanup);
 	const run = await activate(scratch);
-	run.workerTimeoutMs = 2_000;
-	await saveJson(`${groupPath(run)}/run.json`, run);
 	await writeFakePi(
 		scratch.fakeBin,
 		`#!/usr/bin/env node
@@ -582,10 +580,19 @@ fs.writeFileSync(process.env.LIMEN_CONTEXT_ROOT + '/.limen/jobs/' + process.env.
 setInterval(() => {}, 1000);
 `,
 	);
-	const launched = limenWithEnv(scratch, environment(run), "spawn", "deadline probe", ...workerSettings);
-	assert.equal(launched.status, 0, launched.stderr);
-	const id = onlyJobId(launched.stdout);
-	await waitForState(scratch.root, id, "failed");
+	// Spawn and wrapper startup count against the deadline. Under heavy load they can use all of it before the
+	// engine writes its marker; that run proves nothing, so try again with a longer deadline.
+	const budgets = [2_000, 6_000, 15_000];
+	let id = "";
+	for (const workerTimeoutMs of budgets) {
+		const current = await readRun(run.root, run.id);
+		await saveJson(`${groupPath(run)}/run.json`, { ...current, workersPerTeam: budgets.length, workerTimeoutMs });
+		const launched = limenWithEnv(scratch, environment(run), "spawn", "deadline probe", ...workerSettings);
+		assert.equal(launched.status, 0, launched.stderr);
+		id = onlyJobId(launched.stdout);
+		await waitForState(scratch.root, id, "failed", workerTimeoutMs + 10_000);
+		if (existsSync(`${run.root}/.limen/jobs/${id}/engine-launched`)) break;
+	}
 	assert.equal(await readFile(`${run.root}/.limen/jobs/${id}/engine-launched`, "utf8"), "yes");
 	assert.match(await readFile(`${run.root}/.limen/jobs/${id}/log`, "utf8"), /timeout after/);
 	const current = await readRun(run.root, run.id);
