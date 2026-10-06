@@ -24,6 +24,7 @@
 - **Scope lock boundary:** no second-seat GitHub proof, no new Sol model policy, no Changes-list highlight on the map.
 
 ## NOW
+- `F925-test-reset-decision` (🟠 ACTIVE): Adam gets one verdict on resetting Limen's tests to the few seams that matter; read-only group, `test/` unchanged.
 - `F783-spec-structure-and-keeper` (🟠 ACTIVE): agents get linked-ticket guidance and a spec keeper fixes ticket, board, and map links before landing.
 
 - `F777-hosted-pane-shows-true-agent-state` (🟠 ACTIVE): hosted Pi/OMP panes load Herdr's own state extension so the tab icon shows working/blocked/idle truthfully instead of green while the agent works.
