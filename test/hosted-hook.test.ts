@@ -1,3 +1,4 @@
+// F925 old suite, frozen at 169 lines. Delete this file when its replacement lands; never add to it.
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";

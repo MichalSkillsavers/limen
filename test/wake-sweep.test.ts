@@ -1,3 +1,4 @@
+// F925 old suite, frozen at 444 lines. Delete this file when its replacement lands; never add to it.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";

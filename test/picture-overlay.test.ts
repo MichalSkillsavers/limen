@@ -1,3 +1,4 @@
+// F925 old suite, frozen at 155 lines. Delete this file when its replacement lands; never add to it.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildModel, type PictureFile } from "../src/picture/picture-model.ts";

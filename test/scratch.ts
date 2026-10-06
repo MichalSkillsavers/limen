@@ -1,3 +1,4 @@
+// F925 old suite, frozen at 196 lines. Delete this file when its replacement lands; never add to it.
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

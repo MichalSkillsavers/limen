@@ -1,3 +1,4 @@
+// F925 old suite, frozen at 93 lines. Delete this file when its replacement lands; never add to it.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { derivePulse, parseDuration, parseJob, renderJob, resolveJobId } from "../src/job/job.ts";
