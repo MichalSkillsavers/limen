@@ -7,6 +7,7 @@ import { containEscapedDescendants, discoverEscapedDescendants, type JobProcess,
 import { argvFor, engineBinary, jobProfile, prepareSkillConfig } from "./engine.ts";
 import { observeToolStall, ownedToolDescendants, type ToolStallWatch, toolStallMs } from "./stalled-tool.ts";
 import { createStreamParser, type StreamEvent } from "./stream.ts";
+import { readWorkerExtensions } from "./worker-extensions.ts";
 
 const STOP_GRACE_MS = 5_000;
 const HOOK = fileURLToPath(new URL("../../hook", import.meta.url));
@@ -90,7 +91,12 @@ export async function runInternalJob(): Promise<void> {
 		...(skillConfig ? { skillConfig } : {}),
 		label,
 		preamble,
-		extensions: [`${HOOK}/steering.ts`, `${HOOK}/communication.ts`, ...((await jobMembership(jobDir)) ? [`${HOOK}/group-peer.ts`] : [])],
+		extensions: [
+			`${HOOK}/steering.ts`,
+			`${HOOK}/communication.ts`,
+			...((await jobMembership(jobDir)) ? [`${HOOK}/group-peer.ts`] : []),
+			...(await readWorkerExtensions(jobDir, profile.id)),
+		],
 		...(process.env.LIMEN_PROVIDER ? { provider: process.env.LIMEN_PROVIDER } : {}),
 		...(process.env.LIMEN_MODEL ? { model: process.env.LIMEN_MODEL } : {}),
 		...(process.env.LIMEN_THINKING ? { thinking: process.env.LIMEN_THINKING } : {}),

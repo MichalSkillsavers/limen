@@ -152,7 +152,13 @@ export function argvFor(profile: EngineProfile, slots: EngineArgv): string[] {
 	// OMP rejects `--provider pi-claude`, so the provider stays in the job record but not on argv.
 	const bridged = profile.id === "omp" && !!slots.model?.startsWith("pi-claude/");
 	const named = [...slots.extensions, ...(bridged ? bridgeExtensions() : []), ...(slots.jsonMode ? [] : herdrStateExtensions(profile))];
-	for (const path of named) args.push("--extension", path);
+	const seen = new Set<string>();
+	for (const path of named) {
+		const key = profile.id === "pi" && existsSync(path) ? realpathSync(path) : path;
+		if (profile.id === "pi" && seen.has(key)) continue;
+		seen.add(key);
+		args.push("--extension", path);
+	}
 	if (slots.provider && !bridged) args.push("--provider", slots.provider);
 	if (slots.model) args.push("--model", slots.model);
 	if (slots.thinking) args.push("--thinking", slots.thinking);

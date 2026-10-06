@@ -10,6 +10,7 @@ import { atomicWrite, finalizeJob } from "../job/record.ts";
 import { addBranchWorktree, branchCommit, branchExists, headCommit, repoRoot, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { inheritedPlanning, privatePlanningFile, privatePlanningTask, recordedPlanningSource, ticketPointers } from "../project/planning.ts";
 import { defaultModel, engineProfile, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
+import { normalizeWorkerExtensions, readWorkerExtensions } from "../runtime/worker-extensions.ts";
 import { launchWrapper } from "../runtime/wrapper.ts";
 import { capturedVersions, currentNotificationSession, herdrWakePane, normalizeLabel, resolvePreamble, startHosted, waitForHandshake } from "./spawn.ts";
 
@@ -24,17 +25,19 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	let label: string | undefined;
 	let model: string | undefined, provider: string | undefined, thinking: string | undefined, engine: string | undefined;
 	const positional: string[] = [];
+	const selected: string[] = [];
 	for (let index = 0; index < args.length; index += 1) {
 		const value = args[index];
 		if (!value) continue;
 		if (value === "--review") review = true;
 		else if (value === "--tab") tab = true;
 		else if (value === "--detached") detached = true;
-		else if (value === "--label" || value === "--model" || value === "--provider" || value === "--thinking" || value === "--engine") {
+		else if (value === "--label" || value === "--model" || value === "--provider" || value === "--thinking" || value === "--engine" || value === "--extension") {
 			const optionValue = args[index + 1];
-			if (!optionValue) throw new Error(`${value} requires a value`);
+			if (!optionValue || (value === "--extension" && optionValue.startsWith("--"))) throw new Error(`${value} requires a value`);
 			index += 1;
-			if (value === "--label") label = normalizeLabel(optionValue);
+			if (value === "--extension") selected.push(optionValue);
+			else if (value === "--label") label = normalizeLabel(optionValue);
 			else if (value === "--provider") provider = optionValue;
 			else if (value === "--thinking") thinking = optionValue;
 			else if (value === "--engine") engine = optionValue.trim();
@@ -91,6 +94,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 		if (requested.id !== parentEngine) throw new Error(`continue --engine ${engine} does not match parent engine ${parentEngine}`);
 	}
 	const profile = engineProfile(parentEngine);
+	const extensions = selected.length ? await normalizeWorkerExtensions(selected, cwd, profile.id) : await readWorkerExtensions(parentDir, profile.id);
 	preflightEngine(profile, chosenModel, provider);
 
 	// Private planning: carry the parent's canonical ticket and check every pointer before a record exists.
@@ -134,6 +138,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 		base: existsSync(worktree) ? headCommit(worktree) : branchCommit(repository, branch),
 		role,
 		engine: profile.id,
+		extensions,
 		planningSource: source,
 		parent: parentId,
 		session: { source: `${parentDir}/session/${inheritedSession}`, name: inheritedSession ?? "" },

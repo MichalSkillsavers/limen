@@ -506,14 +506,34 @@ test("hosted start records PATH with /usr/bin and HERDR_ENV=1; detached watch ta
 	assert.ok(!(creates[1] ?? []).includes("--env"));
 });
 
-test("hosted spawn and continuation forward literal Pi launch flags", async (context) => {
+test("hosted and detached continuation retain selected Pi extensions alongside literal launch flags", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
 	assert.equal(limen(scratch, "init").status, 0);
 	const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
 	const env = { HERDR_ENV: "1", LIMEN_HERDR: herdr.bin, FAKE_HERDR_STATE: herdr.dir, LIMEN_WORKER_MODEL: "xai/grok-4.6:xhigh" };
 	const flags = ["--provider", "openai-codex", "--model", "gpt-6-astra", "--thinking", "high"];
-	const launched = limenWithEnv(scratch, env, "spawn", "--tab", "--engine", "pi", ...flags, "first slice");
+	const extension = join(scratch.fakeBin, "selected extension.ts");
+	const replacement = join(scratch.fakeBin, "replacement.ts");
+	await writeFile(extension, "export default () => {};\n");
+	await writeFile(replacement, "export default () => {};\n");
+	const communication = new URL("../hook/communication.ts", import.meta.url).pathname;
+	const launched = limenWithEnv(
+		scratch,
+		env,
+		"spawn",
+		"--tab",
+		"--engine",
+		"pi",
+		...flags,
+		"--extension",
+		extension,
+		"--extension",
+		extension,
+		"--extension",
+		communication,
+		"first slice",
+	);
 	assert.equal(launched.status, 0, launched.stderr);
 	const parent = onlyJobId(launched.stdout);
 	await waitForState(scratch.root, parent, "done");
@@ -523,17 +543,75 @@ test("hosted spawn and continuation forward literal Pi launch flags", async (con
 	const resumed = limenWithEnv(scratch, env, "continue", "--tab", ...flags, parent, "refine the seam");
 	assert.equal(resumed.status, 0, resumed.stderr);
 	await waitForState(scratch.root, onlyJobId(resumed.stdout), "done");
+	const detached = limenWithEnv(scratch, env, "continue", "--detached", ...flags, parent, "detached follow-up");
+	assert.equal(detached.status, 0, detached.stderr);
+	const detachedId = onlyJobId(detached.stdout);
+	await waitForState(scratch.root, detachedId, "done");
+	const detachedDir = join(scratch.root, ".limen/jobs", detachedId);
+	const tree = (await readFile(join(detachedDir, "worktree"), "utf8")).trim();
+	const detachedArgs = JSON.parse(await readFile(join(tree, "pi-args.json"), "utf8")) as string[];
+	assert.equal(detachedArgs.includes("--no-extensions"), true);
+	assert.equal(detachedArgs.filter((value) => value === extension).length, 1);
+	assert.equal(detachedArgs.includes(communication), true);
+	assert.equal(
+		detachedArgs.some((value) => value.endsWith("/hosted.ts")),
+		false,
+	);
+	assert.deepEqual(JSON.parse(await readFile(join(detachedDir, "extensions.json"), "utf8")), [extension, await realpath(communication)]);
+	const replaced = limenWithEnv(scratch, env, "continue", "--tab", ...flags, "--extension", replacement, detachedId, "hosted again");
+	assert.equal(replaced.status, 0, replaced.stderr);
+	await waitForState(scratch.root, onlyJobId(replaced.stdout), "done");
+	assert.deepEqual(JSON.parse(await readFile(join(scratch.root, ".limen/jobs", parent, "extensions.json"), "utf8")), [extension, await realpath(communication)]);
 	const starts = (await readFile(join(herdr.dir, "argv"), "utf8"))
 		.trim()
 		.split("\n")
 		.map((line) => JSON.parse(line) as string[])
 		.filter((args) => args[0] === "agent" && args[1] === "start");
-	assert.equal(starts.length, 2);
-	for (const args of starts) {
+	assert.equal(starts.length, 3);
+	for (const [index, args] of starts.entries()) {
 		const piArgs = args.slice(args.indexOf("--") + 1);
 		assert.deepEqual(piArgs.slice(piArgs.indexOf("--provider"), piArgs.indexOf("--provider") + flags.length), flags);
+		assert.equal(piArgs.includes("--no-extensions"), true);
+		const named = piArgs.flatMap((value, index) => (value === "--extension" ? [piArgs[index + 1]] : []));
+		assert.equal(named.filter((path) => path === (index === 2 ? replacement : extension)).length, 1);
+		assert.equal(named.filter((path) => path?.endsWith("/communication.ts")).length, 1);
+		assert.equal(named.filter((path) => path?.endsWith("/steering.ts")).length, 1);
+		assert.equal(named.filter((path) => path?.endsWith("/hosted.ts")).length, 1);
+		if (index === 2) assert.equal(named.includes(extension), false);
 	}
 });
+
+for (const hosted of [false, true]) {
+	test(`${hosted ? "hosted" : "detached"} startup fails before the engine when a selected extension disappears after publication`, async (context) => {
+		const scratch = await scratchRepo();
+		context.after(scratch.cleanup);
+		assert.equal(limen(scratch, "init").status, 0);
+		const herdr = await installHostedFakeHerdr(scratch.root, scratch.fakeBin);
+		const extension = join(scratch.fakeBin, "removed.ts");
+		await writeFile(extension, "export default () => {};\n");
+		const launched = limenWithEnv(
+			scratch,
+			{ HERDR_ENV: "1", LIMEN_HERDR: herdr.bin, FAKE_HERDR_STATE: herdr.dir },
+			"spawn",
+			"--engine",
+			"pi",
+			hosted ? "--tab" : "--detached",
+			"--extension",
+			extension,
+			"--prepare",
+			`rm ${extension}`,
+			"task",
+		);
+		assert.equal(launched.status, 0, launched.stderr);
+		const id = onlyJobId(launched.stdout);
+		await waitForState(scratch.root, id, "failed");
+		const job = join(scratch.root, ".limen/jobs", id);
+		assert.match(await readFile(join(job, "log"), "utf8"), /cannot use extension.*removed.ts/);
+		const tree = (await readFile(join(job, "worktree"), "utf8")).trim();
+		assert.equal(existsSync(join(tree, "pi-args.json")), false);
+		assert.doesNotMatch(await readFile(herdr.calls, "utf8"), /agent start/);
+	});
+}
 
 test("hosted omp spawn uses Herdr kind omp and omits json mode", async (context) => {
 	const scratch = await scratchRepo();

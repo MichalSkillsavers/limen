@@ -28,6 +28,7 @@ import { inheritedPlanning, planningSource, privatePlanningFile, privatePlanning
 import { signalProcessGroup, waitForProcessGroup } from "../runtime/contain.ts";
 import { defaultModel, type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { liveJob } from "../runtime/reap.ts";
+import { normalizeWorkerExtensions } from "../runtime/worker-extensions.ts";
 import { launchHostedSupervisor, launchWrapper } from "../runtime/wrapper.ts";
 import { hunkBinary } from "./diff.ts";
 import { pruneFinishedWorktrees } from "./prune.ts";
@@ -50,6 +51,7 @@ type SpawnOptions = {
 	detached: boolean;
 	role?: string;
 	engine?: string;
+	extensions: string[];
 };
 const PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export function resolvePreamble(root: string, role: string): string {
@@ -111,6 +113,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const profile = resolveSpawnEngine(options.engine);
 	const engine = profile.id;
 	const model = options.model ?? defaultModel(options.review);
+	const extensions = await normalizeWorkerExtensions(options.extensions, cwd, engine);
 	preflightEngine(profile, model, options.provider);
 	const notificationSession = currentNotificationSession();
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
@@ -201,6 +204,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 		base,
 		role,
 		engine,
+		extensions,
 		planningSource: source,
 		finishAuthor: captureFinishAuthor(cwd, loaded.text, Boolean(workspace)),
 		...(repo ? { repo } : {}),
@@ -391,6 +395,7 @@ function parseSpawnArgs(args: readonly string[]): SpawnOptions {
 		detached = false,
 		positional = false;
 	const task: string[] = [];
+	const extensions: string[] = [];
 	for (let index = 0; index < args.length; index += 1) {
 		const value = args[index];
 		if (!value) continue;
@@ -400,13 +405,29 @@ function parseSpawnArgs(args: readonly string[]): SpawnOptions {
 		else if (!positional && value === "--detached") detached = true;
 		else if (!positional && value.startsWith("--")) {
 			if (
-				!["--branch", "--repo", "--label", "--model", "--provider", "--thinking", "--timeout", "--task-file", "--prepare", "--role", "--engine", "--base", "--head"].includes(value)
+				![
+					"--branch",
+					"--repo",
+					"--label",
+					"--model",
+					"--provider",
+					"--thinking",
+					"--timeout",
+					"--task-file",
+					"--prepare",
+					"--role",
+					"--engine",
+					"--base",
+					"--head",
+					"--extension",
+				].includes(value)
 			)
 				throw new Error(`unknown spawn option ${value}`);
 			const optionValue = args[index + 1];
-			if (!optionValue) throw new Error(`${value} requires a value`);
+			if (!optionValue || (value === "--extension" && optionValue.startsWith("--"))) throw new Error(`${value} requires a value`);
 			index += 1;
-			if (value === "--branch") branch = once(branch, value, optionValue);
+			if (value === "--extension") extensions.push(optionValue);
+			else if (value === "--branch") branch = once(branch, value, optionValue);
 			else if (value === "--repo") repo = once(repo, value, optionValue);
 			else if (value === "--label") label = once(label, value, normalizeLabel(optionValue));
 			else if (value === "--base") base = once(base, value, optionValue);
@@ -432,7 +453,7 @@ function parseSpawnArgs(args: readonly string[]): SpawnOptions {
 		label = normalizeLabel(task.join(" "));
 	}
 	if (!taskFile && (task.length === 0 || !task.join(" ").trim())) throw new Error("spawn requires task text");
-	const out: SpawnOptions = { task: taskFile ? "" : task.join(" "), review, tab, detached, ...(role ? { role } : {}), ...(engine ? { engine } : {}) };
+	const out: SpawnOptions = { task: taskFile ? "" : task.join(" "), extensions, review, tab, detached, ...(role ? { role } : {}), ...(engine ? { engine } : {}) };
 	if (label) out.label = label;
 	if (taskFile) out.taskFile = taskFile;
 	if (prepare) out.prepare = prepare;
