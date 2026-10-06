@@ -159,3 +159,22 @@ wrong-on: 2026-10-04
 		],
 	);
 });
+
+test("two folders with one feature number keep the first work item and warn on the second", async (t) => {
+	const root = await fixture(t);
+	await addTicket(root, "active", "F778-finish-signal", "---\nopened: 2026-10-06\n---\n# F778 · Finish signal\n");
+	await addTicket(root, "active", "F778-job-done", "# F778 · Job done\n");
+	await addTicket(root, "done/2026-10", "F778-older", "# F778 · Older\n");
+	const { tickets, diagnostics } = await readTickets(root);
+	assert.deepEqual(
+		tickets.map((ticket) => ticket.path),
+		["spec/features/active/F778-finish-signal/ticket.md"],
+	);
+	assert.deepEqual(
+		diagnostics.filter((d) => d.code === "ticket.duplicate-id").map((d) => [d.level, d.source, d.message]),
+		[
+			["warn", "spec/features/active/F778-job-done/ticket.md", "F778 is also spec/features/active/F778-finish-signal/ticket.md; this ticket is left out"],
+			["warn", "spec/features/done/2026-10/F778-older/ticket.md", "F778 is also spec/features/active/F778-finish-signal/ticket.md; this ticket is left out"],
+		],
+	);
+});

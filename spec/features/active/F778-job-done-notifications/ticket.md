@@ -1,3 +1,10 @@
+---
+touches:
+  - limen.sessions.wake
+  - limen.integrations.herdr
+opened: 2026-10-05
+---
+
 # F778 · A finished job wakes the agent that must act next
 
 ## Outcome

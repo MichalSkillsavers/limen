@@ -43,6 +43,19 @@ export async function readTickets(root: string): Promise<{ tickets: TicketRecord
 				});
 				if (text === null) continue;
 				const ticket = parseTicket(text, path, lane, match[1]!, match[2]!, diagnostics);
+				// One feature number is one work item; a second folder with the same number stays out of the picture and warns.
+				const first = tickets.find((other) => other.id === ticket.id);
+				if (first) {
+					diagnostics.push({
+						level: "warn",
+						code: "ticket.duplicate-id",
+						message: `${ticket.code} is also ${first.path}; this ticket is left out`,
+						source: path,
+						id: ticket.id,
+						line: 1,
+					});
+					continue;
+				}
 				tickets.push(ticket);
 			}
 		}
