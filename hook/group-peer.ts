@@ -24,7 +24,7 @@ type PiApi = {
 	on(event: "message_end", handler: (event: { readonly message: Message }, context: Context) => Promise<void>): void;
 	sendMessage(
 		message: { customType: string; content: string; display: boolean; attribution: "agent" },
-		options: { deliverAs: "nextTurn"; triggerTurn: boolean },
+		options: { deliverAs: "followUp"; triggerTurn: boolean },
 	): void | Promise<void>;
 };
 
@@ -87,7 +87,8 @@ export default function groupPeer(pi: PiApi): void {
 				if (!batch) continue;
 				leased.set(batch.token, { identity, token: batch.token });
 				try {
-					await pi.sendMessage({ customType: "limen-group-progress", content: batch.text, display: true, attribution: "agent" }, { deliverAs: "nextTurn", triggerTurn: true });
+					// nextTurn parks idle Pi messages even with triggerTurn; followUp wakes idle leads without steering busy ones.
+					await pi.sendMessage({ customType: "limen-group-progress", content: batch.text, display: true, attribution: "agent" }, { deliverAs: "followUp", triggerTurn: true });
 					await acceptTransport(identity, batch.token);
 				} catch (error) {
 					await releaseBatch(identity, batch.token);
