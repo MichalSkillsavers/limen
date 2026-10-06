@@ -8,7 +8,7 @@ import { isTerminal } from "../job/job.ts";
 import { noteKind } from "../job/view.ts";
 import { limenRoot, unlandedBranches, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
-import { RECENT_MS, renderJobDirectory } from "./jobs.ts";
+import { RECENT_MS, renderJobDirectory, shownState } from "./jobs.ts";
 
 const text = (path: string) =>
 	readFile(path, "utf8").then(
@@ -49,7 +49,9 @@ export async function statusCommand(args: readonly string[], cwd: string): Promi
 	for (const id of ids) {
 		const dir = `${jobsRoot}/${id}`;
 		const [state = "", label = "", branch = "", repo = "", pane, tab, worktree, origin, started = "", ended = ""] = await Promise.all(
-			["state", "label", "branch", "repo", "herdr/agent", "herdr/tab", "worktree", "origin-tab", "started-at", "finished-at"].map((name) => text(`${dir}/${name}`)),
+			["state", "label", "branch", "repo", "herdr/agent", "herdr/tab", "worktree", "origin-tab", "started-at", "finished-at"].map((name) =>
+				name === "state" ? shownState(dir) : text(`${dir}/${name}`),
+			),
 		);
 		if (pane) workerPanes.add(pane);
 		if (tab) workerPanes.add(tab);

@@ -145,6 +145,13 @@ export function pruneWorktrees(cwd: string): void {
 export function headCommit(cwd: string): string {
 	return requireGit(cwd, ["rev-parse", "HEAD"]).stdout.trim();
 }
+/** A full commit SHA for `ref`: a full SHA as given, or a short SHA, branch, tag or other revision that Git resolves. */
+export function resolveCommit(cwd: string, ref: string, option: string): string {
+	if (/^[0-9a-f]{40}$/.test(ref)) return ref;
+	const result = ref.startsWith("-") ? undefined : git(cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+	if (!result || result.status !== 0) throw new Error(`${option} ${JSON.stringify(ref)} names no commit in ${cwd}`);
+	return result.stdout.trim();
+}
 export const NO_COMMIT = "this repository has no commit yet; commit once, then spawn.";
 export function hasCommit(cwd: string): boolean {
 	return git(cwd, ["rev-parse", "--verify", "HEAD"]).status === 0;
@@ -162,6 +169,33 @@ export function currentBranch(cwd: string): string {
 export function mergeBranch(cwd: string, branch: string): string {
 	requireGit(cwd, ["check-ref-format", "--branch", branch]);
 	return requireGit(cwd, ["merge", "--no-edit", branch]).stdout.trimEnd();
+}
+/** Abort a merge that stopped half way; with no merge in progress it does nothing. */
+export function abortMerge(cwd: string): void {
+	git(cwd, ["merge", "--abort"]);
+}
+/** Uncommitted paths, untracked files included; `staged` lists the paths whose change is already in the index. */
+export function dirtyPaths(cwd: string): { readonly paths: readonly string[]; readonly staged: readonly string[] } {
+	const fields = requireGit(cwd, ["--no-optional-locks", "status", "--porcelain", "-z", "--untracked-files=all"]).stdout.split("\0");
+	const paths: string[] = [];
+	const staged: string[] = [];
+	for (let index = 0; index < fields.length; index++) {
+		const field = fields[index] ?? "";
+		if (field.length < 4) continue;
+		paths.push(field.slice(3));
+		if (field[0] !== " " && field[0] !== "?") staged.push(field.slice(3));
+		// A rename or copy names its source path in the next field.
+		if ((field[0] === "R" || field[0] === "C") && fields[index + 1]) paths.push(fields[++index] ?? "");
+	}
+	return { paths, staged };
+}
+/** Paths that merging `branch` into HEAD changes: every path the branch changed since their merge base. */
+export function mergePaths(cwd: string, branch: string): ReadonlySet<string> {
+	return new Set(
+		requireGit(cwd, ["diff", "--name-only", "-z", "--no-renames", `HEAD...${branch}`])
+			.stdout.split("\0")
+			.filter(Boolean),
+	);
 }
 export function commitList(cwd: string, base: string, branch: string): string | undefined {
 	const result = git(cwd, ["log", "--oneline", `${base}..${branch}`]);
