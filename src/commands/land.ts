@@ -1,6 +1,12 @@
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { resolveJob } from "../job/lookup.ts";
+import { readPicture } from "../picture/picture-build.ts";
+import { checkTickets, readTickets } from "../picture/tickets.ts";
 import { cleanWorktree, commitList, currentBranch, limenRoot, mergeBranch, workspaceRepository } from "../project/git.ts";
 
 export async function landCommand(args: readonly string[], cwd: string): Promise<void> {
@@ -25,10 +31,70 @@ export async function landCommand(args: readonly string[], cwd: string): Promise
 	if (!cleanWorktree(repository)) throw new Error(`target ${target} is dirty`);
 	const commits = commitList(repository, base, branch);
 	if (!commits) throw new Error(`job ${id} has no commits to land`);
+	const gate = await landTicketCheck(repository, root, branch, "HEAD", id);
+	if (!gate.ok) throw new Error(`land refused: ${branch} has tickets that fail the strict check\n${gate.lines.join("\n")}`);
+	for (const line of gate.lines) console.log(line);
 	if (!parsed.yes && !(await confirm(`Land ${label || id} onto ${target}? [y/N] `))) throw new Error("land cancelled");
 	const output = mergeBranch(repository, branch);
 	if (output) console.log(output);
 	console.log(`landed ${id} onto ${target}`);
+}
+
+export const TICKET_PATH = /^spec\/features\/(?:[^/]+\/)*(F\d+)-[^/]+\/ticket\.md$/;
+
+/**
+ * The strict ticket check for tickets that `branch` adds, changes or moves against `target`, read at the branch tip.
+ * `lines` is print-ready: the no-map note, warnings, errors, then the keeper command when the check refuses.
+ */
+export async function landTicketCheck(
+	repository: string,
+	root: string,
+	branch: string,
+	target = "HEAD",
+	job = "<id>",
+): Promise<{ readonly ok: boolean; readonly tickets: readonly string[]; readonly lines: readonly string[] }> {
+	const changed = new Map<string, string>();
+	for (const row of gitText(repository, ["diff", "--name-status", "-M", `${target}...${branch}`]).split("\n")) {
+		const [status = "", ...paths] = row.split("\t");
+		const path = paths.at(-1) ?? "";
+		if (/^[AMR]/.test(status) && TICKET_PATH.test(path)) changed.set(path, status[0] ?? "");
+	}
+	const tickets = [...changed.keys()];
+	if (tickets.length === 0) return { ok: true, tickets, lines: [] };
+	const lines: string[] = [];
+	const map = `${root}/.limen/picture`;
+	let placeIds: ReadonlySet<string> | undefined;
+	if (existsSync(map)) {
+		const model = await readPicture(map);
+		placeIds = new Set([...model.nodes.filter((node) => node.kind === "module").map((node) => node.id), ...(model.project.rootId ? [model.project.rootId] : [])]);
+	} else lines.push(`land: no picture map at ${map}; touches place ids not checked`);
+	const tip = await mkdtemp(join(tmpdir(), "limen-land-"));
+	try {
+		const archive = execFileSync("git", ["archive", branch, "--", ":(glob)spec/features/**/ticket.md"], { cwd: repository, maxBuffer: 256 * 1024 * 1024 });
+		execFileSync("tar", ["-x", "-C", tip], { input: archive });
+		const read = await readTickets(tip);
+		const diagnostics = [...read.diagnostics, ...(placeIds ? checkTickets(read.tickets, placeIds) : [])].filter((d) => d.source !== null && changed.has(d.source));
+		const errors = diagnostics.filter((d) => d.level === "error").map((d) => `${d.source}:${d.line ?? 1}: ${d.message}`);
+		const all = gitText(repository, ["ls-tree", "-r", "--name-only", branch, "--", "spec/features"]).split("\n");
+		for (const [path, status] of changed) {
+			if (status !== "A") continue;
+			const code = TICKET_PATH.exec(path)?.[1];
+			const other = all.find((candidate) => candidate !== path && TICKET_PATH.exec(candidate)?.[1] === code);
+			if (other) errors.push(`${path}:1: ${code} is also used by ${other}; fix: move this ticket to a free F number (limen ticket new picks one)`);
+		}
+		for (const d of diagnostics) if (d.level === "warn") lines.push(`warn ${d.source}:${d.line ?? 1}: ${d.message}`);
+		lines.push(...errors);
+		if (errors.length === 0) return { ok: true, tickets, lines };
+		const bad = errors[0]?.slice(0, errors[0].indexOf(":")) ?? tickets[0];
+		lines.push(`fix: limen keeper ${bad} --job ${job} --engine <engine> --provider <provider> --model <model> --thinking <level>`);
+		return { ok: false, tickets, lines };
+	} finally {
+		await rm(tip, { recursive: true, force: true });
+	}
+}
+
+function gitText(cwd: string, args: readonly string[]): string {
+	return execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 }
 
 function parseLandArgs(args: readonly string[]): { readonly query: string; readonly yes: boolean; readonly onto?: string } {
