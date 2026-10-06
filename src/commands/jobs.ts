@@ -8,6 +8,8 @@ import { limenRoot, liveDiffstat, workspaceRepository } from "../project/git.ts"
 import { hostedUncertaintyText, readHostedUncertainty } from "../runtime/hosted-uncertainty.ts";
 import { confirmDeadJobs, ownerAlive } from "../runtime/reap.ts";
 
+export const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+
 export async function jobsCommand(args: readonly string[], cwd: string): Promise<void> {
 	const selection = select(args);
 	const tty = process.stdout.isTTY === true;
@@ -20,15 +22,15 @@ export async function jobsCommand(args: readonly string[], cwd: string): Promise
 		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return [];
 		throw error;
 	});
-	const ids = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-	if (ids.length === 0) {
-		console.log("no jobs");
-		return;
-	}
 	if (typeof selection === "object" && "detail" in selection) {
 		const { id } = await resolveJob(cwd, selection.detail);
 		const loaded = await renderJobDirectory(root, jobsRoot, id, true, human);
 		console.log(human ? humanDetail(loaded.record, paint) : loaded.compact);
+		return;
+	}
+	const ids = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+	if (ids.length === 0) {
+		console.log("no jobs");
 		return;
 	}
 	const order = await orderedJobs(ids, jobsRoot);
@@ -79,10 +81,20 @@ export async function jobsCommand(args: readonly string[], cwd: string): Promise
 	const terminal = order.filter(([, state]) => state !== "running");
 	const observed = await Promise.all(terminal.map(async (entry) => ({ entry, empty: !entry[1] || (await jobProducedNothing(`${jobsRoot}/${entry[0]}`)) })));
 	const empty = observed.filter(({ empty }) => empty).map(({ entry }) => entry);
-	const emptyRendered = await Promise.all(empty.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, false)).compact));
-	const summary = [...rendered, ...emptyRendered].join("\n") || "no running jobs";
+	const now = Date.now();
+	const recent = await Promise.all(empty.map(async ([id, state]) => !state || now - (await finishedAt(`${jobsRoot}/${id}`)) <= RECENT_MS));
+	const shown = empty.filter((_, index) => recent[index]);
+	const emptyRendered = await Promise.all(shown.map(async ([id]) => (await renderJobDirectory(root, jobsRoot, id, false)).compact));
+	const lines = [...rendered, ...emptyRendered];
+	if (!lines.length) lines.push("no running jobs");
 	const hiddenCount = terminal.length - empty.length;
-	console.log(hiddenCount ? `${summary}\n${hiddenCount} terminal ${hiddenCount === 1 ? "job" : "jobs"} hidden · use limen jobs --all or limen jobs <id> for detail` : summary);
+	if (hiddenCount) lines.push(`${hiddenCount} terminal ${hiddenCount === 1 ? "job" : "jobs"} hidden · use limen jobs --all or limen jobs <id> for detail`);
+	const olderCount = empty.length - shown.length;
+	if (olderCount) lines.push(`${olderCount} older empty ${olderCount === 1 ? "job" : "jobs"} hidden`);
+	console.log(lines.join("\n"));
+}
+async function finishedAt(jobDir: string): Promise<number> {
+	return Date.parse(await text(`${jobDir}/finished-at`)) || (await optionalStat(`${jobDir}/state`))?.mtimeMs || 0;
 }
 function select(args: readonly string[]) {
 	if (args[0] === "--label") {

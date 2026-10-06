@@ -6,7 +6,7 @@ import { type GroupIdentity, jobMembership } from "../job/group-cabinet.ts";
 import { noteKind } from "../job/view.ts";
 import { limenRoot, unlandedBranches, workspaceRepository, workspaceRoot } from "../project/git.ts";
 import { confirmDeadJobs } from "../runtime/reap.ts";
-import { renderJobDirectory } from "./jobs.ts";
+import { RECENT_MS, renderJobDirectory } from "./jobs.ts";
 
 const text = (path: string) =>
 	readFile(path, "utf8").then(
@@ -16,8 +16,6 @@ const text = (path: string) =>
 
 type Agent = { pane_id?: string; tab_id?: string; cwd?: string; agent_status?: string; interactive_ready?: boolean; name?: string };
 type Tab = { tab_id?: string; label?: string; number?: number; agent_status?: string };
-
-const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
 
 type Finished = { readonly id: string; readonly label: string; readonly state: string; readonly branch: string; readonly repo: string };
 

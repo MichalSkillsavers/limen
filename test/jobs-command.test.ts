@@ -404,3 +404,38 @@ test("failed human rows prefer stop-reason and ignore post-finish delivery logs"
 	assert.match(rows.stdout, /legacy.*worker crashed/);
 	assert.doesNotMatch(rows.stdout, /wake delivery failed|tab closed/);
 });
+
+test("jobs refuses an unknown id in an empty plant and hides old empty jobs", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	limen(scratch, "init");
+	const missing = limen(scratch, "jobs", "nope");
+	assert.equal(missing.status, 1);
+	assert.match(missing.stderr, /no job matches "nope"/);
+	const day = 24 * 60 * 60 * 1000;
+	for (const [id, ageDays] of [
+		["fresh-empty", 1],
+		["old-empty", 9],
+	] as const) {
+		const dir = join(scratch.root, ".limen/jobs", id);
+		await mkdir(dir, { recursive: true });
+		const at = new Date(Date.now() - ageDays * day).toISOString();
+		for (const [name, value] of Object.entries({
+			"task.md": "x",
+			state: "done",
+			label: id,
+			branch: "main",
+			"started-at": at,
+			"finished-at": at,
+			"tool-calls": "0",
+			commits: "",
+			log: "",
+		}))
+			await writeFile(join(dir, name), `${value}\n`);
+	}
+	const snapshot = limen(scratch, "jobs");
+	assert.equal(snapshot.status, 0, snapshot.stderr);
+	assert.match(snapshot.stdout, /fresh-empty/);
+	assert.doesNotMatch(snapshot.stdout, /old-empty/);
+	assert.match(snapshot.stdout, /1 older empty job hidden/);
+});
