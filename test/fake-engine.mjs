@@ -60,11 +60,11 @@ const context = {
 	},
 };
 // A steer joins the running turn. Other messages queue; every message queued before a turn starts enters that turn,
-// and the turn gets one assistant reply, as Pi does with followUpMode "all".
+// and the turn gets one assistant reply, as Pi does with followUpMode "all". A hook's sendMessage enters as role custom.
 const deliver = (kind, text, as) => {
 	record({ event: as ?? kind, text });
 	if (as === "steer") return;
-	queued.push(text);
+	queued.push({ role: kind === "message" ? "custom" : "user", content: [{ type: "text", text }] });
 	if (queued.length === 1) turns = turns.then(() => turn(queued.splice(0), "ok"));
 };
 const api = {
@@ -74,14 +74,15 @@ const api = {
 	sendUserMessage: (text, options) => deliver("user", text, options?.deliverAs),
 	sendMessage: (message, options) => deliver("message", message.content, options?.deliverAs),
 };
-async function turn(texts, reply, stopReason) {
+async function turn(messages, reply, stopReason) {
 	idle = false;
-	for (const text of texts) {
-		const user = { role: "user", content: [{ type: "text", text }] };
-		await fire("message_start", { message: user });
-		await fire("message_end", { message: user });
+	for (const message of messages) {
+		await fire("message_start", { message });
+		await fire("message_end", { message });
 	}
 	await fire("turn_start", {});
+	// Pi hands the hooks the turn's messages in a context event before each model call.
+	await fire("context", { messages });
 	const assistant = { role: "assistant", content: [{ type: "text", text: reply }], ...(stopReason ? { stopReason } : {}) };
 	emit({ type: "message_end", message: assistant });
 	await fire("message_end", { message: assistant });
@@ -131,7 +132,7 @@ for (const line of task.split("\n")) {
 	} else if (word === "finish") await tools.get("finish")?.execute("fake", { handoff: value }, undefined, undefined, context);
 	else if (word.startsWith("/")) await commands.get(word.slice(1))?.handler(value, context);
 }
-turns = turns.then(() => turn([task], reply, stopReason));
+turns = turns.then(() => turn([{ role: "user", content: [{ type: "text", text: task }] }], reply, stopReason));
 await turns;
 await fire("session_shutdown", {});
 record({ event: "exit", code, shutdown });
