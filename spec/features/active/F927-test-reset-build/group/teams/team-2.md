@@ -21,3 +21,10 @@ Deletes when S1 lands: `test/workspace-command.test.ts`, `test/git-status.test.t
 ## Order
 
 S2 first: `hosted-spawn` is the second slowest old file. Hosted is the default spawn path whenever Herdr runs.
+
+## Resume (second run)
+
+- On `main`: S1 and U10 (`0d81868`). `workspace-command` and `git-status` are deleted.
+- Saved: `limen/2026-10-06-f927-team-2-s2-hosted-a53024f8` at `b6bc6f7` (S2, 208 lines, deletes `hosted-hook`) and `2fa9da6` (wip, not verified). `2fa9da6` also reverts the `88fd5ac` fix in `src/integrations/herdr.ts`: that is the replay break; do not carry it.
+- Left: finish S2 with the `88fd5ac` replay. Fold in the hosted Pi flag check PR 7 added (4 lines in `hosted-spawn`).
+- Shared deletions you make as second lander: `hosted-spawn` once team 5's U7 is on `main`, `recovery` once team 1's S9 is on `main`, `coordinator-wake` once team 3's S3 is on `main`.

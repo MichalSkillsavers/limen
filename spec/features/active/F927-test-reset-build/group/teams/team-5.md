@@ -29,3 +29,9 @@ Delete every file F925 marks **delete**: `jobs-command`, `picture-viewer`, `host
 `inherit.test.ts` is the only place that regenerates and checks `templates/.history/` (`LIMEN_WRITE_HISTORY=1`). Before you delete it, ask the lead where that check goes; do not drop it silently.
 
 Last, once no old file remains: delete `test/scratch.ts`, remove the old-suite marker rule from `test/structure.test.ts` so the cap covers all of `test/`, and switch `npm test` in `package.json` to `--test-concurrency=4` if the scenarios share no state. Publish the real wall time of one full `npm test`.
+
+## Resume (second run)
+
+- Saved: units on `limen/2026-10-06-f927-team-5-coordinator-6a91ae96` at `9cb4b6f` (U1 to U7 and U9, 468 lines, not verified; no old file deleted yet). S10 on `limen/2026-10-06-f927-team-5-s10-doorbell-153c660c` at `2baf356` (199 lines, deletes the three doorbell files; not verified). The deliberate break in `src/integrations/github-poller.ts` was reverted; check that your S10 diff touches no `src/` file.
+- Left: verify and hand on each unit with its old file deletion, S10, the U8 history check (then delete `inherit`), and the final sweep. `open-command` may go now: S1 and U10 are on `main`.
+- `hosted-spawn` and `wake-hook` are deleted by whichever of you and team 2 (U7, S2) or team 3 (U4, S3) lands second.

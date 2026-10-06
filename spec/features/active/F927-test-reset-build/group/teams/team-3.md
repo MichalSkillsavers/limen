@@ -19,3 +19,10 @@ Deletes when S4 lands: `test/steer-command.test.ts`, `test/steering-hook.test.ts
 ## Order
 
 S4 first only if S3's replay blocks; otherwise S3 first, because it carries the F042 replay.
+
+## Resume (second run)
+
+- Saved: S4 on `limen/2026-10-06-f927-team-3-coordinator-f814daf2` at `e4d5e4d` (`test/s4-steering.test.ts`, 128 lines; its fixture part is on `main`). S3 on `limen/2026-10-06-f927-team-3-s3-finish-and-wake-b1a3e152` at `b6c4166` (`test/s3-finish-wake.test.ts`, 133 lines). Both not verified.
+- Left: finish S3 with the F042 batched replay (the split with team 5's U4 stands), and S4.
+- S4 folds in the continue checks PR 7 added (a continuation inherits or replaces local extensions) and deletes `worker-extensions`: S1 is on `main`, so S4 lands second.
+- Shared deletions you make as second lander: `wake-hook` once team 5's U4 is on `main`, `stop-command` once team 1's S9 is on `main`, `coordinator-wake` once team 2's S2 is on `main`.
