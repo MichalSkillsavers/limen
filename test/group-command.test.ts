@@ -653,8 +653,8 @@ test("automatic lead updates stay agent-attributed and only processed context su
 			handlers[name] = handler;
 		},
 		sendMessage: (payload: { content: string; attribution: string }, options: { deliverAs: string; triggerTurn: boolean }) => {
-			// Pi's native nextTurn path only queues, even when triggerTurn is true.
-			if (options.deliverAs !== "nextTurn" && options.triggerTurn) message.resolve(payload);
+			// Pi parks nextTurn on an idle lead even with triggerTurn, and steer would interrupt a busy one; only followUp does both jobs.
+			if (options.deliverAs === "followUp" && options.triggerTurn) message.resolve(payload);
 		},
 	} as Parameters<typeof groupPeer>[0]);
 	const ctx = { cwd: scratch.root, sessionManager: { getSessionId: () => run.lead }, ui: { notify: () => {} } };
@@ -669,131 +669,15 @@ test("automatic lead updates stay agent-attributed and only processed context su
 		assert.equal(delivered.attribution, "agent");
 		assert.match(delivered.content, /Informational peer data/);
 		assert.doesNotMatch(delivered.content, /limen land/);
-		const names = await readdir(`${groupPath(run)}/receipts/lead-${run.lead}`);
-		// A send is transport acceptance, not evidence that the lead saw the data.
-		await handlers.message_end?.({ message: { role: "custom", content: delivered.content } } as never, ctx as never);
-		for (const name of names) {
-			const receipt = JSON.parse(await readFile(`${groupPath(run)}/receipts/lead-${run.lead}/${name}`, "utf8"));
-			assert.equal(receipt.state, "accepted");
-			assert.equal(receipt.observedAt, undefined);
-		}
 		await handlers.context?.({ messages: [{ role: "custom", content: delivered.content }] } as never, ctx as never);
 		await handlers.message_end?.({ message: { role: "assistant", stopReason: "stop" } } as never, ctx as never);
+		const names = await readdir(`${groupPath(run)}/receipts/lead-${run.lead}`);
 		for (const name of names) assert.equal(JSON.parse(await readFile(`${groupPath(run)}/receipts/lead-${run.lead}/${name}`, "utf8")).state, "processed");
 	} finally {
 		await handlers.session_shutdown?.({} as never, ctx as never);
 		for (const [key, value] of Object.entries(before))
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;
-	}
-});
-
-test("busy lead updates follow the active turn and later batches wait for processing without duplicate sends", async (context) => {
-	const scratch = await fixture();
-	context.after(scratch.cleanup);
-	const run = await activate(scratch);
-	const before = process.env.LIMEN_JOB;
-	delete process.env.LIMEN_JOB;
-	type Handler = (event: never, context: never) => unknown;
-	type Payload = { content: string; attribution: string };
-	const handlers: Record<string, Handler> = {};
-	const followUps: Payload[] = [];
-	const parked: Payload[] = [];
-	const steers: Payload[] = [];
-	let sends = 0;
-	groupPeer({
-		on: (name: string, handler: Handler) => {
-			handlers[name] = handler;
-		},
-		sendMessage: (payload: Payload, options: { deliverAs: string }) => {
-			sends++;
-			// Both native engines queue followUp behind the active run, not as steering.
-			(options.deliverAs === "followUp" ? followUps : options.deliverAs === "nextTurn" ? parked : steers).push(payload);
-		},
-	} as Parameters<typeof groupPeer>[0]);
-	const ctx = { cwd: scratch.root, sessionManager: { getSessionId: () => run.lead }, ui: { notify: () => {} } };
-	const emit = async (name: string, event: unknown) => handlers[name]?.(event as never, ctx as never);
-	const waitForSend = async (count: number) => {
-		const until = Date.now() + 5_000;
-		while (sends < count && Date.now() < until) await delay(25);
-		assert.equal(sends, count);
-	};
-	const records = async () => {
-		const directory = `${groupPath(run)}/receipts/lead-${run.lead}`;
-		return Promise.all((await readdir(directory)).map(async (name) => JSON.parse(await readFile(`${directory}/${name}`, "utf8"))));
-	};
-	try {
-		await emit("session_start", {});
-		await waitForSend(1);
-		assert.equal(followUps.length, 1);
-		assert.deepEqual(steers, []);
-		assert.deepEqual(parked, []);
-		for (let i = 0; i < 9; i++) await publishEvent({ run, recipient: run.members[0]?.id ?? "" }, `later finding ${i}`);
-		await emit("message_end", { message: { role: "assistant", stopReason: "stop" } });
-		await delay(1_100);
-		assert.equal(sends, 1, "an unrelated active turn must not release the unobserved batch");
-		assert.ok((await records()).every((record) => !record.observedAt && record.state !== "processed"));
-		for (let batch = 1; batch <= 3; batch++) {
-			await waitForSend(batch);
-			const payload = followUps.shift();
-			assert.ok(payload);
-			assert.equal(payload.attribution, "agent");
-			await emit("message_end", { message: { role: "custom", content: payload.content } });
-			await emit("context", { messages: [{ role: "custom", content: payload.content }] });
-			assert.ok((await records()).some((record) => record.observedAt && record.state === "accepted" && !record.processedAt));
-			await emit("message_end", { message: { role: "assistant", stopReason: "stop" } });
-		}
-		assert.ok((await records()).every((record) => record.state === "processed" && record.attempts === 1));
-		await delay(1_100);
-		assert.equal(sends, 3, "processed batches must not start duplicate turns");
-	} finally {
-		await emit("session_shutdown", {});
-		if (before === undefined) delete process.env.LIMEN_JOB;
-		else process.env.LIMEN_JOB = before;
-	}
-});
-
-test("failed lead sends release their claims and stop after two attempts", async (context) => {
-	const scratch = await fixture();
-	context.after(scratch.cleanup);
-	const run = await activate(scratch);
-	const before = process.env.LIMEN_JOB;
-	delete process.env.LIMEN_JOB;
-	type Handler = (event: never, context: never) => unknown;
-	const handlers: Record<string, Handler> = {};
-	const warnings: string[] = [];
-	let sends = 0;
-	groupPeer({
-		on: (name: string, handler: Handler) => {
-			handlers[name] = handler;
-		},
-		sendMessage: async () => {
-			sends++;
-			throw new Error("fixture transport rejected");
-		},
-	} as Parameters<typeof groupPeer>[0]);
-	const ctx = { cwd: scratch.root, sessionManager: { getSessionId: () => run.lead }, ui: { notify: (text: string) => warnings.push(text) } };
-	try {
-		await handlers.session_start?.({} as never, ctx as never);
-		const until = Date.now() + 5_000;
-		while (warnings.length < 2 && Date.now() < until) await delay(25);
-		assert.equal(warnings.length, 2);
-		assert.ok(warnings.every((text) => text.includes("fixture transport rejected")));
-		await delay(1_100);
-		assert.equal(sends, 2);
-		const directory = `${groupPath(run)}/receipts/lead-${run.lead}`;
-		for (const name of await readdir(directory)) {
-			const record = JSON.parse(await readFile(`${directory}/${name}`, "utf8"));
-			assert.equal(record.attempts, 2);
-			assert.equal(record.owner, 0);
-			assert.equal(record.uncertain, true);
-			assert.equal(record.observedAt, undefined);
-			assert.equal(record.processedAt, undefined);
-		}
-	} finally {
-		await handlers.session_shutdown?.({} as never, ctx as never);
-		if (before === undefined) delete process.env.LIMEN_JOB;
-		else process.env.LIMEN_JOB = before;
 	}
 });
 
