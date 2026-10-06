@@ -151,15 +151,21 @@ export function jobFile(plant: Plant, id: string, name: string): string {
 	return existsSync(path) ? readFileSync(path, "utf8").trim() : "";
 }
 
-/** Resolves once `check()` holds, re-checked on every file event below `dir`; bounded only by the test timeout. */
+/**
+ * Resolves once `check()` holds, re-checked on every file event below `dir`; bounded only by the test timeout.
+ * macOS starts a directory watch asynchronously, so a file made just after `watch()` can raise no event; the
+ * one-second re-check closes that gap, as `limen wait` does. Nothing here waits for time to pass.
+ */
 export function until(dir: string, check: () => boolean): Promise<void> {
 	const { promise, resolve } = Promise.withResolvers<void>();
 	const settle = () => {
 		if (!check()) return;
 		watcher.close();
+		clearInterval(fallback);
 		resolve();
 	};
 	const watcher = watch(dir, { recursive: true }, settle);
+	const fallback = setInterval(settle, 1_000);
 	settle();
 	return promise;
 }
