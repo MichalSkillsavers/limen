@@ -2,6 +2,7 @@
 // The one fake pi/omp. It loads the real hook extensions Limen passes, runs the task text as a script, and records
 // what it saw in the record dir (the parent of --session-dir, so a job's own dir). Script lines:
 //   commit · fail <code> · error (assistant stop reason "error") · say <text> · tool <command> · block · orphan · finish <handoff>
+//   · /<command> <args> (runs a command a hook registered, as a user typing it)
 // `block` writes fake-blocked-<n> and waits for one write to the FIFO fake-gate. Records: fake-argv.json, fake-env.json
 // (variable names), fake-task.txt, fake-system.txt (system prompt after before_agent_start), fake-events.jsonl.
 import { execFileSync, spawn } from "node:child_process";
@@ -32,6 +33,8 @@ const emit = (event) => console.log(JSON.stringify(event));
 
 const handlers = new Map();
 const tools = new Map();
+const commands = new Map();
+const queued = [];
 let idle = true;
 let turns = Promise.resolve();
 let shutdown = false;
@@ -51,23 +54,28 @@ const context = {
 		shutdown = true;
 	},
 };
-// A steer joins the running turn. Any other message starts one more turn, as a real session does.
+// A steer joins the running turn. Other messages queue; every message queued before a turn starts enters that turn,
+// and the turn gets one assistant reply, as Pi does with followUpMode "all".
 const deliver = (kind, text, as) => {
 	record({ event: as ?? kind, text });
-	if (as !== "steer") turns = turns.then(() => turn(text, "ok"));
+	if (as === "steer") return;
+	queued.push(text);
+	if (queued.length === 1) turns = turns.then(() => turn(queued.splice(0), "ok"));
 };
 const api = {
 	on: (event, handler) => handlers.set(event, [...(handlers.get(event) ?? []), handler]),
 	registerTool: (tool) => tools.set(tool.name, tool),
-	registerCommand: () => {},
+	registerCommand: (name, command) => commands.set(name, command),
 	sendUserMessage: (text, options) => deliver("user", text, options?.deliverAs),
 	sendMessage: (message, options) => deliver("message", message.content, options?.deliverAs),
 };
-async function turn(text, reply, stopReason) {
+async function turn(texts, reply, stopReason) {
 	idle = false;
-	const user = { role: "user", content: [{ type: "text", text }] };
-	await fire("message_start", { message: user });
-	await fire("message_end", { message: user });
+	for (const text of texts) {
+		const user = { role: "user", content: [{ type: "text", text }] };
+		await fire("message_start", { message: user });
+		await fire("message_end", { message: user });
+	}
 	await fire("turn_start", {});
 	const assistant = { role: "assistant", content: [{ type: "text", text: reply }], ...(stopReason ? { stopReason } : {}) };
 	emit({ type: "message_end", message: assistant });
@@ -115,8 +123,9 @@ for (const line of task.split("\n")) {
 		child.unref();
 		writeFileSync(join(dir, "fake-orphan"), String(child.pid));
 	} else if (word === "finish") await tools.get("finish")?.execute("fake", { handoff: value }, undefined, undefined, context);
+	else if (word.startsWith("/")) await commands.get(word.slice(1))?.handler(value, context);
 }
-turns = turns.then(() => turn(task, reply, stopReason));
+turns = turns.then(() => turn([task], reply, stopReason));
 await turns;
 await fire("session_shutdown", {});
 record({ event: "exit", code, shutdown });
