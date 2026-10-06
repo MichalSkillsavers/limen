@@ -4,6 +4,17 @@
 
 Carry out the test-reset verdict Adam approved on 2026-10-06 (F925): a staged replace, written from scratch. Each team writes its seam scenarios on the shared throwaway plant, proves the incident guards it owns, deletes the old files its scenarios replace, and hands the lead one checked candidate per scenario. The lead lands each candidate on `main` right away. End state: about 3,350 lines in `test/` in about 20 files, a full run of about 4 minutes.
 
+## Second run: read this first
+
+The first run (group `ec30a9bd`) failed at 13:49 on an Anthropic 429 limit. This is a new run of the same packet. The plan, the rules and the budgets below are unchanged.
+
+- **Engine and model for every launch:** `--engine omp --provider pi-claude --model pi-claude/claude-opus-5-5`, worker reasoning `--thinking high`. Never use `--provider anthropic`.
+- **Already on `main`:** stage 0 (cap, fixture), S1 and U10 (team 2), S6 (team 4), and four fixture changes: queued messages enter one turn (Pi followUpMode all), `/<command> <args>` script lines, a plant map that passes the strict picture build, and `fake-context.txt` plus one transcript line per run in `--session-dir`. Rebase onto `main` before you start.
+- **Saved work:** your team note names the branches and commits that hold your team's unlanded work from the first run (`wip: save unlanded F927 work …`, not verified). Start from it: bring the test files into your worktree with `git checkout <commit> -- <file>` or a cherry-pick. Do not start over. Verify it before you hand it on.
+- **Deliberate breaks:** two saved commits change product code to prove a test goes red: `src/integrations/herdr.ts` on team 2's S2 branch (reverts 88fd5ac) and `src/commands/continue.ts` on team 4's S7 branch. Never carry them. Run replays in a scratch tree only, never in a commit. The lead refuses any candidate that changes `src/`, `hook/` or `bin/`.
+- **New-suite command:** `node --test test/structure.test.ts test/s[0-9]*.test.ts test/u[0-9]*.test.ts` (the `s*` glob also matches old files).
+- **One worker per team.** As in the first run, the coordinator writes one part itself and its worker the other.
+
 ## Read first
 
 - `spec/features/active/F925-test-reset-decision/group/synthesis.md`: the plan, the seams, the ten scenarios and what each must catch, the five incident families, the accepted risks.
