@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { jobMembership, leadHookLive } from "../job/group-cabinet.ts";
 import { isTerminal } from "../job/job.ts";
 import { appendLimenLog, atomicWrite, textFile } from "../job/record.ts";
-import { completionWake, groupLeadWake } from "../job/wake-text.ts";
+import { completionWake, groupLeadWake, keeperHint } from "../job/wake-text.ts";
 import { herdrBinary } from "./herdr.ts";
 
 const PROMPT_MS = 15_000;
@@ -60,7 +60,8 @@ async function wakeMessage(jobDir: string, pane: string): Promise<string | undef
 	const id = jobDir.split("/").at(-1) ?? "";
 	const membership = await jobMembership(jobDir);
 	if (!membership) {
-		const instruction = `Start with \`limen jobs ${id}\`. Inspect its diff, commits, final message, and checks before landing. If a check blocks landing, name that check and resume a focused fix. Keep the user informed; ask only when a genuine product decision needs them.`;
+		const keeper = state === "done" ? ` ${keeperHint(jobDir, id)}` : "";
+		const instruction = `Start with \`limen jobs ${id}\`. Inspect its diff, commits, final message, and checks before landing. If a check blocks landing, name that check and resume a focused fix.${keeper} Keep the user informed; ask only when a genuine product decision needs them.`;
 		return completionWake(jobDir, label || id, state, id, branch, repo, false, instruction);
 	}
 	const { run, member } = membership;
