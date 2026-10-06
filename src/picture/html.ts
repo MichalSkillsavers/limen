@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { escapeHtml } from "./markdown.ts";
 import type { PictureModel } from "./picture-model.ts";
 
 export type Viewer = { readonly template: string; readonly css: string; readonly js: string };
@@ -32,7 +33,7 @@ export function embedJson(model: PictureModel): string {
 
 export function assembleHtml(model: PictureModel, viewer: Viewer, tip?: string): string {
 	validateTemplate(viewer.template);
-	const tipAttribute = tip === undefined ? "" : ` data-tip="${tip.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}"`;
+	const tipAttribute = tip === undefined ? "" : ` data-tip="${escapeHtml(tip)}"`;
 	const parts: Record<string, string> = {
 		[MARKERS.css]: `<style>\n${viewer.css.replace(/<\/style/gi, "<\\/style")}\n</style>`,
 		[MARKERS.data]: `<script type="application/json" id="archmap-data"${tipAttribute}>${embedJson(model)}</script>`,

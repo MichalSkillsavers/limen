@@ -34,7 +34,7 @@ interface RecordNode {
 	children: string[];
 	depth: number;
 }
-export interface PictureNode {
+interface PictureNode {
 	id: string;
 	title: string;
 	kind: string;
@@ -48,7 +48,7 @@ export interface PictureNode {
 	depth: number;
 	meta: Record<string, unknown>;
 }
-export interface PictureEdge {
+interface PictureEdge {
 	id: string;
 	from: string;
 	to: string;
@@ -61,7 +61,7 @@ export interface PictureEdge {
 	source: string;
 	meta: Record<string, unknown>;
 }
-export interface PictureFeature {
+interface PictureFeature {
 	id: string;
 	title: string;
 	kind: "feature";
@@ -73,7 +73,7 @@ export interface PictureFeature {
 	meta: Record<string, unknown>;
 	touches: string[];
 }
-export interface PictureJourney {
+interface PictureJourney {
 	id: string;
 	title: string;
 	kind: "journey";
@@ -116,12 +116,12 @@ import { basename } from "node:path";
 import { parseFrontmatter } from "./frontmatter.ts";
 import { inlineText, proseBlocks, renderMarkdown } from "./markdown.ts";
 
-export const INPUT_SCHEMA = "architecture-map/1";
-export const MODEL_SCHEMA = "architecture-map-model/2";
-export const KINDS = ["plant", "module", "edge", "feature", "journey"];
-export const RELATIONS = ["depends-on", "hosts", "calls", "implements", "generates", "reads", "writes", "composes"];
-export const STATUSES = ["ready", "partial", "stub"];
-export const ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)*$/;
+const INPUT_SCHEMA = "architecture-map/1";
+const MODEL_SCHEMA = "architecture-map-model/2";
+const KINDS = ["plant", "module", "edge", "feature", "journey"];
+const RELATIONS = ["depends-on", "hosts", "calls", "implements", "generates", "reads", "writes", "composes"];
+const STATUSES = ["ready", "partial", "stub"];
+const ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)*$/;
 
 const COMMON_KEYS: Record<string, true> = { schema: true, kind: true, id: true, project: true, title: true, status: true, sources: true };
 const NODE_KEYS: Record<string, true> = { ...COMMON_KEYS, parent: true, revision: true };
@@ -395,7 +395,7 @@ function readRecord(file: PictureFile, diag: Report, byId: Map<string, RecordNod
 }
 
 /** Strips a trailing `owner: <x>` line (alone on its line) from the body. */
-export function splitOwner(markdown: string): { markdown: string; owner: string | null } {
+function splitOwner(markdown: string): { markdown: string; owner: string | null } {
 	const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
 	let last = lines.length - 1;
 	while (last >= 0 && lines[last]!.trim() === "") last--;
@@ -405,7 +405,7 @@ export function splitOwner(markdown: string): { markdown: string; owner: string 
 }
 
 /** First sentence of the first paragraph or list item, as plain text, at most SUMMARY_MAX chars. */
-export function firstSentence(markdown: string): string {
+function firstSentence(markdown: string): string {
 	const block = proseBlocks(markdown)[0];
 	if (!block) return "";
 	const plain = inlineText(block.text).replace(/\s+/g, " ").trim();
