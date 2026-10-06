@@ -1,3 +1,9 @@
+---
+touches:
+  - limen.picture.viewer
+opened: 2026-10-05
+---
+
 # F763 · Picture logs that a person can skim and an agent can read cheaply
 
 ## Outcome

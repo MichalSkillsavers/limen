@@ -1,3 +1,9 @@
+---
+touches:
+  - limen.picture.viewer
+opened: 2026-10-05
+---
+
 # F765 · The picture has one visual language that is minimal and appealing
 
 ## Outcome

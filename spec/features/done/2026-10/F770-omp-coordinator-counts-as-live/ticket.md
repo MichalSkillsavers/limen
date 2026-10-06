@@ -1,3 +1,11 @@
+---
+touches:
+  - limen.commands
+  - limen.integrations.herdr
+opened: 2026-10-05
+landed: 2026-10-05
+---
+
 # F770 · A warm OMP coordinator counts as live for the GitHub doorbell
 
 ## Outcome

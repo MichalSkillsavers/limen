@@ -12,13 +12,21 @@ The architecture map is a local file. `limen picture build` makes it from a Mark
 
 ## What the map shows
 
-The map shows places and the edges between them. **Explore** lists Features, Journeys, and Places beside the map. Search finds them by name, id, summary, or cited source path.
+The picture shows the plant atlas beside a quiet column of work and dated decisions. Select a place to read its sources, connections, and the features and journeys that name it.
 
-Select a feature or journey to reveal the places it names in `touches` or `steps`, including places inside different modules. Only those places light; nested places keep their parent captions. During a drill-down, collapsed containers show where listed places sit without lighting as touches. Open a place to read its sources, connections, and the features and journeys that name it.
+Select a feature or journey to reveal its `touches` or `steps`, including places inside different modules. Only named places light; nested places keep their parent captions.
 
-Follow a journey with Previous step and Next step, including repeated visits and steps at the whole project. The URL preserves the selected feature or journey, place, and step, so reload and browser Back keep the context. The map never uses Git history to find places.
+Follow a journey through its ordered steps, including repeated visits and stops at the whole project. The URL preserves a selected place, work item, or day on reload. The map never uses Git history to guess places.
 
-**The list is not a live feature list.** It shows where a feature touches the code. It does not show if a feature is planned, active, or done, because the board (`spec/build.md`) owns feature state.
+Pins, places, modules, work, journeys, and days open larger as layers over the page. An item opened inside a layer stacks one more layer. The trail above the layers names each one and jumps to any of them. Esc and browser Back close the top layer; the Left and Right arrow keys move the top layer to the previous or next item of the same kind. The URL holds the whole stack, so a reload or a shared link opens the same layers.
+
+**Map features are not the live work list.** They show where specified features cross the code, not their state. The board (`spec/build.md`) owns feature state. The live picture also reads tickets and the board to show current work.
+
+Ticket dates show when work opened or landed; a dated **Needs Adam** request or **Wrong** problem appears as a pin. Ticket `touches` link the work to exact map places; a place with no evidence stays unlinked.
+
+Put `---` front matter before a ticket's title. Use `opened: YYYY-MM-DD`; use a `touches:` block list of known plant or module ids when evidence supports it. A one-line `needs-adam` request needs `needs-adam-on: YYYY-MM-DD`; a one-line `wrong` problem needs `wrong-on: YYYY-MM-DD`. Set `landed: YYYY-MM-DD` on done work when its landing date is known. The [picture contract](../templates/picture/CONTRACT.md#ticket-front-matter) lists the fields. Build reports bad ids, dates, or unpaired requests with a ticket path and line. `--strict` fails on those errors; an active ticket without known touches gets a warning, not an invented link.
+
+Remove a Needs Adam request and its date after Adam answers. Remove a Wrong problem and its date after the fix. The pin then leaves the page.
 
 ## Refresh the map
 

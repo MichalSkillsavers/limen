@@ -1,0 +1,307 @@
+/* Stacked layers over the picture page. Only tokens from viewer.css :root; spacing on the --sp scale. */
+.layers-root {
+	--layer-w: min(760px, calc(100vw - 2 * var(--gap)));
+	--trail-h: 32px;
+	--scrim: rgb(28 30 34 / 0.24);
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+}
+/* Two columns: the sheet covers only the reading column, so the atlas it lights stays in view. */
+@media (min-width: 1241px) {
+	.layers-root {
+		--layer-w: 470px;
+		--scrim: rgb(28 30 34 / 0.08);
+	}
+}
+.layers-root[hidden] {
+	display: none;
+}
+html.layers-open {
+	overflow: hidden;
+}
+html.layers-open body {
+	padding-right: var(--layers-bar, 0px);
+}
+.layers-scrim {
+	position: absolute;
+	inset: 0;
+	background: var(--scrim);
+	animation: layers-fade 0.16s ease-out;
+}
+/* Announces a context switch to screen readers; not drawn. */
+.layers-live {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* Stack trail: one button per lower depth, the top layer named last. It joins the top sheet and scrolls sideways when deep. */
+.layers-trail {
+	position: absolute;
+	top: var(--sp-3);
+	right: calc(var(--gap) + var(--layers-bar, 0px));
+	width: var(--layer-w);
+	height: var(--trail-h);
+	display: flex;
+	align-items: center;
+	gap: var(--sp-2);
+	padding: 0 var(--sp-4);
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-bottom-color: var(--line2);
+	border-radius: var(--r-3) var(--r-3) 0 0;
+	font-size: 13px;
+	white-space: nowrap;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+}
+.layers-trail button,
+.layers-trail [aria-current] {
+	flex: none;
+	font: inherit;
+	color: var(--ink);
+}
+.layers-trail button {
+	padding: 0;
+	border: 0;
+	background: none;
+	text-decoration: underline;
+	text-decoration-color: var(--line);
+	text-underline-offset: 3px;
+	cursor: pointer;
+}
+.layers-trail button:hover {
+	text-decoration-color: var(--ink);
+}
+.layers-trail [aria-current] {
+	font-weight: 650;
+}
+.layers-sep {
+	color: var(--faint);
+}
+.layers-trail-hint {
+	flex: none;
+	margin-left: auto;
+	padding-left: var(--sp-3);
+	font-size: 12px;
+	color: var(--mute);
+}
+
+/* Sheets: the top layer sits under the trail; each lower layer peeks out 8px on the left, inside the column gap. */
+.layers-stack {
+	position: absolute;
+	top: calc(var(--sp-3) + var(--trail-h));
+	right: calc(var(--gap) + var(--layers-bar, 0px));
+	bottom: 0;
+	width: var(--layer-w);
+}
+.layer {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-top: 0;
+	border-bottom: 0;
+	border-radius: 0;
+	box-shadow: 0 12px 32px rgb(28 30 34 / 0.16);
+	overflow: hidden;
+	transform: translateX(calc(var(--below, 0) * -1 * var(--sp-2)));
+	transition: transform 0.16s ease-out;
+}
+.layer[inert] {
+	background: var(--sheet);
+}
+.layer[inert] > * {
+	visibility: hidden;
+}
+.layer.entering {
+	animation: layer-in 0.16s ease-out;
+}
+@keyframes layer-in {
+	from {
+		opacity: 0;
+		transform: translateX(var(--sp-3));
+	}
+}
+@keyframes layers-fade {
+	from {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.layer,
+	.layer.entering,
+	.layers-scrim {
+		animation: none;
+		transition: none;
+	}
+}
+
+.layer-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--sp-4);
+	padding: var(--sp-4) var(--sp-6);
+	border-bottom: 1px solid var(--line2);
+}
+.layer-titles {
+	flex: 1 1 260px;
+	min-width: 0;
+}
+.layer-eyebrow {
+	margin: 0;
+	font-size: 11.5px;
+	font-weight: 650;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--mute);
+}
+.layer-head h2 {
+	margin: var(--sp-1) 0 0;
+	font-size: 20px;
+	line-height: 1.3;
+	letter-spacing: -0.01em;
+}
+.layer-head h2:focus {
+	outline: none;
+}
+.layer-tools {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: var(--sp-2);
+}
+.layer-tools button {
+	padding: var(--sp-1) var(--sp-3);
+	border: 1px solid var(--line);
+	border-radius: var(--r-1);
+	background: var(--card);
+	color: var(--ink);
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+}
+.layer-tools button:hover {
+	background: var(--paper);
+}
+.layer-tools button:disabled {
+	border-color: var(--line2);
+	background: none;
+	color: var(--faint);
+	cursor: default;
+}
+.layer-count {
+	font-size: 12.5px;
+	color: var(--mute);
+	white-space: nowrap;
+}
+
+.layer-body {
+	flex: 1;
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: var(--sp-4) var(--sp-6) var(--sp-8);
+}
+.layer-lead {
+	margin: 0 0 var(--sp-4);
+	color: var(--ink2);
+}
+.layer-note {
+	margin: 0 0 var(--sp-2);
+	font-size: 13px;
+	color: var(--mute);
+}
+.layer-flag {
+	margin: 0 0 var(--sp-4);
+	padding: var(--sp-3) var(--sp-4);
+	border: 1px solid var(--line);
+	border-radius: var(--r-2);
+}
+.layer-flag p {
+	margin: 0;
+}
+.layer-flag.needs {
+	border-color: var(--indigo-line);
+	background: var(--indigo-bg);
+}
+.layer-flag.wrong {
+	border-color: var(--red-line);
+	background: var(--red-bg);
+}
+.layer-flag-label {
+	font-size: 12px;
+	font-weight: 650;
+}
+.layer-flag.needs .layer-flag-label {
+	color: var(--indigo);
+}
+.layer-flag.wrong .layer-flag-label {
+	color: var(--red);
+}
+.layer-facts {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: var(--sp-1) var(--sp-4);
+	margin: 0 0 var(--sp-4);
+	font-size: 13px;
+}
+.layer-facts dt {
+	color: var(--mute);
+}
+.layer-facts dd {
+	margin: 0;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.layer-part {
+	margin: var(--sp-4) 0 0;
+}
+.layer-part h3 {
+	margin: 0 0 var(--sp-2);
+	font-size: 11.5px;
+	font-weight: 650;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--mute);
+}
+.layer-list {
+	display: grid;
+	gap: var(--sp-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+ol.layer-list {
+	padding-left: var(--sp-6);
+	list-style: decimal;
+}
+.layer-list small {
+	color: var(--mute);
+	font-size: 12.5px;
+}
+.layer-body a {
+	color: var(--ink);
+	text-underline-offset: 3px;
+}
+.layer-kind {
+	display: inline-block;
+	min-width: 88px;
+	font-size: 12px;
+	font-weight: 650;
+	color: var(--mute);
+}
+.layer-kind.needs-adam {
+	color: var(--indigo);
+}
+.layer-kind.wrong {
+	color: var(--red);
+}

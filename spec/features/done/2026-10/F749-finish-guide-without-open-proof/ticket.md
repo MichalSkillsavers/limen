@@ -1,3 +1,8 @@
+---
+opened: 2026-10-03
+landed: 2026-10-03
+---
+
 # F749 · The finish guide keeps setup and drops the finished proof steps
 
 ## Outcome

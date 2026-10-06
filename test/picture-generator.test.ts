@@ -218,8 +218,8 @@ test("build warns once for each cited path missing from the project root and sti
 	assert.deepEqual(
 		result.stderr.split("\n").filter((line) => /^(error|warn|info) /.test(line)),
 		[
-			'warn source.missing features/sample.feature.md: source "src/feature-gone.ts" does not exist in the project root',
-			'warn source.missing nodes/sample.a.md: source "src/gone.ts" does not exist in the project root',
+			'warn source.missing features/sample.feature.md:10: source "src/feature-gone.ts" does not exist in the project root',
+			'warn source.missing nodes/sample.a.md:9: source "src/gone.ts" does not exist in the project root',
 		],
 	);
 	assert.match(result.stdout, /^picture: 1 places, 0 edges; wrote .*map\.html\n$/);

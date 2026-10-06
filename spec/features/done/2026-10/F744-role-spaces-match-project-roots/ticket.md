@@ -1,3 +1,10 @@
+---
+touches:
+  - limen.integrations.herdr
+opened: 2026-10-02
+landed: 2026-10-02
+---
+
 # F744 · Role spaces belong to the right project
 
 ## Outcome

@@ -1,3 +1,9 @@
+---
+touches:
+  - limen.integrations.seat
+opened: 2026-10-05
+---
+
 # F766 · An agent can set up a Limen seat, GitHub App, and integrations from one short document
 
 ## Outcome

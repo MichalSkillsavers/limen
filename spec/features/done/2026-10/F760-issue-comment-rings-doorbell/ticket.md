@@ -1,3 +1,10 @@
+---
+touches:
+  - limen.integrations.github
+opened: 2026-10-04
+landed: 2026-10-04
+---
+
 # F760 · An issue comment rings the GitHub doorbell like a pull request comment
 
 ## Outcome

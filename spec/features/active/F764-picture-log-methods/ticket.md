@@ -1,3 +1,9 @@
+---
+touches:
+  - limen.picture.viewer
+opened: 2026-10-05
+---
+
 # F764 · Proven methods make picture logs clearer and stay simple
 
 ## Outcome

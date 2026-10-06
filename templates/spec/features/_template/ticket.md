@@ -1,6 +1,12 @@
+---
+touches:
+  - project.module
+opened: YYYY-MM-DD
+---
+
 # FNNN · What becomes true
 
-> Allocate the next unused feature number and keep it for life. The folder name is the slug and the lane it sits in is the status, so the ticket carries neither. Write for a worker in a cold worktree and an owner deciding whether this is worth doing: about three hundred words, per the speech register's Specs rules. Delete this note.
+> Allocate the next unused feature number and keep it for life. Replace `project.module` with a verified map place id or remove `touches` if no place is known. Replace `YYYY-MM-DD` with the ticket creation date. Optional one-line `needs-adam`/`needs-adam-on` and `wrong`/`wrong-on` fields come in dated pairs; add `landed` with the verified date when done. The folder name is the slug and the lane it sits in is the status, so the ticket carries neither. Write for a worker in a cold worktree and an owner deciding whether this is worth doing: about three hundred words, per the speech register's Specs rules. Delete this note.
 
 ## Outcome
 

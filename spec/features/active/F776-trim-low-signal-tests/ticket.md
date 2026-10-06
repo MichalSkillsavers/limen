@@ -1,3 +1,9 @@
+---
+touches:
+  - limen.plant
+opened: 2026-10-05
+---
+
 # F776 · The test suite is smaller and still guards every real product seam
 
 ## Outcome

@@ -1,3 +1,9 @@
+---
+touches:
+  - limen.integrations.seat
+opened: 2026-10-05
+---
+
 # F767 · A cold agent sets up a Limen seat correctly from the agent setup guide
 
 ## Outcome

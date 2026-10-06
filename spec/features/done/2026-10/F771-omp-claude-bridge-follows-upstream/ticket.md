@@ -1,3 +1,8 @@
+---
+opened: 2026-10-05
+landed: 2026-10-05
+---
+
 # F771 · OMP pi-claude jobs run on a bridge that follows the upstream pi-claude-bridge
 
 ## Outcome
