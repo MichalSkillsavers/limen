@@ -15,7 +15,7 @@ async function changeSubscriptions(args: readonly string[], cwd: string, watchin
 	const bulk = args.length === 1 && args[0] === (watching ? "--running" : "--all");
 	if (!bulk && args.length !== 1) throw new Error(`${watching ? "watch" : "unwatch"} requires one job${watching ? " or --running" : " or --all"}`);
 	const root = limenRoot(cwd);
-	const jobs = bulk ? await jobDirectories(`${root}/.limen/jobs`, watching) : [(await resolveJob(cwd, args[0] ?? "")).jobDir];
+	const jobs = bulk ? await jobDirectories(`${root}/.limen/jobs`, watching) : [(await resolveJob(cwd, args[0] ?? "", "control")).jobDir];
 	for (const job of jobs) await setSubscription(job, route, watching);
 	console.log(`${watching ? "watching" : "unwatched"} ${jobs.length} job${jobs.length === 1 ? "" : "s"}`);
 	const [named] = jobs;

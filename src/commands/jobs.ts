@@ -23,7 +23,7 @@ export async function jobsCommand(args: readonly string[], cwd: string): Promise
 		throw error;
 	});
 	if (typeof selection === "object" && "detail" in selection) {
-		const { id } = await resolveJob(cwd, selection.detail);
+		const { id } = await resolveJob(cwd, selection.detail, "read");
 		const loaded = await renderJobDirectory(root, jobsRoot, id, "detail");
 		console.log(human ? humanDetail(loaded.record, paint) : loaded.compact);
 		return;

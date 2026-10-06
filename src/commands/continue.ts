@@ -63,7 +63,7 @@ async function continueJob(args: readonly string[], cwd: string, locked = false)
 	// A job that continues from its own worktree resolves jobs in its canonical root.
 	const inherited = workspaceRoot(cwd) ? undefined : inheritedPlanning(repoRoot(cwd));
 	const root = inherited?.root ?? (await commandRoot(cwd));
-	const { id: parentId, jobDir: parentDir } = await resolveJob(root, query);
+	const { id: parentId, jobDir: parentDir } = await resolveJob(root, query, "control");
 	const membership = await jobMembership(parentDir);
 	if (membership) {
 		if (membership.member?.role === "coordinator") throw new Error("group coordinator continuation is not supported; inspect and stop before --new-run");

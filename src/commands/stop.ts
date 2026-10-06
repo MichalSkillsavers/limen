@@ -6,7 +6,7 @@ import { containEscapedDescendants, discoverEscapedDescendants, processGroupAliv
 export async function stopCommand(args: readonly string[], cwd: string): Promise<void> {
 	const query = args[0];
 	if (!query) throw new Error("stop requires a job id");
-	const { id, jobDir } = await resolveJob(cwd, query);
+	const { id, jobDir } = await resolveJob(cwd, query, "control");
 	const state = (await readFile(`${jobDir}/state`, "utf8")).trim();
 	if (state !== "running") {
 		console.log(`${id} is already ${state}`);

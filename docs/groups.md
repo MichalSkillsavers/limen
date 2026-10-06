@@ -36,7 +36,7 @@ Every member receives its canonical root, group and team IDs, feature pointer an
 
 Only a team coordinator launches that team's workers, through ordinary `limen spawn` with the recorded engine, provider, model and worker reasoning explicitly supplied. Worker continuations and separately authorized reviews each consume another total launch slot, even if their predecessor finished. Reviews require a candidate branch owned by that team. Exhaustion asks the lead; it never replenishes a run. Built-in helper agents do not bypass the allowance.
 
-Members use one canonical `.limen/jobs/` cabinet while each new candidate has its own Git worktree. Worker continuation retains its own worktree and same-engine session in a new linked record, without erasing predecessor receipts. Group members cannot use `limen land`, owner steering, or job controls against another team's jobs. This is process isolation, not a hostile-code sandbox.
+Members use one canonical `.limen/jobs/` cabinet while each new candidate has its own Git worktree. Worker continuation retains its own worktree and same-engine session in a new linked record, without erasing predecessor receipts. Group members can read any job with `limen jobs` and `limen diff`. They cannot stop, steer, continue, watch, or land another team's job. This is process isolation, not a hostile-code sandbox.
 
 Publish compact evidence when an assumption changes, an approach is disproved, help is needed or a checked candidate is ready:
 
