@@ -201,6 +201,7 @@ function git(cwd: string, args: readonly string[], input?: string): GitResult {
 	const run = (bin: string) => spawnSync(bin, args, { cwd: resolve(cwd), encoding: "utf8", maxBuffer: Number.POSITIVE_INFINITY, ...(input === undefined ? {} : { input }) });
 	const miss = (error: Error | undefined) => !!error && "code" in error && error.code === "ENOENT";
 	let result = run(gitBin || "git");
+	// ENOENT: try the same binary once more before the absolute-path fallback below.
 	if (miss(result.error)) result = run(gitBin || "git");
 	if (miss(result.error) && !gitBin) {
 		const fallback = ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"].find((path) => existsSync(path));
