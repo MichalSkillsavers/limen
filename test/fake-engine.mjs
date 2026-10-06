@@ -4,7 +4,8 @@
 //   commit · fail <code> · error (assistant stop reason "error") · say <text> · tool <command> · block · orphan · finish <handoff>
 //   · /<command> <args> (runs a command a hook registered, as a user typing it)
 // `block` writes fake-blocked-<n> and waits for one write to the FIFO fake-gate. Records: fake-argv.json, fake-env.json
-// (variable names), fake-task.txt, fake-system.txt (system prompt after before_agent_start), fake-events.jsonl.
+// (variable names), fake-task.txt, fake-system.txt (system prompt after before_agent_start), fake-context.txt (the hidden
+// context messages before_agent_start returned), fake-events.jsonl, and one transcript line per run in --session-dir.
 import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -28,6 +29,10 @@ writeFileSync(
 	),
 );
 writeFileSync(join(dir, "fake-task.txt"), task);
+if (flag("--session-dir")) {
+	mkdirSync(flag("--session-dir"), { recursive: true });
+	appendFileSync(join(flag("--session-dir"), "fake.jsonl"), `${JSON.stringify({ task })}\n`);
+}
 const record = (entry) => appendFileSync(join(dir, "fake-events.jsonl"), `${JSON.stringify(entry)}\n`);
 const emit = (event) => console.log(JSON.stringify(event));
 
@@ -94,10 +99,11 @@ async function block() {
 	await released;
 }
 
-for (let index = args.indexOf("--extension"); index >= 0; index = args.indexOf("--extension", index + 1)) (await import(args[index + 1])).default(api);
+for (let index = args.indexOf("--extension"); index >= 0; index = args.indexOf("--extension", index + 1)) await (await import(args[index + 1])).default(api);
 await fire("session_start", {});
 const started = await fire("before_agent_start", { prompt: task, systemPrompt: preamble });
 writeFileSync(join(dir, "fake-system.txt"), started.map((result) => result?.systemPrompt ?? "").join("\n"));
+writeFileSync(join(dir, "fake-context.txt"), started.map((result) => result?.message?.content ?? "").join("\n"));
 emit({ type: "agent_start" });
 let reply = "fake engine done";
 let stopReason;
