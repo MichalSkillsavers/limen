@@ -40,18 +40,10 @@ test("shipped template history starts at the current template", async () => {
 	}
 });
 
-// Until the F925 test reset is done, an old file waiting for its replacement starts with a marker that freezes its size.
-// It does not count toward the cap and may only shrink. Every other file in test/ counts.
 test("test/ stays within the line cap that spec/vision.md sets", async () => {
 	const cap = testLineCap(await readFile(join(root, "spec/vision.md"), "utf8"));
 	assert.ok(cap, "spec/vision.md names no cap for test/");
 	let lines = 0;
-	for (const path of await filesBelow(join(root, "test"))) {
-		const text = await readFile(path, "utf8");
-		const count = text.split("\n").length - 1;
-		const frozen = Number(/^\/\/ F925 old suite, frozen at (\d+) lines\./.exec(text)?.[1]);
-		if (!frozen) lines += count;
-		else assert.ok(count <= frozen, `${path} is an old file waiting for its replacement; it may only shrink (${count} > ${frozen} lines)`);
-	}
+	for (const path of await filesBelow(join(root, "test"))) lines += (await readFile(path, "utf8")).split("\n").length - 1;
 	assert.ok(lines <= cap, `test/ has ${lines} lines; spec/vision.md caps it at ${cap}. Remove ${lines - cap} test lines, or ask Adam to raise the cap.`);
 });
