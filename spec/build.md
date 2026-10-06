@@ -24,7 +24,7 @@
 - **Scope lock boundary:** no second-seat GitHub proof, no new Sol model policy, no Changes-list highlight on the map.
 
 ## NOW
-- `F925-fleet-leads-start-reviews-wait-and-land-without-workarounds` (🟠 ACTIVE): a starting review lists as starting, `--head` takes a short SHA, a coordinator's wait names its command, and land merges beside another session's edits.
+- `F926-fleet-leads-start-reviews-wait-and-land-without-workarounds` (🟠 ACTIVE): a starting review lists as starting, `--head` takes a short SHA, a coordinator's wait names its command, and land merges beside another session's edits.
 - `F783-spec-structure-and-keeper` (🟠 ACTIVE): agents get linked-ticket guidance and a spec keeper fixes ticket, board, and map links before landing.
 
 - `F777-hosted-pane-shows-true-agent-state` (🟠 ACTIVE): hosted Pi/OMP panes load Herdr's own state extension so the tab icon shows working/blocked/idle truthfully instead of green while the agent works.
