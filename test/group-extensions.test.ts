@@ -79,7 +79,7 @@ async function fixture(hosted = false) {
 			selected,
 		);
 	};
-	return { ...p, feature, extensions, common, privatePath, env, mode, run, start, launch, resume, checkJob };
+	return { ...p, feature, extensions, common, privatePath, mode, run, start, launch, resume, checkJob };
 }
 const lastLine = (stdout: string) => stdout.trim().split("\n").at(-1) ?? "";
 
