@@ -1,5 +1,4 @@
 import { spawn, spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
@@ -9,7 +8,7 @@ import { herdrAvailable, openHostedTab, openWatchTab } from "../integrations/her
 import type { GroupRun } from "../job/group-cabinet.ts";
 import { claimMember, groupIdentity, groupLock, groupPath, teamRoute } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
-import { parseDuration } from "../job/job.ts";
+import { hostedAgentName, makeJobId, parseDuration } from "../job/job.ts";
 import { publishJob } from "../job/publication.ts";
 import { appendLimenLog, atomicWrite, finalizeJob } from "../job/record.ts";
 import {
@@ -27,7 +26,7 @@ import {
 } from "../project/git.ts";
 import { inheritedPlanning, planningSource, privatePlanningFile, privatePlanningTask, ticketPointers } from "../project/planning.ts";
 import { signalProcessGroup, waitForProcessGroup } from "../runtime/contain.ts";
-import { type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
+import { defaultModel, type EngineProfile, engineBinary, preflightEngine, resolveSpawnEngine } from "../runtime/engine.ts";
 import { liveJob } from "../runtime/reap.ts";
 import { launchHostedSupervisor, launchWrapper } from "../runtime/wrapper.ts";
 import { hunkBinary } from "./diff.ts";
@@ -110,7 +109,7 @@ async function spawnJob(args: readonly string[], cwd: string, group?: { run: Gro
 	const options = { ...parsed, tab, task: loaded.text, label: parsed.label ?? (loaded.text.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "job") };
 	const profile = resolveSpawnEngine(options.engine);
 	const engine = profile.id;
-	const model = options.model ?? (process.env[options.review ? "LIMEN_REVIEWER_MODEL" : "LIMEN_WORKER_MODEL"]?.trim() || "openai-codex/gpt-6-astra:high");
+	const model = options.model ?? defaultModel(options.review);
 	preflightEngine(profile, model, options.provider);
 	const notificationSession = currentNotificationSession();
 	const coordinatorTab = process.env.HERDR_TAB_ID?.trim();
@@ -489,21 +488,6 @@ export function normalizeLabel(value: string): string {
 	const label = value.trim();
 	if (!label || /[\r\n]/.test(label)) throw new Error("--label must be one non-empty line");
 	return label;
-}
-export function makeJobId(label: string): string {
-	const feature = /\bf\d{3,}\b/i.exec(label)?.[0] ?? "";
-	const words = `${feature} ${label.replace(/\bf\d{3,}\b/gi, " ")}`.toLowerCase();
-	const slug = words.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32).replace(/-$/, "") || "job";
-	return `${new Date().toISOString().slice(0, 10)}-${slug}-${randomBytes(4).toString("hex")}`;
-}
-export function hostedAgentName(jobId: string): string {
-	const hex = /[0-9a-f]{8}$/.exec(jobId)?.[0] ?? "";
-	const feature = /(?:^|-)(f\d{3,})(?:-|$)/i.exec(jobId)?.[1]?.toLowerCase();
-	if (feature && hex) return `limen-${feature}-${hex}`;
-	const cut = jobId.slice(0, hex ? -9 : undefined).toLowerCase();
-	const dashed = cut.replace(/^\d{4}-\d{2}-\d{2}-/, "").replace(/[^a-z0-9_-]+/g, "-");
-	const slug = dashed.replace(/^[^a-z]+/, "").slice(0, 17) || "job";
-	return hex ? `limen-${slug}-${hex}` : `limen-${slug}`.slice(0, 32);
 }
 // The shell in a member's tab may put another installed Limen first on PATH; name the package that runs this group.
 function memberRoute(run: GroupRun, team: string): string {

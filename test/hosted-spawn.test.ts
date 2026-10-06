@@ -5,8 +5,8 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } fro
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { hostedAgentName, makeJobId } from "../src/commands/spawn.ts";
 import { hostedAgentStatus, hostedTerminalReason, startHostedPi } from "../src/integrations/herdr.ts";
+import { hostedAgentName, makeJobId } from "../src/job/job.ts";
 import { type HostedIdleWatch, noteHostedIdle, writeHostedResult } from "../src/runtime/supervisor.ts";
 import { git, limen, limenWithEnv, onlyJobId, type Scratch, scratchRepo, waitForState } from "./scratch.ts";
 
