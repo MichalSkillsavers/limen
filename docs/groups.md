@@ -58,22 +58,13 @@ The group has a fixed wall-clock deadline. Each worker's deadline is the shorter
 
 ## Delivery evidence
 
-The cabinet contains `run.json`, immutable event files and `receipts/RECIPIENT/EVENT.json`. Job records remain authoritative for job state. `limen group status GROUP-ID` shows the feature, local deadline and minutes left, stopped and closed flags, and one state row per member. A reserved member without a published job state reads `no job record yet`. Use `limen group status GROUP-ID --json` for the full run, roster-derived states, events and receipt evidence. Members omit `GROUP-ID` in both forms.
+`limen group status GROUP-ID` shows the feature, local deadline and minutes left, stopped and closed flags, and one state row per member. A reserved member without a published job state reads `no job record yet`. Use `limen group status GROUP-ID --json` for the full run, roster-derived states, events and receipt evidence. Members omit `GROUP-ID` in both forms. Job records remain authoritative for job state.
 
-Lifecycle updates identify each observed transition, not just its text: an unchanged advisory produces no new event, but the same advisory after an observed clear is a new occurrence. A pending occurrence is recorded before publication; after interruption, synchronization finishes its event and missing recipient receipts before observing the next value. Existing accepted or processed receipts are preserved.
+Each event has one receipt per recipient. A receipt moves from queued to accepted, observed and processed. None of these states proves that a member agreed with or acted on the event. A receipt marked `uncertain` means a delivery was interrupted, so the event may or may not have reached its recipient. Inspect it before you act on it. Limen tries each recipient and event at most twice automatically.
 
-Routine supervisor, hook and finalization sweeps skip a busy cabinet rather than fail the member. Unchanged state/advisory markers avoid the lifecycle lock; delivery and lifecycle publication share one hold when work is pending. The job's own terminal state remains authoritative, and a later member or lead sweep publishes deferred lifecycle updates and durable receipts after the lock frees.
+One message carries at most eight events and 8,000 characters of published text. Omitted detail stays in the cabinet, and the message names its location. Processed events are not delivered again. A finished member keeps its unread events for a deliberate continuation; Limen does not respawn it.
 
-Group spawn and continue wait for the launch owner to finish instead of expiring after ten seconds. Membership is claimed only after acquiring that launch lock; allowance, stop and deadline checks run against the current roster. Stop and close also wait for an in-flight launch to drain. There is no live-owner timeout or forced eviction: a stuck live owner needs inspection, while dead owners retain inode-checked recovery.
-
-- **Queued:** durable event/recipient work, including a delivery claim that has not yet proved transport acceptance.
-- **Accepted:** CLI output was produced, a tool/custom message was emitted, or the lead transport accepted the custom message. This does not prove a model consumed it.
-- **Observed:** `observedAt` records that the delivery token appeared in the hook's next model-context event.
-- **Processed:** a non-errored assistant response followed that observed context. It does not prove agreement, adoption or successful collaboration.
-
-Batches contain at most eight events and 8,000 publication-text characters. Omitted detail stays in the cabinet, with its location in the message. Claims serialize per recipient; processed events are not replayed, and continuation inherits proven processing from its predecessor chain. Terminal members retain unread evidence for deliberate continuation rather than automatic respawn.
-
-A crash between transport and observation is ambiguous, not exactly-once execution. Retained tokens, owners and `uncertain` receipts expose that ambiguity. A dead delivery owner becomes retryable after the 30-second lease; a live owner is not displaced. Each recipient/event gets at most two automatic attempts independently of other recipients. Receipt processing never publishes another event.
+When the cabinet is busy, routine sweeps skip it instead of failing the member. A later sweep publishes the updates. Group spawn and continue wait for a launch in progress to finish. They have no timeout, so a launch that never finishes needs inspection.
 
 ## Stop, recover and close
 
@@ -83,11 +74,11 @@ limen group status GROUP-ID
 limen group close GROUP-ID
 ```
 
-Stop first records the launch fence, drains in-flight launch publication and then invokes existing stop behavior for group members only. `stop-report.json` lists surviving or uncertain processes honestly. It retains branches, worktrees, findings and unread events. A coordinator that exits early is terminal; inspect that incomplete team's job records and surviving children. There is no automatic coordinator continuation or roster repair.
+Stop blocks new launches, waits for a launch in progress to finish, and then stops the group's members only. `stop-report.json` lists the processes that survived or that Limen cannot confirm stopped. Stop keeps branches, worktrees, findings and unread events. A coordinator that exits early is terminal; inspect that incomplete team's job records and surviving children. There is no automatic coordinator continuation or roster repair.
 
 Every unclosed group's member worktree and job record is protected from ordinary automatic pruning, explicit `prune`, and `prune --retire`. Close refuses while any member is live/uncertain or any retained worktree is dirty. Refusal preserves all protection. Commit or recover dirty work deliberately; never force-delete it to make close succeed. Successful close releases clean member paths for ordinary pruning, but retains the group cabinet and publications.
 
-Resume the original lead session to recover its subscription and bounded catch-up. A different session does not silently inherit lead authority. Inspect `.lock/owner` before manual lock recovery; dead lock owners are reclaimed with an inode-specific claim. An uncertain or interrupted reclaimer is durable evidence to inspect, not a reason to launch a replacement roster. Retained evidence is addressed by group ID, independently of the feature's current lane.
+Resume the original lead session to recover its subscription and bounded catch-up. A different session does not silently inherit lead authority. A command that prints `group lock busy or uncertain` names a cabinet lock. Read its `.lock/owner` before you recover the lock by hand. Limen recovers a lock whose owner died; it never evicts a live owner. An uncertain or interrupted recovery is evidence to inspect, not a reason to launch a replacement roster. Retained evidence is addressed by group ID, independently of the feature's current lane.
 
 The lead puts selected findings and team summaries in the feature's `group/findings/` and writes `group/synthesis.md`. In committed mode, the lead commits them as an ordinary documentation change. In private mode, the lead keeps them in the canonical project root and does not stage or commit them. Moving the feature does not move or strand its live cabinet.
 
@@ -102,3 +93,26 @@ node /path/to/candidate/bin/limen-group-fixture.mjs /absolute/new/disposable/rep
 The generator commits the shared job-summary task, deterministic acceptance checks and two approach notes, with no remote or finish webhook. It prints the exact interactive-lead setup and two-team/one-worker launch command. The task source intentionally does not exist yet; members implement it. No dependency install is needed for the fixture's native Node tests.
 
 Follow `spec/features/active/F740-collaborative-groups/scenario.md`. Retain the candidate SHA, fixture path, command, engine/provider/model/reasoning, group/member IDs, candidate SHAs, real check output, finding/response event IDs and observed transcript excerpts. Each member's initial hypothesis must precede its first observed peer delivery. The lead must compare evidence and write synthesis, then prove stop and deliberate clean close. Queue acceptance or a clean worker exit is not a pass. Quota or engine failure preserves evidence without changing models. Detached proof does not establish hosted real-agent transport.
+
+## How it works
+
+You do not need these mechanics to run a group. They explain the evidence that status, receipts and errors show.
+
+- **Cabinet:** the group's folder, `.limen/groups/GROUP-ID/`. It holds `run.json`, immutable event files and `receipts/RECIPIENT/EVENT.json`.
+- **Occurrence:** one observed lifecycle transition. An unchanged advisory produces no new event, but the same advisory after an observed clear is a new occurrence. Limen records a pending occurrence before it publishes it. After an interruption, the next sync finishes that event and its missing recipient receipts before it observes the next value. It keeps receipts that are already accepted or processed.
+- **Lock:** a `.lock` folder in the cabinet, so that one process at a time changes the cabinet. Its `owner` file holds the owner's PID. A command waits up to ten seconds for it, then fails with `group lock busy or uncertain`. Routine supervisor, hook and finalization sweeps skip a held lock. Unchanged state and advisory markers do not take the lifecycle lock; delivery and lifecycle publication share one hold when work is pending.
+- **Inode-specific claim:** how Limen recovers the lock of a dead owner. It takes over only the same lock folder (same inode) that the dead owner held, so two recoveries cannot both win.
+- **Launch lock:** a second lock that one launch holds while it publishes. Membership is claimed only after Limen takes this lock, so the allowance, stop and deadline checks run against the current roster. Spawn, continue, stop and close wait for it with no timeout. A dead owner is recovered as above; a stuck live owner is never evicted.
+- **Launch fence:** the `stopped` flag in `run.json`. Stop sets it first, so no new launch starts while stop drains the launch lock.
+- **Delivery claim:** a token and owner PID written into a receipt while one process delivers that event to that recipient. Claims run one at a time per recipient. Continuation inherits proven processing from its predecessor chain.
+- **Lease:** the 30 seconds after a claim during which no other process retries it. After the lease, a dead owner's claim becomes retryable; a live owner is not displaced.
+- **Transport acceptance:** the point at which the transport took the message: CLI output was produced, a tool or custom message was emitted, or the lead transport accepted the custom message.
+
+The receipt states mean:
+
+- **Queued:** durable event and recipient work, including a claimed delivery whose transport has not accepted it yet.
+- **Accepted:** transport acceptance happened. This does not prove that a model consumed the message.
+- **Observed:** `observedAt` records that the delivery token appeared in the hook's next model-context event.
+- **Processed:** a non-errored assistant response followed that observed context. It does not prove agreement, adoption or successful collaboration.
+
+A crash between transport and observation is ambiguous; delivery is not exactly once. Retained tokens, owners and `uncertain` receipts expose that ambiguity. The two automatic attempts count separately for each recipient. Receipt processing never publishes another event.
