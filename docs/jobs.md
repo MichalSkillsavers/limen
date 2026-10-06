@@ -126,12 +126,7 @@ To keep the conversation of a finished job, run:
 limen continue <job-id> "Follow-up instruction"
 ```
 
-Limen then does these steps:
-
-1. Limen copies the saved session into a new linked job. It writes the complete starting record in a hidden directory and publishes it with one rename.
-2. The published record protects the worktree from prune. If prune removed the old checkout before publication, Limen restores it at the recorded path from the local branch.
-
-Spawn uses the same publication path. A publication failure removes the hidden child record and leaves the parent record and saved session unchanged.
+Limen copies the saved session into a new linked job. The new job keeps the worktree safe from prune. If prune removed the old checkout before then, Limen restores it at the recorded path from the local branch. If Limen cannot create the new job, the parent job and its saved session do not change.
 
 **Only committed branch contents come back.** Uncommitted files that prune removed are lost. Recovery is not possible without the branch or the transcript. Limen does not take over a branch that is checked out in a different place.
 
@@ -144,17 +139,17 @@ Spawn uses the same publication path. A publication failure removes the hidden c
 
 **Stalled tools.** Detached jobs retain the three-minute CPU-idle tool containment rule; `LIMEN_TOOL_STALL_MS` changes that confirmation time. Hosted observation never signals an engine or its children: a quiet external wait is not proof of a stuck tool. Explicit stops and configured group deadlines still apply.
 
-**Hosted ownership.** On Linux, the Pi hook binds the controlled launch, canonical job/session, initial pane, shell parent identity, engine PID/birth and boot ID in exclusive records. Ownership requires the saved process identity and fresh exact-PID foreground membership in the current verified pane, not visible launch arguments. Reload preserves the binding and is not completion; a foreign session, legacy PID-only record, unavailable query or unverified relocation stays unowned.
+**Hosted ownership.** On Linux, Limen checks that a hosted Pi job still owns its pane. While it does, the job shows no ownership note. A pane reload keeps that proof, and a reload is not completion. When Limen loses the proof, the job shows an `ownership` note. See [How it works](#how-it-works) for what counts as proof.
 
 **Engine and platform limit.** Only hosted Pi on Linux binds its pane. Hosted OMP jobs, and every hosted job on macOS, never bind, so Limen cannot prove which process owns their pane. They get an ownership note only when their pane moves to a place Limen cannot verify; the absence of a note is not proof of ownership.
 
-**Job notes.** A running row in `limen jobs` and `limen status` names the kind of its note: `blocked`, `errored`, `idle`, or `ownership`. A healthy running job shows no note. A blocked, errored, or idle note hides an ownership note. An ownership note appears when a bound job loses its ownership proof, or when its pane moves to a place Limen cannot verify. After one minute, each subscribed recipient can receive one confirmed wake for that standing condition, with at most two unsuccessful attempts shared by its recipients. The ownership wake waits for an idle recipient; it never queues running text as a follow-up. Tool/think changes and supervisor recovery retain the original timestamp and receipts. Only demonstrated recovery rearms it; engine recovery alone cannot clear an unavailable child observation. Real failures and completion use separate allowances. Terminal state retires the condition. A warning already queued by an older version cannot be retracted by this change.
+**Job notes.** A running row in `limen jobs` and `limen status` names the kind of its note: `blocked`, `errored`, `idle`, or `ownership`. A healthy running job shows no note. A blocked, errored, or idle note hides an ownership note. An ownership note appears when a bound job loses its ownership proof, or when its pane moves to a place Limen cannot verify. When an ownership note stays for one minute, each coordinator that follows the job gets one wake about it. The note clears when the job ends or Limen proves ownership again.
 
 ### Seat notifications
 
 `limen sweep` scans registered projects for terminal jobs that nobody heard, hosted-stall advisories and persistent ownership uncertainty. A running job's notification title names its note kind, for example `limen: fix login · blocked`. Changes to an unresolved uncertainty diagnostic keep the same seat receipt and do not ring again. Each event gets one seat notification, also across restarts and concurrent sweeps. Old timestamp receipts stay valid. When an advisory clears and a new one starts, the new one can send a notification again.
 
-The sweep records `notify/seat` before it sends. So if a notification fails in an unclear way, the sweep logs an error and does not send that event again automatically. Seat receipts do not use up coordinator wakes or finish webhooks.
+If a notification fails in an unclear way, the sweep logs an error and does not send that event again automatically. Seat notifications do not use up coordinator wakes or finish webhooks.
 
 ## Ticket authorship
 
@@ -188,3 +183,13 @@ The coordinator does this. You need it only if you look at a stuck tab yourself.
 | The worker has a real question | Read its durable note. Answer it. Resume the branch. |
 | The wrapper is dead, but the state says `running` | Check the recorded PID. Correct the plain `state` file. Then resume. |
 | A completion wake did not come | Read `.limen/jobs/` and Git. The job files stay the source of truth when a notification does not come. |
+
+## How it works
+
+You do not need these mechanics to run jobs. They explain the notes and records above.
+
+- **Binding:** the launch record of a hosted Pi job on Linux. At launch, the Pi hook writes exclusive records of the controlled launch, the canonical job and session, the initial pane, the shell parent, the engine PID and start time, and the boot ID (the kernel's ID for the current boot). Reload keeps the binding.
+- **Ownership proof:** the check that the bound job still owns its pane. It needs the saved process identity and a fresh check that this exact PID is in the foreground of the current verified pane. Visible launch arguments do not count. A foreign session, an old record with only a PID, a failed pane query, or a pane move that Limen cannot verify leaves the job unowned.
+- **Ownership wake:** the wake about a standing `ownership` note. After one minute, each subscribed recipient can receive one confirmed wake for that condition. Its recipients share at most two unsuccessful attempts. The wake waits for an idle recipient; it never queues text into a running turn as a follow-up. Tool and thinking changes and supervisor recovery keep the original timestamp and receipts. Only proven recovery rearms the wake; engine recovery alone cannot clear an unavailable child observation. Real failures and completion use separate wake allowances. A terminal state retires the condition.
+- **Publication:** how spawn and continue create a job. Limen writes the complete starting record in a hidden directory, then publishes it with one rename. A publication failure removes the hidden record and leaves the parent record and saved session unchanged.
+- **Seat receipt:** the job file `notify/seat`. The sweep writes it before it sends a notification, so one event rings once, also across restarts and concurrent sweeps.
