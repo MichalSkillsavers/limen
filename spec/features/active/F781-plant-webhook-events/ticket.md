@@ -1,3 +1,11 @@
+---
+touches:
+  - limen.integrations.finish
+  - limen.sessions.wake
+  - limen.integrations.seat
+opened: 2026-10-06
+---
+
 # F781 · The shepherd gets one webhook for every job and coordinator event that needs it
 
 ## Outcome
