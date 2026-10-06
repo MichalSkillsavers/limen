@@ -7,7 +7,9 @@
 #   proof.sh wait JOB              limen wait JOB
 #   proof.sh break JOB             on JOB's branch: unknown touches id, no board line, ticket moved (map cites old path)
 #   proof.sh land JOB              limen land JOB --yes (expect a refusal before the keeper)
-#   proof.sh keeper JOB            limen keeper for JOB's ticket; prints the keeper job id
+#   proof.sh keeper JOB [TICKET]   limen keeper for JOB's ticket (default: the moved active path); prints the keeper job id
+#   proof.sh wake JOB              the done wake text a coordinator would read for JOB
+#   proof.sh ticket-check BRANCH   limen ticket check BRANCH (the check before an ordinary git merge)
 #   proof.sh check                 show the three links and the strict check on the plant's main
 #   proof.sh scaffold              limen ticket new on the plant; strict check with no edit
 #
@@ -63,7 +65,12 @@ run() {
 	return "$code"
 }
 
-note() { printf '\n%s\n' "$*" | tee -a "$LOG"; }
+# note TEXT: a prose line; a "## step" heading also names the limen commit under test.
+note() {
+	local text=$*
+	[[ $text == "## "* ]] && text+=" · limen $(git -C "$LIMEN_PKG" rev-parse --short HEAD)"
+	printf '\n%s\n' "$text" | tee -a "$LOG"
+}
 
 job_file() { cat "$PLANT/.limen/jobs/$1/$2" 2>/dev/null; }
 
@@ -308,8 +315,19 @@ land() {
 
 keeper() {
 	note "## keeper for $1"
-	run "$PLANT" limen keeper "$TICKET_NEW" --job "$1" "${ROUTE[@]}" --timeout 10m
+	run "$PLANT" limen keeper "${2:-$TICKET_NEW}" --job "$1" "${ROUTE[@]}" --timeout 10m
 	run "$PLANT" limen jobs --all
+}
+
+# The done wake a coordinator would read for JOB, rendered by the checkout under test.
+wake() {
+	note "## done wake text for $1"
+	run "$PLANT" node --input-type=module -e "import { completionWake } from '$LIMEN_PKG/src/job/wake-text.ts'; const job = '$PLANT/.limen/jobs/$1'; console.log(completionWake(job, '$1', 'done', '$1', 'BRANCH', '', false));"
+}
+
+ticket_check() {
+	note "## ticket check for $1"
+	run "$PLANT" limen ticket check "$1"
 }
 
 check() {
@@ -337,11 +355,13 @@ keeper-early) keeper_early "$2" ;;
 wait) wait_job "$2" ;;
 break) break_links "$2" ;;
 land) land "$2" ;;
-keeper) keeper "$2" ;;
+keeper) keeper "$2" "${3:-}" ;;
+wake) wake "$2" ;;
+ticket-check) ticket_check "$2" ;;
 check) check ;;
 scaffold) scaffold ;;
 *)
-	sed -n '2,15p' "$0"
+	sed -n '2,17p' "$0"
 	exit 2
 	;;
 esac
