@@ -24,7 +24,17 @@ Pins, places, modules, work, journeys, and days open larger as layers over the p
 
 Ticket dates show when work opened or landed; a dated **Needs Adam** request or **Wrong** problem appears as a pin. Ticket `touches` link the work to exact map places; a place with no evidence stays unlinked.
 
-Put `---` front matter before a ticket's title. Use `opened: YYYY-MM-DD`; use a `touches:` block list of known plant or module ids when evidence supports it. A one-line `needs-adam` request needs `needs-adam-on: YYYY-MM-DD`; a one-line `wrong` problem needs `wrong-on: YYYY-MM-DD`. Set `landed: YYYY-MM-DD` on done work when its landing date is known. The [picture contract](../templates/picture/CONTRACT.md#ticket-front-matter) lists the fields. Build reports bad ids, dates, or unpaired requests with a ticket path and line. `--strict` fails on those errors; an active ticket without known touches gets a warning, not an invented link.
+Make a ticket with `limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]`. It takes an F number that no lane (dated done and dropped folders included), no local `limen/*` branch and no job label uses. It writes the ticket under `spec/features/<lane>/` and prints its path. The default lane is planned. Only pass `--touches` for module or plant ids you verified in the map's `nodes/` files; omit it when no place is known.
+
+The scaffold writes `opened` and a valid front matter block. For later dated decisions, use `needs-adam` with `needs-adam-on` or `wrong` with `wrong-on`; remove each pair when resolved. Add `landed` to done tickets with a known date. The [ticket contract](../templates/picture/CONTRACT.md#ticket-front-matter) has an example. A missing front matter block on an active ticket, a bad date, an incomplete pair, or an unknown place id is an error. A missing `touches` list on an active ticket or a duplicate F number warns. Every `ticket.*` message names the path, line and `fix:` action.
+
+In a job worktree, the map is not in the branch. It stays in the plant root. Check the worktree ticket against that map without replacing its rendered page:
+
+```sh
+limen picture build --dir "$LIMEN_CONTEXT_ROOT/.limen/picture" --out /tmp/check.html --strict
+```
+
+The strict check exits 1 for ticket errors. It warns, but does not guess a link, when an active ticket has no known `touches`.
 
 Remove a Needs Adam request and its date after Adam answers. Remove a Wrong problem and its date after the fix. The pin then leaves the page.
 

@@ -1,29 +1,27 @@
 ---
-touches:
-  - project.module
 opened: YYYY-MM-DD
 ---
 
 # FNNN · What becomes true
 
-> Allocate the next unused feature number and keep it for life. Replace `project.module` with a verified map place id or remove `touches` if no place is known. Replace `YYYY-MM-DD` with the ticket creation date. Optional one-line `needs-adam`/`needs-adam-on` and `wrong`/`wrong-on` fields come in dated pairs; add `landed` with the verified date when done. The folder name is the slug and the lane it sits in is the status, so the ticket carries neither. Write for a worker in a cold worktree and an owner deciding whether this is worth doing: about three hundred words, per the speech register's Specs rules. Delete this note.
+> Prefer `limen ticket new "what becomes true"` to copying this file: it picks the next free number and fills the front matter. If you copy it, replace `YYYY-MM-DD` with today; an unedited date fails `limen picture build --strict`. Add `touches:` only with place ids from the map's `nodes/`. Rules: the picture contract, `templates/picture/CONTRACT.md` in the Limen package. Delete this note.
 
 ## Outcome
 
-<!-- Two to four sentences. What a user or operator can do or see afterwards; why now, if the board does not say. Product terms, no mechanism. -->
+<!-- Two to four sentences: what becomes true for a user or operator. -->
 
 ## Scope
 
-- <!-- The boundary and the starting seam, one line each. Not the edit list. -->
+- <!-- Boundary and starting seam, not an edit list. -->
 
 ## Out of scope
 
-- <!-- Only nearby work someone would plausibly do by mistake. -->
+- <!-- Nearby work that is not part of this ticket. -->
 
 ## Acceptance
 
-- <!-- One observable behavior or check per line, verifiable with a command or a look. -->
+- <!-- One observable result or check per line. -->
 
 ## Notes
 
-<!-- Optional. Decisions and open questions only. Never progress. -->
+<!-- Optional decisions or open questions; no progress log. -->

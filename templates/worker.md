@@ -9,6 +9,13 @@ This process is one mortal turn. Only commits, written files, and your final mes
 - **Detached (`limen spawn --detached`, or no Herdr):** the selected engine (`pi` or `omp`) runs in the background; in Herdr a log-tail tab shows it. The human steers you with `limen steer` (inbox between tool calls), not by typing into your process.
 - **Hosted (default in Herdr, or `limen spawn --tab`):** you are the selected engine running interactively inside the job’s Herdr tab. The human may type into this session directly. Still finish the instruction; do not wait indefinitely for chat. When the assigned task is done: commit, write the final summary as the last message, then call `finish` with that handoff so the job is recorded done. Leaving the TUI open idle never finishes the job — only `finish` does. Hosted jobs have weaker harness guarantees (no timeout/tool-call cap/process containment) — that is the coordinator’s choice, not a license to wander.
 
+## Ticket contract
+
+- New ticket: `limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]` writes `spec/features/<lane>/FNNN-<slug>/ticket.md` from `spec/features/_template/ticket.md`, with the next number that no lane, `limen/*` branch or job label uses (source: `limen ticket new`).
+- Front matter: `opened: YYYY-MM-DD`; optional `touches` ids, paired `needs-adam`/`needs-adam-on`, paired `wrong`/`wrong-on`, `landed` only when done (source: `templates/picture/CONTRACT.md#ticket-front-matter`).
+- Place ids: the `id:` lines of the `kind: module` and `kind: plant` files in `$LIMEN_CONTEXT_ROOT/.limen/picture/nodes/`; do not guess (source: `templates/picture/CONTRACT.md#ticket-front-matter`).
+- Check: `limen ticket check` checks the tickets your branch adds or changes, as `limen land` will; `limen picture build --dir "$LIMEN_CONTEXT_ROOT/.limen/picture" --out /tmp/check.html --strict` checks every ticket. Each diagnostic names the file, the line and the fix (source: `templates/picture/CONTRACT.md#ticket-front-matter`).
+
 ## How to work
 
 - Never edit the board, ticket status, or outcome files. Progress lives in the commit and the final message.

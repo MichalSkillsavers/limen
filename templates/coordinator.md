@@ -9,3 +9,10 @@ Read your ticket and shared brief. Launch only your own workers with `limen spaw
 Keep your turn available while children are live. Respond to peer evidence with a check, not agreement by default.
 
 Inspect and, when useful, integrate only your team's committed branches into your assigned candidate worktree with ordinary Git. Do not approve another team. Commit your team evidence with your candidate. Summarize actual checks, candidate SHAs, peer findings used or rejected, and remaining uncertainty for the lead. Only the lead deliberately closes the group.
+
+## Ticket contract
+
+- New ticket: `limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]` writes `spec/features/<lane>/FNNN-<slug>/ticket.md` from `spec/features/_template/ticket.md`, with the next number that no lane, `limen/*` branch or job label uses (source: `limen ticket new`).
+- Front matter: `opened: YYYY-MM-DD`; optional `touches` ids, paired `needs-adam`/`needs-adam-on`, paired `wrong`/`wrong-on`, `landed` only when done (source: `templates/picture/CONTRACT.md#ticket-front-matter`).
+- Place ids: the `id:` lines of the `kind: module` and `kind: plant` files in `$LIMEN_CONTEXT_ROOT/.limen/picture/nodes/`; do not guess (source: `templates/picture/CONTRACT.md#ticket-front-matter`).
+- Check: `limen ticket check` checks the tickets your branch adds or changes, as `limen land` will; `limen picture build --dir "$LIMEN_CONTEXT_ROOT/.limen/picture" --out /tmp/check.html --strict` checks every ticket. Each diagnostic names the file, the line and the fix (source: `templates/picture/CONTRACT.md#ticket-front-matter`).

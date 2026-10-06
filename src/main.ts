@@ -5,6 +5,7 @@ import { githubCommand } from "./commands/github.ts";
 import { groupCommand } from "./commands/group.ts";
 import { initCommand, workspaceCommand } from "./commands/init.ts";
 import { jobsCommand } from "./commands/jobs.ts";
+import { keeperCommand } from "./commands/keeper.ts";
 import { landCommand } from "./commands/land.ts";
 import { linearCommand } from "./commands/linear.ts";
 import { openCommand } from "./commands/open.ts";
@@ -16,6 +17,7 @@ import { statusCommand } from "./commands/status.ts";
 import { steerCommand } from "./commands/steer.ts";
 import { stopCommand } from "./commands/stop.ts";
 import { sweepCommand } from "./commands/sweep.ts";
+import { ticketCommand } from "./commands/ticket.ts";
 import { ticketAuthorCommand } from "./commands/ticket-author.ts";
 import { waitCommand } from "./commands/wait.ts";
 import { unwatchCommand, watchCommand } from "./commands/watch.ts";
@@ -37,6 +39,7 @@ const COMMANDS = {
 	stop: stopCommand,
 	wait: waitCommand,
 	land: landCommand,
+	keeper: keeperCommand,
 	jobs: jobsCommand,
 	status: statusCommand,
 	prune: pruneCommand,
@@ -48,6 +51,7 @@ const COMMANDS = {
 	sweep: sweepCommand,
 	linear: linearCommand,
 	"ticket-author": ticketAuthorCommand,
+	ticket: ticketCommand,
 	webhook: webhookCommand,
 } as const satisfies Record<
 	| "init"
@@ -62,6 +66,7 @@ const COMMANDS = {
 	| "stop"
 	| "wait"
 	| "land"
+	| "keeper"
 	| "jobs"
 	| "status"
 	| "prune"
@@ -73,6 +78,7 @@ const COMMANDS = {
 	| "sweep"
 	| "linear"
 	| "ticket-author"
+	| "ticket"
 	| "webhook",
 	Command
 >;
@@ -100,6 +106,7 @@ usage:
   limen diff <id|suffix|label>
   limen wait <id|suffix|label>
   limen land <id|suffix|label> [--onto BRANCH] [--yes]  # merge a done job onto the current branch
+  limen keeper <ticket-path> (--job ID [--job ID ...] | --group GROUP-ID) [--candidate BRANCH] --engine E --provider P --model M --thinking T [--timeout D]  # after the work: a short job fixes ticket, board and map links on its own branch
   limen stop <id|suffix|label> [reason]
   limen jobs [--running|--active|--all|--label PREFIX|<id|suffix|label>]
   limen status [--all]                          # plant inbox: running, candidates to inspect, needs a decision (last 7 days), coordinator tabs
@@ -109,6 +116,8 @@ usage:
   limen open <id|suffix|label>
   limen close <FNNN>
   limen ticket-author <ticket-path>                 # creation-commit author, following Git renames
+  limen ticket new "what becomes true" [--lane planned|active] [--touches id,id]  # next unused F number across lanes, limen/* branches and job labels
+  limen ticket check [BRANCH]                    # land gate on demand: tickets BRANCH adds or changes; run before a hand git merge
   limen sweep [--install|--uninstall]
   limen webhook test                             # send one test ping to this plant's finish webhook targets
   limen linear [on [--team T --project P]|off|status]   # Linear mirror toggle — renames spec/linear.md ↔ .off; --team/--project write a fresh config

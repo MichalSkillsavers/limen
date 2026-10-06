@@ -1,6 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { resolveJob } from "../job/lookup.ts";
+import { readBoard } from "../picture/board.ts";
+import { readPicture } from "../picture/picture-build.ts";
+import { checkTickets, readTickets } from "../picture/tickets.ts";
 import { cleanWorktree, commitList, currentBranch, limenRoot, mergeBranch, workspaceRepository } from "../project/git.ts";
 
 export async function landCommand(args: readonly string[], cwd: string): Promise<void> {
@@ -25,10 +32,109 @@ export async function landCommand(args: readonly string[], cwd: string): Promise
 	if (!cleanWorktree(repository)) throw new Error(`target ${target} is dirty`);
 	const commits = commitList(repository, base, branch);
 	if (!commits) throw new Error(`job ${id} has no commits to land`);
+	const gate = await landTicketCheck(repository, root, branch, "HEAD", id);
+	if (!gate.ok) throw new Error(`land refused: ${branch} has tickets that fail the strict check\n${gate.lines.join("\n")}`);
+	for (const line of gate.lines) console.log(line);
 	if (!parsed.yes && !(await confirm(`Land ${label || id} onto ${target}? [y/N] `))) throw new Error("land cancelled");
 	const output = mergeBranch(repository, branch);
 	if (output) console.log(output);
 	console.log(`landed ${id} onto ${target}`);
+}
+
+export const TICKET_PATH = /^spec\/features\/(?:[^/]+\/)*(F\d+)-[^/]+\/ticket\.md$/;
+
+/**
+ * The strict ticket check for tickets that `branch` adds, changes or moves against `target`, read at the branch tip.
+ * `lines` is print-ready: the no-map note, warnings, errors, then the keeper command when the check refuses.
+ */
+export async function landTicketCheck(
+	repository: string,
+	root: string,
+	branch: string,
+	target = "HEAD",
+	job = "<id>",
+): Promise<{ readonly ok: boolean; readonly tickets: readonly string[]; readonly lines: readonly string[] }> {
+	const changed = new Map<string, string>();
+	for (const row of gitText(repository, ["diff", "--name-status", "-M", `${target}...${branch}`]).split("\n")) {
+		const [status = "", ...paths] = row.split("\t");
+		const path = paths.at(-1) ?? "";
+		if (/^[AMR]/.test(status) && TICKET_PATH.test(path)) changed.set(path, status[0] ?? "");
+	}
+	const tickets = [...changed.keys()];
+	if (tickets.length === 0) return { ok: true, tickets, lines: [] };
+	const lines: string[] = [];
+	const map = `${root}/.limen/picture`;
+	let placeIds: ReadonlySet<string> | undefined;
+	if (existsSync(map)) {
+		const model = await readPicture(map);
+		placeIds = new Set([...model.nodes.filter((node) => node.kind === "module").map((node) => node.id), ...(model.project.rootId ? [model.project.rootId] : [])]);
+		const codes = new Map(tickets.map((path) => [TICKET_PATH.exec(path)?.[1] ?? "", path]));
+		for (const record of [...model.nodes, ...model.edges, ...model.features, ...model.journeys])
+			for (const source of record.sources) {
+				const current = codes.get(/\/(F\d+)-/.exec(source)?.[1] ?? "");
+				if (current && !gitOk(repository, ["cat-file", "-e", `${branch}:${source.replace(/\/$/, "")}`])) {
+					const at = (await readFile(join(map, record.source), "utf8")).split("\n").findIndex((line) => line.includes(source)) + 1;
+					lines.push(`warn ${map}/${record.source}:${at || 1}: source "${source}" does not exist at ${branch}; fix: change it to ${current}`);
+				}
+			}
+	} else lines.push(`land: no picture map at ${map}; touches place ids not checked`);
+	const tip = await mkdtemp(join(tmpdir(), "limen-land-"));
+	try {
+		const archive = execFileSync("git", ["archive", branch, "--", ":(glob)spec/features/**/ticket.md"], { cwd: repository, maxBuffer: 256 * 1024 * 1024 });
+		execFileSync("tar", ["-x", "-C", tip], { input: archive });
+		const board = spawnSync("git", ["show", `${branch}:spec/build.md`], { cwd: repository, maxBuffer: 64 * 1024 * 1024 });
+		if (board.status === 0) await writeFile(join(tip, "spec/build.md"), board.stdout);
+		// A branch with no board at its tip gets no board warnings.
+		const entries = board.status === 0 ? await readBoard(tip) : undefined;
+		for (const path of tickets) {
+			const lane = path.split("/")[2];
+			const folder = path.split("/").at(-2) ?? "";
+			const code = TICKET_PATH.exec(path)?.[1] ?? "";
+			const want =
+				lane === "active"
+					? { state: "ACTIVE", line: `- \`${folder}\` (🟠 ACTIVE): <one clause> under ## NOW` }
+					: lane === "done"
+						? { state: "PROVEN", line: `- \`${folder}\` (🟢 PROVEN): <one clause> under ## PROVEN` }
+						: undefined;
+			if (!want || !entries) continue;
+			const entry = entries.get(code.toLowerCase());
+			if (!entry) lines.push(`warn spec/build.md: no board line for ${code}; fix: add ${want.line}`);
+			else if (entry.state !== want.state)
+				lines.push(
+					`warn spec/build.md:${entry.line}: ${code} is ${entry.state} on the board but its folder is in ${lane}; fix: mark it ${want.state} in the ${lane === "active" ? "NOW" : "PROVEN"} section`,
+				);
+		}
+		const read = await readTickets(tip);
+		const diagnostics = [...read.diagnostics, ...(placeIds ? checkTickets(read.tickets, placeIds) : [])].filter((d) => d.source !== null && changed.has(d.source));
+		const failing = diagnostics.filter((d) => d.level === "error");
+		const errors = failing.map((d) => `error ${d.source}:${d.line ?? 1}: ${d.message}`);
+		let bad = failing[0]?.source ?? undefined;
+		const all = gitText(repository, ["ls-tree", "-r", "--name-only", branch, "--", "spec/features"]).split("\n");
+		for (const [path, status] of changed) {
+			if (status !== "A") continue;
+			const code = TICKET_PATH.exec(path)?.[1];
+			const other = all.find((candidate) => candidate !== path && TICKET_PATH.exec(candidate)?.[1] === code);
+			if (!other) continue;
+			errors.push(`error ${path}:1: ${code} is also used by ${other}; fix: move this ticket to a free F number (limen ticket new picks one)`);
+			bad ??= path;
+		}
+		for (const d of diagnostics) if (d.level === "warn") lines.push(`warn ${d.source}:${d.line ?? 1}: ${d.message}`);
+		lines.push(...errors);
+		if (errors.length === 0) return { ok: true, tickets, lines };
+		bad ??= tickets[0];
+		lines.push(`fix: limen keeper ${bad} --job ${job} --engine <engine> --provider <provider> --model <model> --thinking <level>`);
+		return { ok: false, tickets, lines };
+	} finally {
+		await rm(tip, { recursive: true, force: true });
+	}
+}
+
+function gitText(cwd: string, args: readonly string[]): string {
+	return execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
+}
+
+function gitOk(cwd: string, args: readonly string[]): boolean {
+	return spawnSync("git", args, { cwd, stdio: "ignore" }).status === 0;
 }
 
 function parseLandArgs(args: readonly string[]): { readonly query: string; readonly yes: boolean; readonly onto?: string } {

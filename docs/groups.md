@@ -82,6 +82,8 @@ Resume the original lead session to recover its subscription and bounded catch-u
 
 The lead puts selected findings and team summaries in the feature's `group/findings/` and writes `group/synthesis.md`. In committed mode, the lead commits them as an ordinary documentation change. In private mode, the lead keeps them in the canonical project root and does not stage or commit them. Moving the feature does not move or strand its live cabinet.
 
+The lead lands through the spec keeper. After merging the team branches it keeps onto one integration branch, the lead starts one keeper for the feature ticket: `limen keeper <ticket> --group GROUP-ID --candidate <integration branch> --engine E --provider P --model M --thinking T`. `--group` lists every member job in the packet, so the keeper can read each transcript. The keeper refuses while a member runs and fixes ticket, board and map links on its own branch at the integration tip. The lead then lands the keeper job, which carries the integration and the fixes. Members cannot start a keeper or land.
+
 ## Reproducible proof setup
 
 The real-agent proof is separate from native regressions. Prepare, but do not automatically launch, its disposable repository:
