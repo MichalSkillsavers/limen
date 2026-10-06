@@ -439,3 +439,28 @@ test("jobs refuses an unknown id in an empty plant and hides old empty jobs", as
 	assert.doesNotMatch(snapshot.stdout, /old-empty/);
 	assert.match(snapshot.stdout, /1 older empty job hidden/);
 });
+
+test("hosted detail folds activity words and hides the finish webhook while running", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	limen(scratch, "init");
+	const dir = join(scratch.root, ".limen/jobs/hosted-busy");
+	await mkdir(dir);
+	const words = Array.from({ length: 20 }, (_, index) => ["think", "read", "bash"][index % 3]);
+	for (const [name, value] of Object.entries({
+		"task.md": "x",
+		state: "running",
+		label: "hosted-busy",
+		branch: "main",
+		hosted: "1",
+		pid: String(process.pid),
+		activity: "think",
+		"started-at": new Date().toISOString(),
+		log: words.join("\n"),
+	}))
+		await writeFile(join(dir, name), `${value}\n`);
+	const detail = limen(scratch, "jobs", "hosted-busy");
+	assert.equal(detail.status, 0, detail.stderr);
+	assert.match(detail.stdout, /recent activity: think, read, bash \(20 events\)/);
+	assert.doesNotMatch(detail.stdout, /finish-webhook/);
+});

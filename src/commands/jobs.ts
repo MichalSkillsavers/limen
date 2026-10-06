@@ -145,10 +145,11 @@ export async function renderJobDirectory(root: string, jobsRoot: string, id: str
 	const [result, versions] = detailed ? await Promise.all([text(`${jobDir}/result`), text(`${jobDir}/versions`)]) : ["", ""];
 	const [taskStat, logStat] = await Promise.all([optionalStat(`${jobDir}/task.md`), optionalStat(`${jobDir}/log`)]);
 	const cleanup = detailed ? await text(`${jobDir}/cleanup`) : "";
-	const finishWebhook = detailed ? await inspectFinishWebhook(jobDir) : "";
+	const finishWebhook = detailed && state !== "running" ? await inspectFinishWebhook(jobDir) : "";
 	const herdrWake = detailed ? await text(`${jobDir}/notify/herdr-prompt`) : "";
 	if (!taskStat || !logStat) return { compact: `INVALID ${id} · missing task.md or log`, record: { id, invalid: "missing task.md or log" } };
 	const log = detailed || human ? await readLog(`${jobDir}/log`) : { tail: "", detail: "" };
+	if (hosted) log.tail = activitySummary(log.tail);
 	const display = (value: string) => (detailed || value.length <= 160 ? value : `${value.slice(0, 159)}…`);
 	try {
 		const startedAt = recordedDate(started, taskStat.mtime, "started-at");
@@ -284,6 +285,11 @@ function recordedCount(value: string): number {
 	const count = Number(value);
 	if (!Number.isSafeInteger(count) || count < 0) throw new Error(`invalid tool-calls ${JSON.stringify(value.slice(0, 160))}`);
 	return count;
+}
+function activitySummary(tail: string): string {
+	const words = tail.split("\n");
+	if (words.length < 2 || !words.every((word) => /^[a-z_-]+$/.test(word))) return tail;
+	return `recent activity: ${[...new Set(words)].join(", ")} (${words.length} events)`;
 }
 async function readLog(path: string): Promise<{ tail: string; detail: string }> {
 	try {
