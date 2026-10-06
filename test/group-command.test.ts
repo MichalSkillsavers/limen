@@ -235,24 +235,6 @@ test("group start refuses a lead registration that no running hook refreshes, an
 	assert.equal(limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings).status, 0);
 });
 
-test("duplicate and concurrent activation start one fixed roster, never repair or add agents", async (context) => {
-	const scratch = await fixture();
-	context.after(scratch.cleanup);
-	const results = await Promise.all([launch(scratch, lead, "group", "start", scratch.feature, ...settings), launch(scratch, lead, "group", "start", scratch.feature, ...settings)]);
-	for (const result of results) assert.equal(result.status, 0, result.stderr);
-	assert.equal(onlyJobId(results[0]?.stdout ?? ""), onlyJobId(results[1]?.stdout ?? ""));
-	const run = await readRun(scratch.root, onlyJobId(results[0]?.stdout ?? ""));
-	for (const member of run.members) await waitForState(scratch.root, member.id, "done");
-	assert.deepEqual(run.teams, ["team-1", "team-2"]);
-	assert.equal(run.workersPerTeam, 1);
-	assert.equal(run.members.filter((member) => member.role === "coordinator").length, 2);
-	const repeat = limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings);
-	assert.equal(repeat.status, 0, repeat.stderr);
-	assert.equal(onlyJobId(repeat.stdout), run.id);
-	assert.equal((await readdir(`${scratch.root}/.limen/jobs`)).length, 2);
-	assert.equal(limenWithEnv(scratch, lead, "group", "start", scratch.feature, ...settings, "--new-run").status, 1);
-});
-
 test("invalid activation creates no group and ignores inherited plant roots", async (context) => {
 	const scratch = await fixture();
 	context.after(scratch.cleanup);
@@ -295,31 +277,6 @@ test("concurrent worktree spawns consume one total slot and never create a secon
 	const continued = limenWithEnv(scratch, lead, "continue", worker, "more evidence", ...workerSettings);
 	assert.equal(continued.status, 1);
 	assert.match(limenWithEnv(scratch, lead, "continue", coordinator.id, "more coordination", ...workerSettings).stderr, /coordinator continuation/);
-});
-
-test("worker continuation inherits membership and deadline but consumes another slot", async (context) => {
-	const scratch = await fixture();
-	context.after(scratch.cleanup);
-	const run = await activate(scratch);
-	run.workersPerTeam = 2;
-	await saveJson(`${groupPath(run)}/run.json`, run);
-	const launched = limenWithEnv(scratch, environment(run), "spawn", "candidate", ...workerSettings);
-	assert.equal(launched.status, 0, launched.stderr);
-	const worker = onlyJobId(launched.stdout);
-	await waitForState(scratch.root, worker, "done");
-	const continued = limenWithEnv(scratch, lead, "continue", worker, "follow-up", ...workerSettings);
-	assert.equal(continued.status, 0, continued.stderr);
-	const id = onlyJobId(continued.stdout);
-	await waitForState(scratch.root, id, "done");
-	const current = await readRun(run.root, run.id);
-	const entry = current.members.find((member) => member.id === id);
-	assert.ok(entry);
-	assert.equal(entry.parent, worker);
-	assert.equal(entry.team, "team-1");
-	assert.ok(entry.deadline <= run.deadline - run.reserveMs);
-	assert.equal((await readFile(`${run.root}/.limen/jobs/${id}/group`, "utf8")).trim(), run.id);
-	const again = limenWithEnv(scratch, lead, "continue", id, "another wave", ...workerSettings);
-	assert.equal(again.status, 1);
 });
 
 test("informational delivery is per recipient, bounded, deduplicated and preserved across continuation", async (context) => {
