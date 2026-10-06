@@ -145,6 +145,13 @@ export function pruneWorktrees(cwd: string): void {
 export function headCommit(cwd: string): string {
 	return requireGit(cwd, ["rev-parse", "HEAD"]).stdout.trim();
 }
+/** A full commit SHA for `ref`: a full SHA as given, or a short SHA, branch, tag or other revision that Git resolves. */
+export function resolveCommit(cwd: string, ref: string, option: string): string {
+	if (/^[0-9a-f]{40}$/.test(ref)) return ref;
+	const result = ref.startsWith("-") ? undefined : git(cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+	if (!result || result.status !== 0) throw new Error(`${option} ${JSON.stringify(ref)} names no commit in ${cwd}`);
+	return result.stdout.trim();
+}
 export const NO_COMMIT = "this repository has no commit yet; commit once, then spawn.";
 export function hasCommit(cwd: string): boolean {
 	return git(cwd, ["rev-parse", "--verify", "HEAD"]).status === 0;

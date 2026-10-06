@@ -928,3 +928,25 @@ test("a positional title labels a task file, and a trailing period does not brea
 	assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "label"), "utf8"), "Build the slice\n");
 	assert.equal(await readFile(join(scratch.root, ".limen/jobs", id, "task.md"), "utf8"), bytes);
 });
+
+test("review pins --base and --head given as a short SHA or a ref, and names a ref that is no commit", async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	const base = git(scratch.root, "rev-parse", "HEAD");
+	git(scratch.root, "checkout", "-b", "limen/candidate");
+	await writeFile(join(scratch.root, "candidate.txt"), "candidate\n");
+	git(scratch.root, "add", "candidate.txt");
+	git(scratch.root, "commit", "-m", "candidate");
+	const head = git(scratch.root, "rev-parse", "HEAD");
+	git(scratch.root, "checkout", "main");
+	const missing = limen(scratch, "spawn", "--review", "--branch", "limen/candidate", "--head", "no-such-ref", "inspect");
+	assert.equal(missing.status, 1);
+	assert.match(missing.stderr, /--head "no-such-ref" names no commit/);
+	const started = limen(scratch, "spawn", "--review", "--branch", "limen/candidate", "--base", "main", "--head", head.slice(0, 9), "inspect");
+	assert.equal(started.status, 0, started.stderr);
+	const id = onlyJobId(started.stdout);
+	await waitForState(scratch.root, id, "done");
+	assert.equal((await readFile(join(scratch.root, ".limen/jobs", id, "base"), "utf8")).trim(), base);
+	assert.equal((await readFile(join(scratch.root, ".limen/jobs", id, "candidate"), "utf8")).trim(), head);
+});
