@@ -11,8 +11,9 @@ minutes since start, activity, and last tool. `Candidates to inspect` lists
 clean exit is not approval, so inspect each one before you land it. `Needs a
 decision` lists `failed` or `stopped` jobs in the same position. A commit counts
 as landed when it is an ancestor of the checked-out branch or a patch-equivalent
-copy of one there (cherry-pick, or through an integration branch), the same test
-`limen prune --retire` uses. Jobs with no unlanded commits appear under no
+copy of one there (cherry-pick, or through an integration branch).
+`limen prune --retire` deletes finished, failed, or stopped job records whose
+branch is landed (ancestor or cherry-pick) or deleted. Jobs with no unlanded commits appear under no
 heading. Both lists cover the last seven days; `Older: N records` counts the
 rest, and `limen status --all` lists them under the same headings.
 Open groups appear once with their member-branch count and `limen group status <id>`;

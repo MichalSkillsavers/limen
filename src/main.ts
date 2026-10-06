@@ -100,7 +100,7 @@ usage:
   limen stop <id|suffix|label> [reason]
   limen jobs [--running|--active|--all|--label PREFIX|<id|suffix|label>]
   limen status [--all]                          # plant inbox: running, candidates to inspect, needs a decision (last 7 days), coordinator tabs
-  limen prune [--retire [--dry-run]]           # retire finished job records whose branches are landed (ancestry or cherry-pick) or gone
+  limen prune [--retire [--dry-run]]           # --retire deletes finished, failed, or stopped job records whose branch is landed (ancestor or cherry-pick) or deleted
   limen watch <id|suffix|label> | --running
   limen unwatch <id|suffix|label> | --all
   limen open <id|suffix|label>
