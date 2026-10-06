@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { hostedForegroundPid } from "../src/integrations/herdr.ts";
+import { herdrBinary, hostedForegroundPid } from "../src/integrations/herdr.ts";
 import { readHostedBinding, registerHostedBinding } from "../src/runtime/hosted-binding.ts";
 
 type PiApi = {
@@ -123,9 +123,9 @@ export default function limenHosted(pi: PiApi): void {
 		}
 		write("activity", "think");
 		log(`[limen ${new Date().toISOString()}] hosted reporter attached`);
-		const binary = process.env.LIMEN_HERDR?.trim() || "herdr";
+		const binary = herdrBinary();
 		if (metadataTimer) clearInterval(metadataTimer);
-		herdr = process.env.HERDR_ENV === "1" && binary !== "0" && pane ? { binary, pane } : undefined;
+		herdr = process.env.HERDR_ENV === "1" && binary && pane ? { binary, pane } : undefined;
 		if (!herdr) return;
 		report();
 		// Refresh even through long silent turns; state changes remain the supervisor's responsibility.

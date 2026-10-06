@@ -2,6 +2,7 @@ import { execFile, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, type FSWatcher, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { coordinatorSignals } from "../src/integrations/coordinator-signal.ts";
+import { herdrBinary } from "../src/integrations/herdr.ts";
 import { derivePulse, type Pulse } from "../src/job/job.ts";
 import { advisoryWake, completionWake } from "../src/job/wake-text.ts";
 import { unlandedBranches } from "../src/project/git.ts";
@@ -982,9 +983,9 @@ function record(value: unknown): Record<string, unknown> {
 	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 function herdrTarget(): HerdrPane | undefined {
-	const binary = process.env.LIMEN_HERDR || "herdr";
+	const binary = herdrBinary();
 	const pane = process.env.HERDR_PANE_ID;
-	if (binary === "0" || process.env.HERDR_ENV !== "1" || !pane) return undefined;
+	if (!binary || process.env.HERDR_ENV !== "1" || !pane) return undefined;
 	return { binary, pane };
 }
 // The display agent names the lead pane, so it describes the lead: an idle lead waits on its jobs; a working lead only counts them.

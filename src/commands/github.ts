@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pollGithub } from "../integrations/github-poller.ts";
 import { type GithubClaim, githubSubject, matchedGithubJob, startGithubJob } from "../integrations/github-review.ts";
+import { herdrBinary } from "../integrations/herdr.ts";
 import { repoRoot } from "../project/git.ts";
 import { githubDoctor } from "./github-doctor.ts";
 
@@ -53,7 +54,9 @@ export function liveCoordinator(agent: HerdrAgentRow | undefined, pane: string):
 export async function ensureGithubCoordinator(root: string): Promise<GithubBinding> {
 	const binding = await readBinding(root);
 	if (!binding || originRepository(root).toLowerCase() !== binding.repo.toLowerCase()) throw new Error("GitHub registration is disconnected or no longer matches origin");
-	const agent = spawnSync(process.env.LIMEN_HERDR || "herdr", ["agent", "get", binding.coordinator], { encoding: "utf8", timeout: 15000 });
+	const herdr = herdrBinary();
+	if (!herdr) throw new Error("registered Herdr coordinator unavailable: Herdr is not available");
+	const agent = spawnSync(herdr, ["agent", "get", binding.coordinator], { encoding: "utf8", timeout: 15000 });
 	if (agent.status !== 0) throw new Error(`registered Herdr coordinator unavailable: ${(agent.stderr || agent.error?.message || "agent get failed").trim()}`);
 	let row: { result?: { agent?: HerdrAgentRow }; agent?: HerdrAgentRow };
 	try {
@@ -168,7 +171,9 @@ PR body: ${claim.body ?? ""}
 Existing discussion: ${claim.discussion ?? ""}
 Triggering comment: ${claim.command ?? ""}
 Read the registered project's spec/build.md for standing model policy. Decide whether to use a hosted job or respond without one. For review run ${bin} github review ${JSON.stringify(root)} ${claim.id} --engine <board engine> --provider <board provider> --model <board model> --thinking <board reasoning>. For another hosted task run the same command with 'work' instead of 'review' and add --task <your instruction>. Supply all four model flags explicitly. These commands verify the pinned PR for reviews and start a hosted job or fail closed. ${answer}`;
-			const prompted = spawnSync(process.env.LIMEN_HERDR || "herdr", ["agent", "prompt", binding.coordinator, text], { encoding: "utf8", timeout: 15000 });
+			const herdr = herdrBinary();
+			if (!herdr) throw new Error("Herdr coordinator prompt failed: Herdr is not available");
+			const prompted = spawnSync(herdr, ["agent", "prompt", binding.coordinator, text], { encoding: "utf8", timeout: 15000 });
 			if (prompted.status !== 0) throw new Error(`Herdr coordinator prompt failed: ${(prompted.stderr || prompted.error?.message || "unavailable").trim()}`);
 			console.log("prompt accepted; awaiting job record");
 		}

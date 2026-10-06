@@ -520,7 +520,8 @@ async function createTab(input: {
 	}
 }
 
-function herdrBinary(): string | undefined {
+/** The one rule for the Herdr binary: `LIMEN_HERDR=0` turns Herdr off; another value must exist; otherwise `herdr` on PATH. */
+export function herdrBinary(): string | undefined {
 	const override = process.env.LIMEN_HERDR?.trim();
 	if (override === "0") return;
 	if (override) return existsSync(override) ? override : undefined;

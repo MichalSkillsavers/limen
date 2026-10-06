@@ -4,6 +4,7 @@ import { access, lstat, readdir, readFile, realpath, stat } from "node:fs/promis
 import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { herdrBinary } from "../integrations/herdr.ts";
 import { bindingPath, liveCoordinator, originRepository, readBinding } from "./github.ts";
 
 type Seat = {
@@ -284,7 +285,8 @@ export async function githubDoctor(root: string, seat: Seat = seatDefaults()): P
 			`${label} coordinator binding`,
 			"from its persistent Herdr coordinator run limen github connect (or disconnect before changing origin)",
 		);
-		const agent = binding?.coordinator && command(process.env.LIMEN_HERDR || "herdr", ["agent", "get", binding.coordinator]);
+		const herdr = herdrBinary();
+		const agent = binding?.coordinator && herdr && command(herdr, ["agent", "get", binding.coordinator]);
 		let live = false;
 		try {
 			type Row = { agent_status?: string; interactive_ready?: boolean; pane_id?: string };

@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureFinishAuthor, finishWebhookEnv } from "../integrations/finish-webhook.ts";
-import { herdrAvailable, openHostedTab, openWatchTab } from "../integrations/herdr.ts";
+import { herdrAvailable, herdrBinary, openHostedTab, openWatchTab } from "../integrations/herdr.ts";
 import type { GroupRun } from "../job/group-cabinet.ts";
 import { claimMember, groupIdentity, groupLock, groupPath, teamRoute } from "../job/group-cabinet.ts";
 import { syncLifecycle } from "../job/group-events.ts";
@@ -472,10 +472,10 @@ function probeVersion(command: string): Promise<string> {
 	});
 }
 export async function capturedVersions(profile: EngineProfile): Promise<string> {
-	const herdr = process.env.LIMEN_HERDR?.trim();
+	const herdr = herdrBinary();
 	const hunk = hunkBinary();
 	const version = (await probeVersion(engineBinary(profile) || profile.binaryDefault)) || "unavailable";
-	const extra = herdr !== "0" && (await probeVersion(herdr || "herdr"));
+	const extra = herdr && (await probeVersion(herdr));
 	const hunkVersion = hunk && (await probeVersion(hunk));
 	return `${profile.id} ${version}\n${extra ? `herdr ${extra}\n` : ""}${hunkVersion ? `hunk ${hunkVersion}\n` : ""}`;
 }
