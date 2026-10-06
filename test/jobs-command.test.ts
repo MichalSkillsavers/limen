@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -268,12 +269,15 @@ test("jobs shows the advisory line on a running hosted job", async (context) => 
 	assert.match(limen(scratch, "jobs", "stalled").stdout, /ownership observation unavailable/, "exhausted delivery does not hide the condition");
 });
 
-test("jobs names a directory with no state as an orphan", async (context) => {
+test("jobs names a directory with no state and no live spawner as an orphan", async (context) => {
 	const scratch = await scratchRepo();
 	context.after(scratch.cleanup);
 	limen(scratch, "init");
 	const job = join(scratch.root, ".limen/jobs/half-written");
 	await mkdir(job);
+	// A spawner that died before it wrote state leaves its pid behind.
+	const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+	await writeFile(join(job, "starting"), `${dead}\n`);
 	const listed = limen(scratch, "jobs");
 	assert.equal(listed.status, 0, listed.stderr);
 	assert.match(listed.stdout, /ORPHAN half-written · no state/);

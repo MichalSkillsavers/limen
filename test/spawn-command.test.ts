@@ -950,3 +950,63 @@ test("review pins --base and --head given as a short SHA or a ref, and names a r
 	assert.equal((await readFile(join(scratch.root, ".limen/jobs", id, "base"), "utf8")).trim(), base);
 	assert.equal((await readFile(join(scratch.root, ".limen/jobs", id, "candidate"), "utf8")).trim(), head);
 });
+
+test("a review that is still starting records its spawner at once and lists as starting, never ORPHAN", { timeout: 120_000 }, async (context) => {
+	const scratch = await scratchRepo();
+	context.after(scratch.cleanup);
+	assert.equal(limen(scratch, "init").status, 0);
+	git(scratch.root, "checkout", "-b", "limen/slow-review");
+	await writeFile(join(scratch.root, "candidate.txt"), "candidate\n");
+	git(scratch.root, "add", "candidate.txt");
+	git(scratch.root, "commit", "-m", "candidate");
+	git(scratch.root, "checkout", "main");
+	const gate = join(scratch.root, "prepare-gate");
+	const reached = join(scratch.root, "prepare-reached");
+	const prepareScript = join(scratch.root, "slow-prepare.cjs");
+	await writeFile(
+		prepareScript,
+		`const { existsSync, writeFileSync } = require("node:fs");
+writeFileSync(${JSON.stringify(reached)}, "1");
+while (!existsSync(${JSON.stringify(gate)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+`,
+	);
+	const started = startLimen(scratch, [
+		"spawn",
+		"--review",
+		"--branch",
+		"limen/slow-review",
+		"--prepare",
+		`node ${JSON.stringify(prepareScript)}`,
+		"--label",
+		"slow review",
+		"inspect",
+	]);
+	context.after(async () => {
+		await writeFile(gate, "1\n").catch(() => {});
+		await Promise.race([
+			started.output.then(
+				() => undefined,
+				() => undefined,
+			),
+			delay(10_000),
+		]);
+		await started.settle();
+	});
+	const id = await waitForInFlightJob(scratch.root);
+	await waitFor("review did not reach prepare", async () => existsSync(reached), 30_000);
+	const job = join(scratch.root, ".limen/jobs", id);
+	await assert.rejects(access(join(job, "state")));
+	const spawner = Number((await readFile(join(job, "starting"), "utf8")).trim());
+	assert.ok(Number.isSafeInteger(spawner) && spawner > 0, "starting names no spawner pid");
+	const listed = limen(scratch, "jobs");
+	assert.equal(listed.status, 0, listed.stderr);
+	assert.doesNotMatch(listed.stdout, /ORPHAN/);
+	assert.match(listed.stdout, new RegExp(`slow review.*starting|starting.*${id}`));
+	const status = limen(scratch, "status");
+	assert.equal(status.status, 0, status.stderr);
+	assert.doesNotMatch(status.stdout, /unknown state/);
+	assert.match(status.stdout, new RegExp(`slow review \\(${id}\\).*starting`));
+	await writeFile(gate, "1\n");
+	assert.equal((await started.output).status, 0);
+	await waitForState(scratch.root, id, "done");
+});

@@ -52,6 +52,8 @@ export async function publishJob(jobDir: string, job: NewJob): Promise<void> {
 			"last-tool": "",
 			activity: "think\n",
 			log: "",
+			// The spawning process. Until spawn writes `state`, a live spawner means the job is starting, not orphaned.
+			starting: `${process.pid}\n`,
 		};
 		if (job.repo) files.repo = `${job.repo}\n`;
 		if (job.agentName) {

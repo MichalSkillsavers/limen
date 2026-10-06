@@ -17,11 +17,11 @@ Start a worker, a reviewer, or a job in one child repository, or continue a fini
 ```text
 limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> "instruction" [--label L] [--branch B] [--role NAME] [--timeout 20m] [--task-file F|-] [--prepare CMD] [--tab|--detached]
 limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --repo R "instruction" [--label L]
-limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L [--base SHA] [--head SHA] "instruction"
+limen spawn --engine <engine> --provider <provider> --model <model> --thinking <level> --review --detached --branch B --label L [--base REF] [--head REF] "instruction"
 limen continue <id|suffix|label> "follow-up instruction" [--review] [--label L] [--engine pi|omp] [--provider P] [--model M] [--thinking T] [--tab|--detached]
 ```
 
-`--base` and `--head` take full commit SHAs and pin the range that a review reads. They require `--review`.
+`--base` and `--head` pin the range that a review reads. They take a full SHA, a short SHA, or a ref such as a branch or tag; Limen resolves it with `git rev-parse` and records the full SHA. They require `--review`.
 
 ### Inspect jobs
 
@@ -49,6 +49,8 @@ In a terminal, `jobs` shows an aligned table for people. Through a pipe, it prin
 
 The default compact `jobs` view lists running jobs and recent empty jobs. It hides empty jobs that ended more than 7 days ago and prints `N older empty jobs hidden`. `limen jobs --all` shows every job. An unknown job ID exits 1 with `no job matches "<id>"`.
 
+A job is starting while `limen spawn` still prepares it: the worktree, `--prepare`, and the launch. Its record holds the spawn's pid in `starting` from the first moment. `jobs` and `status` list it as running with the pulse `starting`. A job with no state whose spawn process is gone is `ORPHAN`.
+
 ### Control running jobs
 
 Correct or stop a running job, or subscribe to it.
@@ -69,6 +71,8 @@ limen land <id|suffix|label> [--onto BRANCH] [--yes]
 limen close <FNNN>
 limen prune [--retire [--dry-run]]
 ```
+
+`land` merges into the checkout of the plant even when another session has uncommitted files there. It leaves those files as they are. It refuses when a file the merge would change has uncommitted edits, or when the index holds staged changes. A merge that fails beside uncommitted files is aborted, so the checkout returns to its earlier state.
 
 ### Tickets
 
@@ -181,4 +185,4 @@ limen picture watch [off | on --engine E --provider P --model M --thinking T [--
 limen wait <id|suffix|label>
 ```
 
-Because it blocks, `wait` refuses under `LIMEN_COORDINATOR=1`. It tells you to use `limen jobs`, the `state` file of the job, and the completion wake.
+Because it blocks, `wait` refuses a running job under `LIMEN_COORDINATOR=1`. The refusal names the commands for that job: `limen jobs <id>` to read it now, and `limen watch <id>` when the coordinator did not spawn it and so gets no completion wake. For a job that already ended, `wait` prints the result in a coordinator too.

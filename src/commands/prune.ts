@@ -3,7 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import { retainedGroupJob } from "../job/group-cabinet.ts";
 import { isTerminal } from "../job/job.ts";
 import { limenRoot, listWorktrees, pruneWorktrees, removeWorktree, unlandedBranches, workspaceRepository } from "../project/git.ts";
-import { liveJob, STARTUP_GRACE_MS } from "../runtime/reap.ts";
+import { liveJob, STARTUP_GRACE_MS, startingJob } from "../runtime/reap.ts";
 
 export async function pruneCommand(args: readonly string[], cwd: string): Promise<void> {
 	const retire = args.includes("--retire"),
@@ -75,7 +75,7 @@ export async function pruneFinishedWorktrees(root: string, keep: readonly string
 		}
 		if (!(await text(`${jobDir}/state`))) {
 			const startedAt = Date.parse(await text(`${jobDir}/started-at`));
-			if (Number.isFinite(startedAt) && Date.now() - startedAt < STARTUP_GRACE_MS) continue;
+			if ((Number.isFinite(startedAt) && Date.now() - startedAt < STARTUP_GRACE_MS) || (await startingJob(jobDir))) continue;
 			await rm(jobDir, { recursive: true, force: true });
 			removed += 1;
 			continue;
@@ -91,8 +91,8 @@ export async function pruneFinishedWorktrees(root: string, keep: readonly string
 		if (!recorded) continue;
 		const state = await text(`${jobDir}/state`);
 		const startedAt = Date.parse(await text(`${jobDir}/started-at`));
-		if ((await retainedGroupJob(jobDir)) || (state ? await liveJob(jobDir) : Number.isFinite(startedAt) && Date.now() - startedAt < STARTUP_GRACE_MS))
-			keepPaths.add(await resolved(recorded));
+		const starting = (Number.isFinite(startedAt) && Date.now() - startedAt < STARTUP_GRACE_MS) || (await startingJob(jobDir));
+		if ((await retainedGroupJob(jobDir)) || (state ? await liveJob(jobDir) : starting)) keepPaths.add(await resolved(recorded));
 	}
 	for (const repository of repositories) {
 		const worktreeRoot = await resolved(`${dirname(repository)}/.${basename(repository)}-limen-worktrees`);
