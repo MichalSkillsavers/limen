@@ -171,6 +171,8 @@ This is craft, not a gate. The coordinator is the human's single point of conver
 
 Run the repository's own tests, lint, and build commands. Pick the checks the change can invalidate; do not wait on a full suite while iterating. Independent checks that do not share a compile target, GUI, or proof lane may run in the same turn. Raw output and the live diff inform review; there is no configured check registry. A reviewer is independent because it is a fresh session, not because identity records say so.
 
+New work replaces tests; it does not only add them. A new check retires the weaker one it supersedes in the same branch. When `spec/vision.md` caps `test/`, the cap binds: the test run and `limen land` fail past it, and only the owner raises it.
+
 ## Research
 
 A fan-out is spend the human authorizes. Never start research unprompted. When they ask a question that needs more than one opinion, spawn two researcher jobs, then one judge. Use the board's research and judge choices; the board may name one model for both opinions or two. Absent a research choice, use the ordinary model and the cheaper model for two independent opinions:
