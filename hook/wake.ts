@@ -2,7 +2,7 @@ import { execFile, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, type FSWatcher, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { coordinatorSignals } from "../src/integrations/coordinator-signal.ts";
-import { derivePulse, type Pulse } from "../src/job/job.ts";
+import { closedFeatures, closedJobFeatures, derivePulse, type Pulse } from "../src/job/job.ts";
 import {
 	CLAIM_STALE_MS,
 	claimDelivery,
@@ -686,19 +686,8 @@ async function jobDisplay(
 /** Finished jobs this coordinator still answers for: terminal, spawned from its tab or watched by its session, not landed, and not closed. */
 function finishedJobs(jobs: string, tab: string | undefined, session: string): FinishedJob[] {
 	const root = dirname(dirname(jobs));
-	const closed = new Set<string>();
-	// `limen close` treats a feature as closed once its folder is in done/ or dropped/; its jobs leave the line with it.
-	for (const lane of ["done", "dropped"]) {
-		const laneDir = join(root, "spec", "features", lane);
-		if (!existsSync(laneDir)) continue;
-		for (const month of readdirSync(laneDir, { withFileTypes: true })) {
-			if (!month.isDirectory()) continue;
-			for (const name of readdirSync(join(laneDir, month.name))) {
-				const feature = /^(F\d+)-/i.exec(name)?.[1];
-				if (feature) closed.add(feature.toUpperCase());
-			}
-		}
-	}
+	// `limen close` and this line share one rule: a job leaves once every feature it names is in done/ or dropped/.
+	const closed = closedFeatures(root);
 	const candidates: Array<FinishedJob & { readonly branch: string; readonly repo: string; readonly landable: boolean }> = [];
 	for (const id of readdirSync(jobs).sort()) {
 		const job = join(jobs, id);
@@ -706,8 +695,7 @@ function finishedJobs(jobs: string, tab: string | undefined, session: string): F
 		if (!isTerminal(state) || existsSync(join(job, "group"))) continue;
 		if (!(tab && text(join(job, "origin-tab")) === tab) && !subscribed(job, session)) continue;
 		const label = text(join(job, "label")) || id;
-		const feature = /\bF\d+\b/i.exec(`${label}\n${id}`)?.[0]?.toUpperCase();
-		if (feature && closed.has(feature)) continue;
+		if (closedJobFeatures(label, id, closed).length > 0) continue;
 		const finishedAt = Date.parse(text(join(job, "finished-at"))) || 0;
 		candidates.push({ id, label, state, finishedAt, branch: text(join(job, "branch")), repo: text(join(job, "repo")), landable: text(join(job, "commits")) !== "" });
 	}

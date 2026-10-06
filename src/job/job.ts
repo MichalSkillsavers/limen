@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 type JobIdentity = { readonly id: string; readonly label: string; readonly branch: string };
 export type Job = JobIdentity &
@@ -114,6 +116,30 @@ export function parseDuration(value: string): number {
 }
 export function producedNothing(toolCalls: number | undefined, commits: string | undefined): boolean {
 	return toolCalls === 0 && commits === "";
+}
+/** Features whose folder is in spec/features/done/ or dropped/. */
+export function closedFeatures(root: string): ReadonlySet<string> {
+	const closed = new Set<string>();
+	for (const lane of ["done", "dropped"]) {
+		const laneDir = join(root, "spec", "features", lane);
+		if (!existsSync(laneDir)) continue;
+		for (const month of readdirSync(laneDir, { withFileTypes: true })) {
+			if (!month.isDirectory()) continue;
+			for (const entry of readdirSync(join(laneDir, month.name), { withFileTypes: true })) {
+				const feature = /^(F\d+)-/i.exec(entry.name)?.[1];
+				if (entry.isDirectory() && feature) closed.add(feature.toUpperCase());
+			}
+		}
+	}
+	return closed;
+}
+/**
+ * The features a job names in its label or ID when every one is closed; none while any is open.
+ * A label can name two features (`F100 follow-up for F099`); the job belongs to both, so closing one leaves it in place.
+ */
+export function closedJobFeatures(label: string, id: string, closed: ReadonlySet<string>): readonly string[] {
+	const named = [...new Set(`${label}\n${id}`.match(/\bF\d+\b/gi)?.map((feature) => feature.toUpperCase()))];
+	return named.every((feature) => closed.has(feature)) ? named : [];
 }
 export function renderJob(job: Job, view: JobView): string {
 	const facts = [
