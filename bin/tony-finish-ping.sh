@@ -18,8 +18,9 @@ let envFile = process.env.LIMEN_FINISH_WEBHOOK_ENV;
 if (envFile !== undefined) {
   if (!isAbsolute(envFile)) fail('LIMEN_FINISH_WEBHOOK_ENV must be an absolute file path');
 } else {
+  // Manual calls only; automation passes LIMEN_FINISH_WEBHOOK_ENV. A cold macOS /usr/bin/git shim can take seconds.
   const git = spawnSync('git', ['rev-parse', '--git-common-dir'], {
-    encoding: 'utf8', timeout: 2000, env: { ...process.env, LC_ALL: 'C' },
+    encoding: 'utf8', timeout: 10000, env: { ...process.env, LC_ALL: 'C' },
   });
   if (git.status === 0) {
     try {

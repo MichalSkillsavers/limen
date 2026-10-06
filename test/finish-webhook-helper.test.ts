@@ -67,7 +67,7 @@ globalThis.fetch = async (url, options) => {
 			return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 		},
 		run(override: NodeJS.ProcessEnv = {}, cwd = root, args = ["label", "done", "topic"]) {
-			const result = spawnSync(HELPER, args, { cwd, env: { ...env, ...override }, encoding: "utf8", timeout: 4000 });
+			const result = spawnSync(HELPER, args, { cwd, env: { ...env, ...override }, encoding: "utf8", timeout: 15_000 });
 			assert.ifError(result.error);
 			assert.equal(result.signal, null);
 			assert.doesNotMatch(result.stdout + result.stderr, /synthetic-secret|private-destination|finish\.example\.test/);
