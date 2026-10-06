@@ -4,7 +4,7 @@ Author: team-2 worker (job `2026-10-06-f925-team-2-design-502a23e2`). Read-only 
 
 ## 1. Verdict from the design side
 
-The from-scratch set is one shared fixture, ten scenarios on a throwaway plant, and eight small unit files. It is about **3,300 lines** (today 17,094) and runs in about **4 minutes serial** (estimate range 2.5 to 6.5 minutes at load 70 to 125) or **about 1.5 minutes with four files at a time**. The hypothesis of 2,500 lines is 30% low; "under 3 minutes" holds only with four-way concurrency. Calendar time to reach it on this plant: about 1.5 working days [estimate, section 5]. For the decision this means **staged replace, seam by seam, done fast**: build the fixture first, then land each scenario together with the deletion of the files it replaces and the anti-bloat gate in the first landing. Each of five historical regressions must first fail on its pre-fix commit (closed list in section 8b). A full restart (delete all, then rebuild) leaves the plant with no guard for a day or more and gains nothing, because the old and new files share no code.
+The from-scratch set is one shared fixture, ten scenarios on a throwaway plant, and eight small unit files. It is about **3,300 lines** (today 17,094) and runs in about **4 minutes serial** (estimate: 3.5 to 5 minutes at the load of the F783 run, up to 11 minutes at load 80 and above) or **about 1.5 minutes with four files at a time**. The hypothesis of 2,500 lines is about 30% low; "under 3 minutes" holds only with four-way concurrency. Calendar time to reach it on this plant: about 1.5 working days [estimate, section 5]. For the decision this means **staged replace, written from scratch, done fast**: the first landing carries the fixture and the vision cap; each scenario then lands together with the deletion of the files it replaces. Each of five historical regression families must first fail on its pre-fix commit (closed list in section 8b). A full restart (delete all, then rebuild) leaves the plant with no guard for a day or more and gains nothing, because the old and new files share no code. A deep cut keeps today's per-test fixtures, engines and polling, which are where the time and the random failures come from.
 
 ## 2. The shared fixture
 
@@ -71,9 +71,26 @@ Eight files, about 555 lines. Each runs in under one second (TAP times in sectio
 | U5 engine stream | `createStreamParser`, `assistantStopReason`, src/runtime/stream.ts lines 7, 58 | Decides done versus failed from split JSON lines and stop reasons | Cheap and exact here; S3 covers one error shape only | 40 |
 | U6 front matter and Markdown | `parseFrontmatter`, src/picture/frontmatter.ts line 36; Markdown escape | Hand-written parser; malformed boundaries, prototype keys, executable links | Parser edge cases are inputs, not paths | 60 |
 | U7 job ids and durations | `resolveJobId`, `makeJobId`, `parseDuration`, src/job/job.ts lines 77, 89, 109 | Suffix and label resolution must be unique; feature number hoisting; bounded durations | Every scenario uses ids, but only the happy shape | 60 |
-| U8 structure | test/structure.test.ts | Runtime stays dependency-free, basenames unique, and the test line ceiling (section 7) | It is a repo rule, not a path | 45 |
+| U8 structure | test/structure.test.ts | Runtime stays dependency-free, basenames unique, and `test/` stays under the vision cap (section 7) | It is a repo rule, not a path | 45 |
 
-The next free F number is not a unit: `nextFeatureNumber` is private and reads folders, branches and job labels (src/commands/ticket.ts line 23), so S6 covers it on the real plant at the cost of one CLI call. The land refusal rules are not a unit either: they are seven early `throw`s in `landJob` (src/commands/land.ts lines 14-38) and S5 drives them through the CLI.
+The next free F number is not a unit: `nextFeatureNumber` is private and reads folders, branches and job labels (src/commands/ticket.ts line 23), so S6 covers it on the real plant at the cost of one CLI call. The land refusal rules are not a unit either: they are eight early `throw`s in `landCommand` (src/commands/land.ts lines 14-38) and S5 drives them through the CLI.
+
+**Answer to team 1's unit floor.** Team 1 reads a safe unit floor of about 1,210 lines (finding 00000063). This design keeps about 555. The difference, file by file:
+
+| Today's unit body (team 1) | Team 1 floor | This design | Reason |
+| --- | --- | --- | --- |
+| wake-sweep 347 | 150 | 0 (U4 80) | Claim rules move to U4; sweep cache and settlement counts restate the implementation |
+| finish-webhook-helper 289 | 100 | 120 (U2) | Kept: trust boundary, one zero-request table |
+| hosted-spawn units 302 | 120 | 0 | `noteHostedIdle` writes advisories (inform only); `hostedAgentStatus` envelope parsing is reached in S2 through the fake Herdr |
+| group-command units 244 | 120 | 0 | Event delivery once per recipient and bounded waits are checked in S8 on the real cabinet |
+| recovery 195 | 100 | 0 | Herdr-uncertainty adoption; the seen failure (`88fd5ac`) is in S2, the killed supervisor in S9 |
+| github-doorbell units 185 | 90 | 0 | Authorized, unauthorized, forged and restart cases run in S10 through the fetch preload |
+| picture-generator 248 | 90 | 60 (U6) | Kept: parser and escape; graph build cases dropped (picture is not a seam) |
+| picture-tickets 193 | 90 | 90 (U1) | Same |
+| finish-receipt 154 | 70 | 0 | S7 checks end to end that no secret reaches any job file |
+| reaper 177 | 60 | 0 | S9 kills a real wrapper; pgid recycling is accepted risk |
+
+If the lead adopts team 1's floor, the total becomes about 3,950 lines. This design holds 3,300 because each dropped unit either restates the code or guards a path a scenario drives for real.
 
 ## 5. Targets and method
 
@@ -110,7 +127,7 @@ Sum: fixture 260 + scenarios 2,480 + units 555 = **3,295 lines**. The shared fix
 
 Counts for the set (section 3): 35 RT, 60 CLI calls, 11 inits, 13 s of fixed real time (the 1 s timeout in S3 and the 12 s lock hold in S8), and about 10 s of unit files (today's unit files: TAP total under 5 s). At 3 s per RT, 0.4 s per call and 1.1 s per init: 105 + 24 + 12 + 13 + 10 = **164 s serial**. At 5 s per RT (my slowest measure): 236 s.
 
-Calibration against a real file: the same formula for `land-command.test.ts` (7 spawns, 14 other calls, 4 inits; `grep -c` on the file) gives 21 + 6 + 4 = 31 s. The F783 TAP has 40.8 s; the coordinator measured 89.5 s at load 74 to 89 (steer 1). So the formula under-predicts by 1.3x to 2.9x under heavy load. Applied to 164 to 236 s: **serial 3.5 to 11 minutes at loads 70 to 125**, with 4 minutes as the planning target on a lightly loaded Mac [estimate; not an observed suite]. Four-way: the longest file (S8: 6 RT, 7 calls, 12 s hold, about 35 to 50 s) bounds it, and the total divided by four is 40 to 60 s, so **about 1.5 minutes**, more under load because the Mac is CPU-bound.
+Calibration against a real file: the same formula for `land-command.test.ts` (7 spawns, 14 other calls, 4 inits; `grep -c` on the file) gives 21 + 6 + 4 = 31 s. The F783 TAP has 40.8 s; the coordinator measured 89.5 s at load 74 to 89 (steer 1), and team 1 measured 48 s at load 87 to 116 (finding 00000073). So the formula under-predicts by 1.3x at the F783 load and up to 2.9x at load 80 and above. Applied to 164 to 236 s: **serial 3.5 to 5 minutes at the F783 load (213 to 307 s), up to 11 minutes at load 80 and above**, with 4 minutes as the planning target [estimate; not an observed suite]. Four-way: the longest file (S8: 6 RT, 7 calls, the 12 s hold; about 35 to 50 s raw) bounds it, and the total divided by four is 40 to 60 s raw, so **about 1.5 minutes** after the 1.3x calibration; more under heavy load, because the Mac is then CPU-bound.
 
 **Hypothesis check.** "About 2,500 lines and under 3 minutes": corrected to about 3,300 lines; under 3 minutes holds four-way, not serial under today's load. For comparison: today 1,502 s for 532 tests (`/tmp/f783-lead/full-suite.tap` line 3294); 116 tests over 5 s take 973 s (coordinator count from the same TAP); the five largest files take 52% of the run (lead finding).
 
@@ -123,7 +140,7 @@ Today's timing constructs in `test/` (counted with `grep -o` over test/*.ts, 12:
 | Construct | Count | Where |
 | --- | --- | --- |
 | `setTimeout` | 73 | wake-hook 22, stop-command 9, hosted-spawn 7 (per-file `grep -c`) |
-| fixed `await new Promise((resolve) => setTimeout(resolve, N))` | 49 | 21 are 20-25 ms poll steps; 28 are fixed waits of 100 to 3,000 ms (nine of 650 ms, three of 1,100 ms, one of 3,000 ms), summing to about 17.6 s per run |
+| fixed `await new Promise((resolve) => setTimeout(resolve, N))` | 49 | 23 are 10-50 ms poll steps; 26 are fixed waits of 100 to 3,000 ms (nine of 650 ms, three of 1,100 ms, one of 3,000 ms), summing to about 17.6 s per run |
 | fixed waits of 100 ms or more, by file | 26 | wake-hook 20, hosted-spawn 2, stop-command 2, hosted-hook 1, steering-hook 1 |
 | `sleep` (child process or helper) | 8 | spawn-command, group-command, stalled-tool, coordinator-wake |
 | `Date.now()` | 120 | group-command 13, stop-command 10, wake-hook 10 |
@@ -131,17 +148,21 @@ Today's timing constructs in `test/` (counted with `grep -o` over test/*.ts, 12:
 | `waitForState` calls (25 ms poll, 10 s deadline) | 166 | hosted-spawn 54, spawn-command 42, continue-command 28 |
 | `LIMEN_*_MS` overrides | 30 | scratch.ts 8, hosted-spawn 8, sweep-command 5 |
 
+Fixed sleeps are not where today's time goes: 17.6 s is 1.2% of the 1,502 s run. The cost is process launches (each scratch repo, `init`, spawn and CLI call is a Node start under load) and polling windows that stretch under load. Team 1 showed it: land-command "land refuses running job…" has no sleep and took 17.9 s in the TAP and 38.9 s at load about 80 (team-1 finding 00000063, coordinator finding 00000070). Today's files hold 202 `"spawn"` and 38 `"continue"` arguments, 206 `"init"`, 307 temp-dir or scratch-repo creations and 681 `limen(...)` calls (`grep -o` over test/*.ts). The new set has about 35 round trips, 11 plants and 60 other calls, so it saves time mainly by launching fewer processes. Sleeps and windows still go, because they are what fails at random under load.
+
 How the new set avoids them: `limen wait` and `fs.watch` instead of polling; FIFOs instead of fixed blocks; ordering behind a later positive event instead of an absence window; `fs.utimes` instead of waiting for age; no elapsed-time asserts at all. What is left: the 1 s `--timeout` in S3, the 1 s fallback interval inside `limen wait` (product code), and the 12 s lock hold in S8 until the lock deadline takes an override. None of these can fail at random under load; the worst case under load is a slower pass.
 
 ## 7. Anti-bloat rule
 
-**Rule: a landing never adds test lines.** `limen land` refuses a branch when `git diff --numstat <target>...<branch> -- test/` shows more added than deleted lines.
+**Rule: `test/` stays at or under the cap written in `spec/vision.md`.** One vision line, for example `Tests stay at or under 3,300 lines in test/.` Only Adam edits it. `test/structure.test.ts` reads that number, counts the lines of `test/*`, and fails `npm test` above it. `limen land` prints one information line about it and refuses nothing.
 
-- **Where it runs.** In `limen land`, next to the ticket gate (src/commands/land.ts line 36). Land runs from the operator's installed Limen, not from the branch [INFERENCE: the coordinator calls `limen` from `PATH`, the canonical checkout; a branch's edit to land.ts cannot judge itself]. There is no number to edit, so a branch cannot loosen it. A direct commit to `main` skips land, so `test/structure.test.ts` adds a fixed ceiling of 3,300 lines over `test/*` and fails `npm test` above it.
-- **Exact error (land):** `land refused: limen/<id> adds 214 test lines (+260 -46 in test/). A landing never adds test lines. Remove 214 lines from test/ in this branch.`
-- **Exact error (structure test):** `test/ holds 3,514 lines; the ceiling is 3,300. A feature that adds test lines removes as many.`
-- **How a feature gets more test lines.** It deletes as many: a weaker check, a duplicate case, a wording assert. Raising the ceiling is a commit Adam makes on `main`; the net-zero land check needs no number and has no bypass flag.
-- **Why a budget alone fails.** `test/structure.test.ts` once pinned `src/` size: `git log -G 'sourceLines <=' -- test/structure.test.ts` shows 50 raises in 37 days (800 at `6743d9e`, 2026-08-13, to 4,280 at `58c9c4f`, 2026-09-19), one cut, then the file's budget was deleted in `1ffb7c4` (2026-09-24) (team-2 coordinator finding 00000012). The F776 trim was half undone in 11 hours: 15,551 lines at its merge (`2855cd5`) to 17,094 now (`5df0697`), +2,153 / -610 in 54 commits (finding 00000048). Since 2026-09-06, test/ took +12,950 / -4,268 lines and src/ +10,295 / -2,331 (`git log --numstat`, 12:37). A cut without a gate in the same landing regrows within a day.
+- **Where it runs.** The check runs in `npm test` and `npm run check` (package.json lines 24 and 27), so every worker sees it on its own branch before it hands off. `limen land` adds one information line beside the ticket check (src/commands/land.ts lines 35-37), computed at the branch tip: `test/: 3,280 lines at the tip (cap 3,300, spec/vision.md); this branch +120 -40`. It adds `over the cap` when the tip is above the cap, and it names a branch that edits `spec/vision.md`.
+- **Exact error (structure test):** `test/ has 3,424 lines; spec/vision.md caps it at 3,300. Remove 124 test lines, or ask Adam to raise the cap.`
+- **How a feature gets more test lines.** At the cap, it removes as many in the same branch: a weaker check, a duplicate case, a wording assert. Raising the cap is an edit to `spec/vision.md`, which is human-owned: "propose a change and ask before rewriting it" (templates/agents.md line 46; roles explainer, "Plant coordinator · Must not").
+- **Why this stops the old pattern.** `test/structure.test.ts` once pinned `src/` size: `git log -G 'sourceLines <=' -- test/structure.test.ts` shows 50 raises in 37 days (800 at `6743d9e`, 2026-08-13, to 4,280 at `58c9c4f`, 2026-09-19), one cut, then the budget was deleted in `1ffb7c4` (2026-09-24) (team-2 coordinator finding 00000012). Each raise edited a number inside the test file, in the same branch as the feature. A number in the owner's file cannot move in that commit without a visible vision edit, and land names that edit.
+- **The hole that remains, and what closes it.** The hole is landing without a full run, not raising. `main` was red twice today (`edc1630` "Fix two red tests on main"; merge `e288a4c` "focused tests green except two load-timing flakes, one also red on main") because nobody runs a 25-minute suite before land. A 1.5- to 4-minute suite makes the full run before land realistic, and that is what makes the cap bind. Regrowth without a gate is fast: the F776 trim was half undone in 11 hours, 15,551 lines at its merge (`2855cd5`) to 17,094 now (`5df0697`), +2,153 / -610 in 54 commits (finding 00000048); since 2026-09-06, `test/` took +12,950 / -4,268 lines and `src/` +10,295 / -2,331 (`git log --numstat --since=2026-09-06`, 12:37). So the cap ships in the same landing as the first cut.
+- **Why no refusal.** Vision line 10: "Harness mechanisms inform and preserve judgment; no hidden workflow gate". The styleguide: "Inform, do not gate". The lead leans the same way (lead finding 00000074).
+- **Documented escalation.** If a landing ever goes over the cap, switch to a net-zero land refusal: `limen land` refuses a branch when `git diff --numstat <target>...<branch> -- test/` adds more lines than it deletes. Error: `land refused: limen/<id> adds 214 test lines (+260 -46 in test/). Remove 214 lines from test/ in this branch.` No bypass flag; the exception path is the owner merging by hand with Git. That step adds control flow against the vision line above, so it needs Adam's yes.
 
 ## 8. File-to-scenario mapping
 
@@ -208,7 +229,7 @@ One row per file in `test/`, sorted by lines (`wc -l test/*`, 12:27). Seconds ar
 | stream.test.ts | 27 | finish and wake | unit | keep (U5, 40) | Done versus failed from the stream. 0.0 s |
 | structure.test.ts | 26 | none | unit | keep (U8, 45) | Adds the line ceiling. 0.0 s |
 
-Totals by action (lines): keep 1,388 in 7 files (shrinking to about 475); scenario 11,264 in 32 files; delete 4,442 in 19 files. Total 17,094.
+Totals by action (summed from this table): keep 1,276 lines in 7 files (shrinking to about 475); scenario 12,150 in 32 files (rewritten into about 2,480 scenario lines and the 260-line fixture); delete 3,668 in 19 files. Total 17,094. By class: mock 6,081, seam 5,240, unit 2,095, wording 1,567, timing 951, copy 719, duplicate 287, trivia 154. A file's class is its main class; most large files mix classes, so these totals differ from team 1's per-test split (team-1 finding 00000059: seam 4,939, mock 2,626).
 
 ### 8b. Bug coverage and the cutover rule
 
