@@ -365,24 +365,24 @@ Per-file notes:
 
 ## Actions after settlement with team 2
 
-The file table above is team 1's own reading. The lead asked team 1 and team 2 to settle the 12 files where their actions differed (lead `00000074`). The two answers crossed (team 1 `00000079`, team 2 `00000081`). Where one team conceded and the other agreed, the stronger guard wins. The converged fates:
+The file table above is team 1's own reading. The lead asked team 1 and team 2 to settle the 12 files where their actions differed (lead `00000074`). The first answers crossed (team 1 `00000079`, team 2 `00000081`). Team 2 then took team 1's lines and withdrew its own concessions (`00000084`). The settled list:
 
 | File | Team 1 | Team 2 | Settled fate |
 | --- | --- | --- | --- |
-| `wake-sweep` | keep | delete | rewritten as unit U4 (about 80 lines): claim, fallback and two-failure exhaustion (`a14640f`) on a fake clock with mtime ageing; the sweep-cache internals go |
-| `finish-receipt` | keep | delete | delete: S7 plants a real secret and checks that no job file, receipt, stdout/stderr or `limen jobs <id>` detail carries it. It reopens if a receipt field exists that S7 cannot make carry the secret |
-| `recovery` | keep | scenario | scenario: the missing-row case to S2 (replayed on `88fd5ac^`); the killed supervisor and competing sweeps to S9 (two `limen jobs` started together after `kill -9`; one `finished-at`) |
-| `reaper` | keep | scenario | kept as a unit of about 50 lines: a dead valid pid confirms at once (`5754dad`), a recycled pid with a new birth is dead, and the 10 s confirm rule runs on an injected clock |
-| `hosted-uncertainty` | keep | delete | kept as a unit (about 30 lines; pure, injected clock; no scenario reaches it without a wall clock) |
-| `git-status` | keep | scenario | keep the first test (about 20 lines) as the direct `43c01cf` proof and replay target; its two wording tests go |
-| `stalled-tool` | scenario | delete | one S3 case: a detached engine starts a tool and blocks, `LIMEN_TOOL_STALL_MS` is small, and the job ends failed with the stall reason before `--timeout` |
-| `status-command` | scenario | delete | one S5 check: a merged, empty or cherry-picked job is not a land candidate in `limen status`; the layout asserts go |
-| `land-command` | keep | scenario | becomes S5 on the shared plant (one plant per file, not one fresh repo per refusal); content kept |
-| `keeper-command` | keep | scenario | becomes part of S6 |
-| `ticket-command` | keep | scenario | S6 runs `limen ticket new` through `bin/limen`, with a branch, a job label and a done folder holding numbers |
-| `picture-work` | delete | scenario | one S6 check (two builds give identical bytes); the rest goes |
+| `wake-sweep` | keep | delete | delete; U4 adds the two-failure exhaustion row (`a14640f`) |
+| `finish-receipt` | keep | delete | delete; U2 adds one row where the sender prints malformed or secret-bearing output and the receipt drops it |
+| `recovery` | keep | scenario | scenario: S2 kills the hosted supervisor, runs two sweeps at once, and checks exactly one replacement (`5754dad`) |
+| `reaper` | keep | scenario | S9 for the dead pid, plus one unit of about 30 lines: "a recycled pid with a mismatched birth is dead" |
+| `hosted-uncertainty` | keep | delete | delete (it only drives advisory bells) |
+| `git-status` | keep | scenario | an S1 check that must go red on `43c01cf^`; if it does not, the 20-line narrow test stays (the closed-list fallback) |
+| `stalled-tool` | scenario | delete | delete (the outer timeout bounds a stuck tool) |
+| `status-command` | scenario | delete | delete |
+| `land-command` | keep | scenario | S5 |
+| `keeper-command` | keep | scenario | S6 |
+| `ticket-command` | keep | scenario | S6, through `bin/limen` |
+| `picture-work` | delete | scenario | S6, as "build twice, same bytes" |
 
-Net effect (team 2's count): units about +100 lines and scenarios about +30. The from-scratch set moves from about 3,300 to about 3,400 lines, under the lead's 3,500 cap.
+Team 2's total after the settlement: about 3,350 lines (3,295 + the 30-line reaper unit + about 20 lines for the S2 sweep race + table rows), under the lead's 3,500 cap.
 
 ## Points from other teams
 
@@ -392,14 +392,14 @@ Net effect (team 2's count): units about +100 lines and scenarios about +30. The
 | team 2 | `scratch.ts` scrubs a LIMEN_* denylist that misses `LIMEN_GROUP_ID`/`LIMEN_TEAM_ID`, so spawn tests fail inside a group job | Checked: I unset both (and the job vars) for my two timing runs; both files passed | Yes: the timing method and the `scratch` row (fixture needs an env allowlist) |
 | team 2 | The old `src/` line budget was raised 50 times, then deleted; F776's cut regrew 1,543 lines in 11 hours | Accepted as input for the anti-bloat rule; outside my scores | No |
 | team 2 | One spawn round trip is about 1 s at load 125, so suite time must be fixed waits | Rejected with evidence: `init-command` L46 took 34.1 s and `land-command` L61 took 20.1 s, neither with a sleep. Team 2 then corrected their claim. Their own census later found 26 fixed awaits of 100 ms or more, summing to 17.6 s (1.2% of the run) | No |
-| team 2 | Unit budget about 500 lines; your floor keeps rows that a scenario already reaches through the CLI (`00000076`, design `b5d0456` section 4) | First I disagreed (floor about 1,210). Team 2 then went file by file: each dropped unit is reached by a named scenario, or its risk is accepted in their section 8b. I accept that, except for rows that a scenario cannot reach without a wall clock or a recycled pid. The settlement kept those rows (`wake-sweep` as U4, `reaper`, `hosted-uncertainty`, `git-status`): about +100 lines over their 555 | Yes: the unit floor moves from about 1,210 to about 650 lines |
+| team 2 | Unit budget about 500 lines; your floor keeps rows that a scenario already reaches through the CLI (`00000076`, design `b5d0456` section 4) | First I disagreed (floor about 1,210). Team 2 then went file by file: each dropped unit is reached by a named scenario, or its risk is accepted in their section 8b. I accept that, except for rows a scenario cannot reach cheaply: the two-failure wake cap, a secret-bearing sender output, and a recycled pid. The settlement adds them (U4 row, U2 row, a 30-line reaper unit) | Yes: the unit floor moves from about 1,210 to about 600 lines |
 | team 3 | Do not score `group-command` as timing/delete; `b62b837` fixed a real lock bug | Agreed: L770 and L808 are scenario; the file is scenario. Their 11–12 s holds should become gates if product code may change later | Confirmed the worker's action |
 | team 3 | `sweep-command`'s 8-round registry test is not disposable (F043, 78/80 lost registrations, ENOTEMPTY) | Agreed: scenario, not timing. A shorter replacement counts only if it fails on `8548de0^` and `996bba9^` | Yes: the red-on-pre-fix condition is added to the `sweep-command` row |
 | team 3 | `open-command` caught the index-lock race (`43c01cf`) | Verified in `43c01cf:ci-repair-notes.md`. Added to Caught. The file stays delete because `git-status` pins the invariant directly | Yes: the bug list. No: the action |
 | team 3 | Which kept units can collapse safely? | Per-file floor: wake-sweep 347→150, finish-webhook-helper 289→100, hosted-spawn units 302→120, group-command units 244→120, recovery 195→100, github-doorbell units 185→90, picture-generator 248→90, picture-tickets 193→90, finish-receipt 154→70, reaper 177→60, ticket-command 81→45, job 92→35, the rest about 160. Total about 1,210 | No |
 | team 3 | F042/F043 tests were written after reviewer reproductions, not caught | Agreed: both are in Pinned | No |
 | lead | Give class totals and the share that survives | Totals above. About 3,980 seam lines (23%) plus about 2,435 kept unit lines (14%) | No |
-| lead | One end-state number and one calendar number | First estimate: about 3,500 lines, with units at about 1,210. After the settlement with team 2: about 3,400 lines (team 2's count). About 5 min serial at load 100 [estimate: about 60 job round trips at 1–3 s plus fast units]. 2–3 working days of agent time | Yes: the line estimate, after the settlement |
-| lead | Settle the 12 files where team 1 and team 2 differ, one line each | Settled above. The answers crossed, so each file takes the stronger guard either team offered: 4 units kept (`wake-sweep` as U4, `reaper`, `hosted-uncertainty`, `git-status`), 1 deleted (`finish-receipt`, guarded by S7's planted secret), and 7 move into scenarios | Yes: the settled fates override the file table for those 12 files |
-| lead | Draft verdict: staged replace written from scratch; target 3,300 lines, hard cap 3,500; the cap lives in `spec/vision.md` and `test/structure.test.ts` fails above it; land informs, does not refuse | Agree. From this audit: the cap binds only if the suite that enforces it is the one people run before land. Main went red twice today (`edc1630`, `e288a4c`) because nobody runs a 25-minute suite | No; the settled estimate (about 3,400) is inside the cap |
+| lead | One end-state number and one calendar number | First estimate: about 3,500 lines, with units at about 1,210. After the settlement with team 2: about 3,350 lines. About 5 min serial at load 100 [estimate: about 60 job round trips at 1–3 s plus fast units]. 2–3 working days of agent time | Yes: the line estimate, after the settlement |
+| lead | Settle the 12 files where team 1 and team 2 differ, one line each | Settled above, on team 1's lines (`00000079`), which team 2 accepted (`00000084`) with one refinement: the `git-status` fallback | Yes: the settled fates override the file table for those 12 files |
+| lead | Draft verdict: staged replace written from scratch; target 3,300 lines, hard cap 3,500; the cap lives in `spec/vision.md` and `test/structure.test.ts` fails above it; land informs, does not refuse | Agree. From this audit: the cap binds only if the suite that enforces it is the one people run before land. Main went red twice today (`edc1630`, `e288a4c`) because nobody runs a 25-minute suite | No; the settled estimate (about 3,350) is inside the cap |
 | brief | Are groups, the doorbell, the picture, sweep and prune seams of their own? | Groups: yes, a scenario of its own (slot and lock contention bugs `b62b837`, `57ad3e9`). Doorbell: yes, a trust boundary (one scenario plus the claim allowlist units). Sweep, prune and recovery: steps of finish-wake and spawn, with one housekeeping scenario for the data-loss and lost-wake races. Picture: not a seam. It keeps only the frontmatter and escaping units that the ticket check shares. Status and jobs views, and Herdr tabs: details; delete | No |
